@@ -1,5 +1,4 @@
 # 採点侍
-![トップ](./resources/samurai.png)
 
 **教育現場の定期試験・小テスト採点を効率化するソフトウェア**
 
@@ -66,3 +65,5 @@
 - Webサイト: [phys-kenのページ](https://phys-ken.github.io/phys-ken/)
 - note: [phys_kenのnote](https://note.com/phys_ken)
 - Qiitaでの技術解説: [【デジタル採点】採点斬り2021verをPythonで作ってみた](https://qiita.com/phys-ken/items/4fac021504d7fe6b98b2)（更新予定）
+
+![トップ](./resources/samurai.png)

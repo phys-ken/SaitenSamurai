@@ -42,10 +42,6 @@
 
 ## 概要
 
-<p align="center">
-  <img src="docs/images/01_startup_mode_dialog.png" alt="モード選択画面" width="380">
-</p>
-
 ### 採点斬りからの進化
 
 本ソフトウェアは、開発者 (phys-ken) が 2021 年に公開した **[採点斬り 2021](https://phys-ken.github.io/saitenGiri2021/)** をベースに、UI の改善やコードの整理を行ったうえで大幅な機能強化を施したものです。
@@ -85,6 +81,8 @@
 ---
 
 ## クイックスタート
+
+詳しい使い方は **[ドキュメントサイト](https://phys-ken.github.io/SaitenSamurai/)** をご覧ください。
 
 ### exe 版（推奨）
 

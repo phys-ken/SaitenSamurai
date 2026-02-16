@@ -2430,57 +2430,17 @@ class SaitenSamuraiGUI:
     def _run_box_drawer_thread(self, params):
         """枠描画処理の実際の実行（別スレッド）"""
         try:
-            import io
-            from contextlib import redirect_stdout, redirect_stderr
-            
-            stdout_stream = io.StringIO()
-            stderr_stream = io.StringIO()
-            
-            result = None
-            with redirect_stdout(stdout_stream), redirect_stderr(stderr_stream):
-                result = process_folder(
-                    params['image_folder'],
-                    params['coord_excel'],
-                    skip_questions=params['skip_questions'],
-                    output_base_folder=None,
-                    debug=False,
-                    color_threshold=params['color_threshold'],
-                    area_threshold=params['area_threshold'],
-                    progress_callback=self._update_progress,
-                    cancel_event=self._cancel_event,
-                )
-            
-            stdout_text = stdout_stream.getvalue()
-            stderr_text = stderr_stream.getvalue()
-            
-            if stdout_text:
-                # \rで分割して処理（TQDM対応）
-                # \rが含まれている場合は、最後の要素以外は無視するか、あるいは
-                # 最後の要素だけを表示するのがTQDMの挙動に近い
-                
-                if '\r' in stdout_text:
-                    # \rで区切られた最後の塊を取得
-                    lines = stdout_text.split('\r')
-                    # 最後の要素が空ならその前
-                    last_line = lines[-1] if lines[-1] else lines[-2]
-                    
-                    # 通常の改行も含まれている可能性があるので、\nでさらに分割
-                    sublines = last_line.split('\n')
-                    for line in sublines:
-                        if line:
-                            if line.startswith("[") and "処理中" in line:
-                                self.log_message(line, replace_last=True)
-                            else:
-                                self.log_message(line)
-                else:
-                    for line in stdout_text.split('\n'):
-                        if line:
-                            self.log_message(line)
-            
-            if stderr_text:
-                for line in stderr_text.split('\n'):
-                    if line:
-                        self.log_message(f"[ERROR] {line}")
+            result = process_folder(
+                params['image_folder'],
+                params['coord_excel'],
+                skip_questions=params['skip_questions'],
+                output_base_folder=None,
+                debug=False,
+                color_threshold=params['color_threshold'],
+                area_threshold=params['area_threshold'],
+                progress_callback=self._update_progress,
+                cancel_event=self._cancel_event,
+            )
             
             # 中断された場合
             if self._cancel_event.is_set():

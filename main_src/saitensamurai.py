@@ -3,7 +3,7 @@
 """
 採点侍 (SaitenSamurai) — マークシート解析・採点・チェック統合アプリケーション
 
-バージョン: 4.1
+バージョン: 4.2
 
 モジュール構成:
   constants.py          : 共通定数・ユーティリティ
@@ -170,6 +170,7 @@ Mark2GUI = SaitenSamuraiGUI
 # エントリポイント
 # ========================================
 
+import multiprocessing
 import sys
 import os
 import traceback
@@ -211,6 +212,7 @@ def main():
 
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     try:
         main()
     except Exception as e:

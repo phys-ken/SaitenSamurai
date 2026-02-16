@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------
+# track-downloads.yml
+# リリースアセットのダウンロード数を毎日 23:55 JST に記録する
+#
+# 集計を停止する方法 → .github/download_stats/README.md を参照
+# ---------------------------------------------------------------
+
+name: Track Release Downloads
+
+on:
+  schedule:
+    # 毎日 14:55 UTC = 23:55 JST
+    - cron: "55 14 * * *"
+  workflow_dispatch:          # 手動でも実行可能
+
+permissions:
+  contents: write             # CSV を commit & push するため
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch download counts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/track_downloads.py
+
+      - name: Commit & push CSV
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/download_stats/downloads.csv
+          # 差分がなければ何もしない
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "stats: update download counts [skip ci]"
+          git push

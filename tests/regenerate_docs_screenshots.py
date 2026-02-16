@@ -27,10 +27,14 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageGrab, ImageTk
+
+# tk.Tk / tk.Toplevel は Wm + Misc 両方を継承しているため、
+# winfo_* や update 等のメソッドを Pylance が正しく認識できる型
+_TkWindow = Union[tk.Tk, tk.Toplevel]
 
 # ============================================================
 # パス設定
@@ -61,7 +65,7 @@ class BITMAPINFOHEADER(ctypes.Structure):
     ]
 
 
-def _get_hwnd(widget: tk.Wm) -> Optional[int]:
+def _get_hwnd(widget: _TkWindow) -> Optional[int]:
     try:
         frame_id = widget.wm_frame()
         if frame_id and frame_id != "0x0":
@@ -74,7 +78,7 @@ def _get_hwnd(widget: tk.Wm) -> Optional[int]:
         return None
 
 
-def _capture_with_printwindow(widget: tk.Wm, path: Path) -> bool:
+def _capture_with_printwindow(widget: _TkWindow, path: Path) -> bool:
     try:
         hwnd = _get_hwnd(widget)
         if not hwnd:
@@ -106,7 +110,7 @@ def _capture_with_printwindow(widget: tk.Wm, path: Path) -> bool:
                     dcObj, bmp, 0, height, buf, ctypes.byref(bmi), 0,
                 )
                 img = Image.frombuffer(
-                    "RGBA", (width, height), buf, "raw", "BGRA", 0, 1,
+                    "RGBA", (width, height), bytes(buf), "raw", "BGRA", 0, 1,
                 )
                 img = img.convert("RGB")
                 img.save(str(path))
@@ -121,7 +125,7 @@ def _capture_with_printwindow(widget: tk.Wm, path: Path) -> bool:
         return False
 
 
-def _capture_with_imagegrab(widget: tk.Wm, path: Path) -> bool:
+def _capture_with_imagegrab(widget: _TkWindow, path: Path) -> bool:
     try:
         outer_x = widget.winfo_x()
         outer_y = widget.winfo_y()
@@ -143,7 +147,7 @@ def _capture_with_imagegrab(widget: tk.Wm, path: Path) -> bool:
         return False
 
 
-def _capture_window(widget: tk.Wm, filename: str,
+def _capture_window(widget: _TkWindow, filename: str,
                     delay_ms: int = 700) -> Optional[Path]:
     """ウィンドウキャプチャ → docs/images/ に保存"""
     widget.update_idletasks()
@@ -341,7 +345,7 @@ def capture_19_integrated_setup(root: tk.Tk, sheet_path: str):
     ratio = min(cw / pil_img.width, ch / pil_img.height)
     new_w = int(pil_img.width * ratio)
     new_h = int(pil_img.height * ratio)
-    pil_img_resized = pil_img.resize((new_w, new_h), Image.LANCZOS)
+    pil_img_resized = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
     # 半透明のカラー領域をオーバーレイ (RGBA合成)
     overlay = pil_img_resized.convert("RGBA")
@@ -383,7 +387,7 @@ def capture_19_integrated_setup(root: tk.Tk, sheet_path: str):
     ).convert("RGB")
     tk_img = ImageTk.PhotoImage(composite)
     canvas.create_image(cw // 2, ch // 2, image=tk_img, anchor=tk.CENTER)
-    canvas._tk_img_ref = tk_img
+    setattr(canvas, "_tk_img_ref", tk_img)
 
     tk.Label(left, text="💡 ドラッグで新しい記述領域を追加できます",
              font=("Yu Gothic UI", 8), bg=BG, fg="#777").pack(anchor=tk.W, pady=(3, 0))
@@ -564,10 +568,10 @@ def capture_06_single_question_scorer(root: tk.Tk, image_paths: Dict[str, str]):
     ratio = min(cw / cropped.width, ch / cropped.height) * 0.9
     new_w = int(cropped.width * ratio)
     new_h = int(cropped.height * ratio)
-    cropped_resized = cropped.resize((new_w, new_h), Image.LANCZOS)
+    cropped_resized = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
     tk_img = ImageTk.PhotoImage(cropped_resized)
     canvas.create_image(cw // 2, ch // 2, image=tk_img, anchor=tk.CENTER)
-    canvas._tk_img_ref = tk_img
+    setattr(canvas, "_tk_img_ref", tk_img)
 
     win.update_idletasks()
     win.update()
@@ -689,11 +693,11 @@ def _show_cropped_on_canvas(canvas, img_path: str, region: list):
     ratio = min(cw / cropped.width, ch / cropped.height) * 0.85
     new_w = int(cropped.width * ratio)
     new_h = int(cropped.height * ratio)
-    cropped_resized = cropped.resize((new_w, new_h), Image.LANCZOS)
+    cropped_resized = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
     tk_img = ImageTk.PhotoImage(cropped_resized)
     canvas.delete("all")
     canvas.create_image(cw // 2, ch // 2, image=tk_img, anchor=tk.CENTER)
-    canvas._tk_img_ref = tk_img
+    setattr(canvas, "_tk_img_ref", tk_img)
 
 
 def capture_desc_03_scored_maru(root, image_paths):
@@ -839,10 +843,10 @@ def capture_desc_08_grid_mode(root, image_paths):
         # サムネイル画像を切り出して表示
         try:
             cropped = _crop_region(image_paths[fn], [15, 95, 585, 280])
-            thumb = cropped.resize((180, 55), Image.LANCZOS)
+            thumb = cropped.resize((180, 55), Image.Resampling.LANCZOS)
             tk_thumb = ImageTk.PhotoImage(thumb)
             lbl = tk.Label(card, image=tk_thumb, bg=bg_col)
-            lbl.image = tk_thumb
+            setattr(lbl, "image", tk_thumb)
             lbl.pack(pady=(5, 2))
         except Exception:
             tk.Label(card, text="📄", font=("", 20), bg=bg_col).pack(pady=(5, 2))

@@ -42,15 +42,15 @@ REM --- 2. 依存パッケージのインストール ---
 echo [2/3] 依存パッケージをインストールしています...
 pip install --upgrade pip >nul 2>&1
 pip install ^
-    opencv-python-headless>=4.5.0 ^
-    numpy>=1.20.0 ^
-    pandas>=1.3.0 ^
-    Pillow>=8.0.0 ^
-    openpyxl>=3.0.0 ^
-    PyMuPDF>=1.20.0 ^
-    matplotlib>=3.4.0 ^
-    reportlab>=3.6.0 ^
-    pyinstaller>=6.0.0
+    "opencv-python-headless>=4.5.0" ^
+    "numpy>=1.20.0" ^
+    "pandas>=1.3.0" ^
+    "Pillow>=8.0.0" ^
+    "openpyxl>=3.0.0" ^
+    "PyMuPDF>=1.20.0" ^
+    "matplotlib>=3.4.0" ^
+    "reportlab>=3.6.0" ^
+    "pyinstaller>=6.0.0"
 
 if errorlevel 1 (
     echo エラー: パッケージのインストールに失敗しました。

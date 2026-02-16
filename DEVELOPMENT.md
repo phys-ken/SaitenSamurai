@@ -131,7 +131,7 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 座標 Excel の列ヘッダ値 (`raw_choice`) をそのまま表示値として使用します。
 
 ```mermaid
-flowchart LR
+flowchart TD
     %% Styles
     classDef data fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b,rx:5,ry:5;
     classDef process fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#4a148c,rx:5,ry:5;

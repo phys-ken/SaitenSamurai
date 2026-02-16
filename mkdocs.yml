@@ -50,6 +50,7 @@ nav:
   - ダウンロード: download.md
   - はじめに:
     - クイックスタート: quickstart.md
+    - 解答用紙の準備: preparation.md
     - 機能一覧: features.md
   - 使い方:
     - マーク採点: usage/mark.md

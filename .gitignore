@@ -72,6 +72,9 @@ session_state.json.bak
 # --- Sample big files (personal data — NEVER commit) ---
 sample_bigfiles/
 
+# --- MkDocs ---
+site/
+
 # --- Misc ---
 *.bak
 *.tmp

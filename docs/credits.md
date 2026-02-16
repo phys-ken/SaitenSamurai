@@ -1,7 +1,7 @@
 # クレジット・謝辞
 
-採点侍は、先人の素晴らしいソフトウェアやプロジェクトを参考にして開発されました。
-ここに感謝と敬意を表します。
+採点侍は、デジタル採点の先人たちが築いた素晴らしいソフトウェアやプロジェクトを参考にして開発されました。
+ここに深い感謝と敬意を表します。
 
 ---
 
@@ -20,15 +20,22 @@
 
 ---
 
-## 参考にしたプロジェクト
+## 採点侍の成り立ち
+
+**採点侍（SaitenSamurai）** は、開発者が 2021 年に公開した **[採点斬り 2021](https://github.com/phys-ken/saitenGiri2021)** の後継ソフトです。
+
+採点斬り 2021 は記述式答案の採点に特化していましたが、採点侍ではそこに **Mark2 対応のマークシート自動採点** と **CTT（古典的テスト理論）分析** を加え、マーク式・記述式・混合試験のすべてを 1 本で処理できるソフトウェアとして生まれ変わりました。
+
+---
+
+## 参考にしたソフトウェア
 
 ### 採点斬り — 島守睦美 氏
 
-採点侍の前身である **採点斬り 2021** は、島守睦美氏が開発された **「採点斬り！！」** を参考にして生まれました。
-
-採点斬りは、答案をスキャナで読み込み、問題ごとに画像を切り出して効率的に採点するという「デジタル採点」の手法を Visual Basic で実現した先駆的なフリーソフトです。
+「答案をスキャナで読み込み、問題ごとに画像を切り出して効率的に採点する」というデジタル採点のコンセプトを確立した **伝説的フリーソフト** です。採点斬り 2021 → 採点侍の出発点となりました。
 
 - **開発者**: 島守睦美 氏
+- **技術**: Visual Basic
 - **公開サイト**: 私立島守学園（現在はアクセス不可）
 - **紹介ページ**: [アーカイブ（Wayback Machine）](https://web.archive.org/web/20160625063811/http://www.nurs.or.jp/~lionfan/freesoft_49.html)
 
@@ -37,15 +44,21 @@
 採点斬りの元となった **「採点革命」** は、竹内俊彦氏（青山学院大学）が開発されたデジタル採点の草分け的ソフトウェアです。
 
 - **開発者**: 竹内俊彦 氏（青山学院大学理工学部）
+- **技術**: HSP
 - **紹介ページ**: [アーカイブ（Wayback Machine）](https://web.archive.org/web/20161024200711/http://www.nurs.or.jp/~lionfan/freesoft_45.html)
 
-### 採点斬り 2021 — phys-ken
+### MarkScan — 神奈川県教育委員会
 
-「採点革命」や「採点斬り」のコンセプトを受け継ぎ、現在の環境でも動作する Python 版として開発されたプロジェクトです。採点侍の記述式採点機能は、このプロジェクトの設計を基盤としています。
+神奈川県教育委員会が公開しているマークシート処理フリーソフトです。開発者自身が教員として日常的に使用しており、**設計思想や操作フロー** を大きく参考にしました。
 
-- **ライセンス**: GPL-3.0
-- :material-web: [https://phys-ken.github.io/saitenGiri2021/](https://phys-ken.github.io/saitenGiri2021/)
-- :material-github: [https://github.com/phys-ken/saitenGiri2021](https://github.com/phys-ken/saitenGiri2021)
+- **公開元**: 神奈川県教育委員会
+- **用途**: マークシートの読み取り・集計
+
+### デジタル採点 All in One — Object Pascalと僕と
+
+模範解答の表示方法など、**採点結果の出力・見せ方** を参考にさせていただきました。マークシートリーダーと手書き答案採点を含む統合パッケージを公開されています。
+
+- :material-web: [https://coding-tips-memoranda.com/デジタル採点-all-in-one/](https://coding-tips-memoranda.com/%E3%83%87%E3%82%B8%E3%82%BF%E3%83%AB%E6%8E%A1%E7%82%B9-all-in-one/)
 
 ---
 
@@ -53,31 +66,31 @@
 
 ### Mark2 — 慶應義塾大学 SFC 研究所
 
-マークシートの座標系（595×842 pt, A4）と OMR 認識ロジックの基盤として利用しています。
+マークシートの座標系（595×842 pt, A4）と OMR 認識ロジックの **技術基盤** として利用しています。採点侍は Mark2 形式の座標ファイルに全面的に依存しており、Mark2 なしには成立しないソフトウェアです。
 
 - **ライセンス**: MIT
 - :material-github: [https://github.com/Mark2OSS/Mark2](https://github.com/Mark2OSS/Mark2)
 
----
+### 採点斬り 2021 — phys-ken
 
-## 参考サイト
+「採点革命」「採点斬り」「MarkScan」のコンセプトを受け継ぎ、現在の環境でも動作する Python 版として開発されたプロジェクトです。採点侍の記述式採点機能は、このプロジェクトの設計を基盤としています。
 
-### デジタル採点 All in One — Object Pascalと僕と
-
-模範解答の表示方法など、デジタル採点の手法について参考にさせていただきました。マークシートリーダーや手書き答案採点を含む統合パッケージを公開されています。
-
-- :material-web: [https://coding-tips-memoranda.com/デジタル採点-all-in-one/](https://coding-tips-memoranda.com/%E3%83%87%E3%82%B8%E3%82%BF%E3%83%AB%E6%8E%A1%E7%82%B9-all-in-one/)
+- **ライセンス**: GPL-3.0
+- :material-web: [https://phys-ken.github.io/saitenGiri2021/](https://phys-ken.github.io/saitenGiri2021/)
+- :material-github: [https://github.com/phys-ken/saitenGiri2021](https://github.com/phys-ken/saitenGiri2021)
 
 ---
 
 ## デジタル採点の系譜
 
-| 世代 | ソフトウェア | 開発者 | 技術 |
-|---|---|---|---|
-| 第 1 世代 | **採点革命** | 竹内俊彦 氏 | HSP |
-| 第 2 世代 | **採点斬り！！** | 島守睦美 氏 | Visual Basic |
-| 第 3 世代 | **採点斬り 2021** | phys-ken | Python |
-| 第 4 世代 | **採点侍 (SaitenSamurai)** | phys-ken | Python + tkinter |
+| 世代 | ソフトウェア | 開発者 | 技術 | 採点侍との関係 |
+|---|---|---|---|---|
+| 第 1 世代 | **採点革命** | 竹内俊彦 氏 | HSP | デジタル採点の草分け |
+| 第 2 世代 | **採点斬り！！** | 島守睦美 氏 | Visual Basic | コンセプトの元祖 |
+| — | **MarkScan** | 神奈川県教育委員会 | — | 設計思想・操作性を参考 |
+| — | **デジタル採点 All in One** | Object Pascalと僕と | Delphi | 出力の見せ方を参考 |
+| 第 3 世代 | **採点斬り 2021** | phys-ken | Python | 採点侍の前身 |
+| 第 4 世代 | **採点侍 (SaitenSamurai)** | phys-ken | Python + tkinter | 現行版 |
 
 ---
 

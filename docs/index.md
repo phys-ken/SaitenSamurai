@@ -15,7 +15,7 @@ hide:
 </p>
 
 <p class="tagline" style="font-size: 0.85em; margin-top: -0.5em;">
-:material-history: <a href="https://phys-ken.github.io/saitenGiri2021/">採点斬り 2021</a> の後継ソフト ／
+&#x1F4DC; <a href="https://phys-ken.github.io/saitenGiri2021/">採点斬り 2021</a> の後継ソフト ／
 <a href="https://github.com/Mark2OSS/Mark2">Mark2</a> 対応マークシートリーダー搭載
 </p>
 

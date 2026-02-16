@@ -63,6 +63,9 @@ nav:
   - 免責事項: disclaimer.md
   - クレジット: credits.md
 
+extra_javascript:
+  - https://unpkg.com/mermaid/dist/mermaid.min.js
+
 extra_css:
   - stylesheets/extra.css
 
@@ -83,7 +86,11 @@ plugins:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:

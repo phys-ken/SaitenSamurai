@@ -72,6 +72,11 @@ session_state.json.bak
 # --- Sample big files (personal data — NEVER commit) ---
 sample_bigfiles/
 
+# --- Runtime-generated intermediates ---
+template_coordinates.csv
+tmp_checking_dm_nm.csv
+tests/tmp_output/
+
 # --- MkDocs ---
 site/
 

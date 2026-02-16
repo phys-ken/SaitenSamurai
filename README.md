@@ -103,7 +103,7 @@ python main_src/saitensamurai.py
 
 ## 開発者向け
 
-開発環境のセットアップ、モジュール構成、テストの実行方法については [DEVELOPMENT.md](DEVELOPMENT.md) を参照してください。
+開発環境のセットアップ、モジュール構成、テストの実行方法については [開発ガイド](https://phys-ken.github.io/SaitenSamurai/development/) をご覧ください（[DEVELOPMENT.md](DEVELOPMENT.md) と同内容です）。
 
 ### exe のビルド
 

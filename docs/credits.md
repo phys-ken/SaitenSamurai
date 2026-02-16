@@ -51,7 +51,7 @@
 
 神奈川県教育委員会が公開しているマークシート処理フリーソフトです。開発者自身が教員として日常的に使用しており、操作フローを参考にしました。
 
-- **公開元**: 神奈川県教育委員会
+- **公式サイト**: [MarkScan](https://markscan.sakuraweb.com/)
 - **用途**: マークシートの読み取り・集計
 
 ### デジタル採点 All in One — Object Pascalと僕と
@@ -69,7 +69,7 @@
 マークシートの座標系（595×842 pt, A4）と OMR 認識ロジックの技術基盤として利用しています。採点侍は Mark2 形式の座標ファイルに全面的に依存しており、Mark2 なしには成立しないソフトウェアです。
 
 - **ライセンス**: MIT
-- :material-github: [https://github.com/Mark2OSS/Mark2](https://github.com/Mark2OSS/Mark2)
+- :material-web: [https://mark2.sfc.keio.ac.jp/ja/](https://mark2.sfc.keio.ac.jp/ja/)
 
 ### 採点斬り 2021 — phys-ken
 

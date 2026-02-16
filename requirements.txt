@@ -1,0 +1,21 @@
+# Mark2 Application - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# --- Core ---
+opencv-python-headless>=4.5.0
+numpy>=1.20.0
+pandas>=1.3.0
+Pillow>=8.0.0
+openpyxl>=3.0.0
+
+# --- Optional: PDF I/O ---
+PyMuPDF>=1.20.0
+
+# --- Optional: CTT Analysis Reports ---
+matplotlib>=3.4.0
+reportlab>=3.6.0
+
+# --- Dev / Test ---
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-timeout>=2.0.0

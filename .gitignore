@@ -1,0 +1,78 @@
+# ==================================================
+# 採点侍 (SaitenSamurai) .gitignore
+# ==================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# --- Virtual Environments ---
+venv/
+venv_build/
+.venv/
+env/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# --- OS ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+.DS_Store?
+._*
+
+# --- PyInstaller ---
+*.spec.bak
+*.manifest
+*.exe
+*.dll
+
+# --- Test / Coverage ---
+htmlcov/
+.coverage
+.coverage.*
+*.cover
+.pytest_cache/
+tests/_test_result*.txt
+tests/_cov_report.txt
+tests/test_result*.txt
+
+# --- Logs ---
+*.log
+saitensamurai_crash.log
+build_log.txt
+
+# --- Application output (grading results) ---
+_saiten_grading_results/
+_mark2_grading_results/
+reading_results/
+boxed_figs/
+scored_figs/
+final_report/
+
+# --- Session state ---
+session_state.json
+session_state.json.bak
+
+# --- Sample big files (personal data — NEVER commit) ---
+sample_bigfiles/
+
+# --- Misc ---
+*.bak
+*.tmp
+.Rhistory

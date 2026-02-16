@@ -1,0 +1,103 @@
+@echo off
+chcp 65001 >nul
+REM =====================================================
+REM 採点侍 (SaitenSamurai) — exe ビルドスクリプト
+REM
+REM このスクリプトは以下を自動実行します:
+REM   1. ビルド用仮想環境 (venv_build) の作成
+REM   2. 必要最小限の依存パッケージのインストール
+REM   3. PyInstaller による exe のビルド
+REM
+REM 使い方:
+REM   build_exe.bat
+REM
+REM 出力:
+REM   dist/SaitenSamurai.exe
+REM =====================================================
+
+echo.
+echo ===================================================
+echo  採点侍 (SaitenSamurai) — exe ビルド
+echo ===================================================
+echo.
+
+REM --- 1. ビルド用仮想環境の作成 ---
+if not exist "venv_build" (
+    echo [1/3] ビルド用仮想環境を作成しています...
+    python -m venv venv_build
+    if errorlevel 1 (
+        echo エラー: Python の venv モジュールが見つかりません。
+        echo Python 3.8 以上がインストールされているか確認してください。
+        pause
+        exit /b 1
+    )
+) else (
+    echo [1/3] ビルド用仮想環境は既に存在します。
+)
+
+REM --- 仮想環境のアクティベート ---
+call venv_build\Scripts\activate.bat
+
+REM --- 2. 依存パッケージのインストール ---
+echo [2/3] 依存パッケージをインストールしています...
+pip install --upgrade pip >nul 2>&1
+pip install ^
+    opencv-python-headless>=4.5.0 ^
+    numpy>=1.20.0 ^
+    pandas>=1.3.0 ^
+    Pillow>=8.0.0 ^
+    openpyxl>=3.0.0 ^
+    PyMuPDF>=1.20.0 ^
+    matplotlib>=3.4.0 ^
+    reportlab>=3.6.0 ^
+    pyinstaller>=6.0.0
+
+if errorlevel 1 (
+    echo エラー: パッケージのインストールに失敗しました。
+    pause
+    exit /b 1
+)
+
+REM --- 不要ファイルのクリーンアップ ---
+echo     不要ファイルを削除しています...
+REM opencv-python（非headless）がインストールされていた場合の残骸を削除
+if exist "venv_build\Lib\site-packages\cv2\opencv_videoio_ffmpeg*.dll" (
+    del /q "venv_build\Lib\site-packages\cv2\opencv_videoio_ffmpeg*.dll"
+    echo     - FFmpeg DLL を削除しました
+)
+
+REM --- 3. PyInstaller でビルド ---
+echo [3/3] PyInstaller で exe をビルドしています...
+echo     （数分かかる場合があります）
+echo.
+
+pyinstaller saitensamurai.spec --noconfirm --clean
+
+if errorlevel 1 (
+    echo.
+    echo エラー: ビルドに失敗しました。
+    echo 上のエラーメッセージを確認してください。
+    pause
+    exit /b 1
+)
+
+REM --- 完了 ---
+echo.
+echo ===================================================
+echo  ビルド完了！
+echo  出力: dist\SaitenSamurai.exe
+echo ===================================================
+echo.
+
+REM --- ファイルサイズ表示 ---
+for %%F in (dist\SaitenSamurai.exe) do (
+    set /a "size_mb=%%~zF / 1048576"
+    echo  ファイルサイズ: 約 %%~zF bytes
+)
+
+echo.
+echo  デスクトップにコピーして使用してください。
+echo.
+
+call venv_build\Scripts\deactivate.bat 2>nul
+pause

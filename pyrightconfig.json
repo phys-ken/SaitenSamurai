@@ -1,0 +1,12 @@
+{
+    "extraPaths": ["main_src"],
+    "typeCheckingMode": "basic",
+    "reportOptionalMemberAccess": "warning",
+    "reportOptionalSubscript": "warning",
+    "reportArgumentType": "warning",
+    "reportAttributeAccessIssue": "warning",
+    "reportCallIssue": "warning",
+    "reportOptionalIterable": "warning",
+    "reportOperatorIssue": "warning",
+    "reportPrivateImportUsage": "warning"
+}

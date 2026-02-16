@@ -1,0 +1,92 @@
+site_name: 採点侍 — SaitenSamurai
+site_description: 普通紙マークシート＆記述式採点を、これ1本で。Windows向けフリーソフト。
+site_author: phys-ken
+site_url: https://phys-ken.github.io/SaitenSamurai/
+repo_url: https://github.com/phys-ken/SaitenSamurai
+repo_name: phys-ken/SaitenSamurai
+
+copyright: "&copy; 2025-2026 phys-ken &mdash; GPL-3.0 License"
+
+theme:
+  name: material
+  language: ja
+  # ロゴ・ファビコン
+  logo: images/samurai.png
+  favicon: images/favicon.ico
+  # カラーパレット
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: ダークモードに切り替え
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: ライトモードに切り替え
+  font:
+    text: Noto Sans JP
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.tabs.link
+    - toc.follow
+    - search.highlight
+    - search.suggest
+
+nav:
+  - ホーム: index.md
+  - ダウンロード: download.md
+  - はじめに:
+    - クイックスタート: quickstart.md
+    - 機能一覧: features.md
+  - 使い方:
+    - マーク採点: usage/mark.md
+    - 記述式採点: usage/descriptive.md
+    - マーク＋記述: usage/combined.md
+  - サポート:
+    - よくある質問: faq.md
+    - 更新履歴: changelog.md
+  - 免責事項: disclaimer.md
+  - クレジット: credits.md
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/phys-ken
+      name: phys-ken on GitHub
+  generator: false
+
+plugins:
+  - search:
+      lang: ja
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3

@@ -130,18 +130,43 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 
 座標 Excel の列ヘッダ値 (`raw_choice`) をそのまま表示値として使用します。
 
-```
-座標Excel                 parse_excel_coordinates()           recognize_marks()
-┌──────────────┐          ┌─────────────────────┐           ┌──────────────┐
-│ 列ヘッダ: 0-9│  →  X座標ソート → choice(0-N) │  →  ROI判定  │ {q: [choice]}│
-│ raw_choice   │          │ raw_choice を保持    │           └──────┬───────┘
-└──────────────┘          └─────────────────────┘                  │
-                                                                   ▼
-                           save_recognition_results()
-                           ┌──────────────────────────────────┐
-                           │ choice → raw_choice に逆引き    │
-                           │ raw_choice をExcel出力値として使用│
-                           └──────────────────────────────────┘
+```mermaid
+flowchart LR
+    %% Styles
+    classDef data fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b,rx:5,ry:5;
+    classDef process fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#4a148c,rx:5,ry:5;
+
+    %% Nodes & Flow
+    subgraph S1 ["1. 座標読み込み"]
+        direction TB
+        Excel[/"📊 座標Excel<br><small>列ヘッダ: 0-9 / raw_choice</small>"/]:::data
+    end
+
+    subgraph S2 ["2. parse_excel_coordinates()"]
+        direction TB
+        Sort["X座標ソート"]:::process
+        Map["内部ID choice(0-N)へ変換<br><small>raw_choice を保持</small>"]:::process
+        Sort --> Map
+    end
+
+    subgraph S3 ["3. recognize_marks()"]
+        direction TB
+        ROI["ROI判定"]:::process
+        RecResult[/"📝 認識結果<br><small>{q: [choice]}</small>"/]:::data
+        ROI --> RecResult
+    end
+
+    subgraph S4 ["4. save_recognition_results()"]
+        direction TB
+        Reverse["choice → raw_choice 逆引き"]:::process
+        Final[/"💾 Excel出力<br><small>raw_choice を使用</small>"/]:::data
+        Reverse --> Final
+    end
+
+    %% Edges
+    Excel --> Sort
+    Map --> ROI
+    RecResult --> Reverse
 ```
 
 ### 描画位置の設計

@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 120
+
+[tool.coverage.run]
+source = ["main_src"]
+omit = ["main_src/__pycache__/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "pass",
+]
+
+[tool.coverage.html]
+directory = "tests/coverage_html"

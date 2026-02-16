@@ -1,0 +1,622 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+descriptive_scorer.py — 記述問題 コアロジックモジュール
+
+JSON永続化、バッチ処理、画像トリミングなどコアロジックを提供する。
+GUIクラスは descriptive_gui.py に、描画関数は descriptive_renderer.py に分離済み。
+
+後方互換のため、分離されたシンボルも本モジュールから re-export する。
+"""
+
+import json
+import logging
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Optional, Dict, List, Tuple
+
+import cv2
+import numpy as np
+from PIL import Image, ImageTk
+
+from name_trimmer import select_region_on_image, get_image_files
+from constants import get_app_temp_dir, atomic_json_save, load_json_safe
+from scoring_engine import number_to_circled
+
+from descriptive_renderer import (
+    SCORE_FONT_SIZE, SCORE_COLOR_RGB, TOTAL_COLOR_RGB,
+    DEFAULT_TOTAL_BOX_WIDTH, DEFAULT_TOTAL_BOX_HEIGHT,
+    _font_cache, _get_font,
+    draw_descriptive_on_image, draw_combined_total,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# 定数
+# ============================================================
+
+DESCRIPTIVE_CONFIG_FILE = "descriptive_config.json"
+DESCRIPTIVE_SCORES_FILE = "descriptive_scores.json"
+TOTAL_DISPLAY_CONFIG_FILE = "total_display_config.json"
+
+
+# ============================================================
+# JSON 永続化
+# ============================================================
+
+def load_descriptive_config(config_path: str) -> Optional[dict]:
+    """descriptive_config.json を読み込む。ファイル不在や破損時は .bak からリカバリ。"""
+    return load_json_safe(config_path, required_keys=["questions"])
+
+
+def save_descriptive_config(config_path: str, config: dict):
+    """descriptive_config.json をアトミックに保存する。"""
+    atomic_json_save(config_path, config)
+
+
+def load_descriptive_scores(scores_path: str) -> Optional[dict]:
+    """descriptive_scores.json を読み込む。ファイル不在や破損時は .bak からリカバリ。"""
+    return load_json_safe(scores_path, required_keys=["scores"])
+
+
+def save_descriptive_scores(scores_path: str, scores: dict):
+    """descriptive_scores.json をアトミックに保存する。"""
+    atomic_json_save(scores_path, scores)
+
+
+def load_total_display_config(config_path: str) -> Optional[dict]:
+    """total_display_config.json を読み込む。ファイル不在や破損時は .bak からリカバリ。"""
+    return load_json_safe(config_path, required_keys=["total_display_region"])
+
+
+def save_total_display_config(config_path: str, region: list):
+    """total_display_config.json をアトミックに保存する。"""
+    data = {"total_display_region": region}
+    atomic_json_save(config_path, data)
+
+
+# ============================================================
+# マーカー基準座標
+# ============================================================
+
+# apply_perspective_transform で使われるマーカー基準座標（画像幅高に対する比率）
+# omr_engine.py の dst_points と同じ値
+_MARKER_LEFT_X_FRAC = 0.14 + 0.015     # 左マーカー中心 X / 幅 = 0.155
+_MARKER_RIGHT_X_FRAC = 0.83 + 0.015    # 右マーカー中心 X / 幅 = 0.845
+_MARKER_BOTTOM_Y_FRAC = 0.95 + 0.01    # 下部マーカー中心 Y / 高さ = 0.96
+_MARKER_HALF_SIZE_FRAC = 0.013         # マーカー半幅 / 幅（約納）
+
+
+def _calculate_marker_default_region(
+    orig_w: int, orig_h: int, box_h: int
+) -> tuple:
+    """
+    下部マーカー間のデフォルトボックス位置とサイズを計算する。
+
+    補正済み画像は apply_perspective_transform により
+    マーカーが固定比率の位置にマップされるため、
+    画像サイズから直接計算できる。
+
+    配置ルール:
+    - 左辺: 左下マーカー内側 + わずかなスペース
+    - 右辺: 右下マーカー内側 - わずかなスペース
+    - 幅: マーカー間の利用可能幅いっぱい
+    - Y中心: マーカーの中心と揃う
+
+    Args:
+        orig_w: 元画像幅 (px)
+        orig_h: 元画像高さ (px)
+        box_h: ボックス高さ (元画像座標系, px)
+
+    Returns:
+        (x, y, w, h) ボックスの左上座標と幅・高さ（元画像座標系）
+    """
+    margin_frac = 0.005  # マーカー内側からの余白
+    left_inner = (_MARKER_LEFT_X_FRAC + _MARKER_HALF_SIZE_FRAC + margin_frac) * orig_w
+    right_inner = (_MARKER_RIGHT_X_FRAC - _MARKER_HALF_SIZE_FRAC - margin_frac) * orig_w
+    marker_cy = _MARKER_BOTTOM_Y_FRAC * orig_h
+
+    x = int(left_inner)
+    w = int(right_inner - left_inner)
+    # Y中心をマーカーに揃える
+    y = int(marker_cy - box_h / 2)
+    return x, y, w, box_h
+
+
+# ============================================================
+# 画像切り出し
+# ============================================================
+
+def trim_descriptive_regions(
+    image_folder: str,
+    config: dict,
+    output_base: Optional[str] = None,
+    original_image_folder: Optional[str] = None,
+) -> Dict[str, Dict[str, str]]:
+    """
+    全補正済み画像から記述問題の領域を切り出して保存する。
+
+    original_image_folder が指定された場合、元画像から射影補正して切り出す
+    （00_Processing の 595x842 より高画質）。各画像は1回だけ補正し、
+    全問題の領域を一括で切り出すため効率的。
+
+    Args:
+        image_folder: 補正済み画像フォルダ (00_Processing)
+        config: descriptive_config
+        output_base: 出力ベースフォルダ (None → 一時フォルダを自動生成)
+        original_image_folder: 元画像フォルダ (指定時は高解像度で切り出し)
+
+    Returns:
+        {question_id: {image_filename: cropped_image_path, ...}, ...}
+    """
+    if output_base is None:
+        _app_temp = get_app_temp_dir(str(Path(image_folder).parent.parent))
+        output_base = tempfile.mkdtemp(prefix="desc_trim_", dir=_app_temp)
+
+    output_base = Path(output_base)  # type: ignore[assignment]
+    image_files = get_image_files(image_folder)
+    questions = config["questions"]
+
+    logger.info(
+        "trim_descriptive_regions: %d画像, %d問題, highres=%s",
+        len(image_files), len(questions), original_image_folder is not None,
+    )
+
+    if not image_files:
+        logger.warning("trim_descriptive_regions: 画像ファイルが見つかりません: %s", image_folder)
+    if not questions:
+        logger.warning("trim_descriptive_regions: 問題が設定されていません")
+
+    # 出力フォルダ準備
+    result: Dict[str, Dict[str, str]] = {}
+    for q in questions:
+        q_folder = output_base / q["id"]
+        q_folder.mkdir(parents=True, exist_ok=True)
+        result[q["id"]] = {}
+
+    # 元画像からの高解像度切り出しモード
+    use_highres = original_image_folder is not None
+    if use_highres:
+        from saitensamurai import (
+            detect_corner_markers, apply_perspective_transform,
+            compute_output_scale,
+        )
+
+    # 画像ごとに1回だけ補正し、全問題を一括切り出し
+    for img_path in image_files:
+        filename = Path(img_path).name
+        corrected_pil = None
+        scale = 1.0
+
+        try:
+            if use_highres:
+                orig_path = Path(original_image_folder) / filename
+                if orig_path.exists():
+                    with open(str(orig_path), 'rb') as f:
+                        img_bytes = f.read()
+                    orig_img = cv2.imdecode(
+                        np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR
+                    )
+                    if orig_img is not None:
+                        markers = detect_corner_markers(orig_img, debug=False)
+                        scale = compute_output_scale(orig_img)
+                        corrected, _ = apply_perspective_transform(
+                            orig_img, markers, output_scale=scale
+                        )
+                        corrected_pil = Image.fromarray(
+                            cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
+                        )
+                        logger.debug(
+                            "  高解像度切り出し: %s scale=%.2f size=%s",
+                            filename, scale, corrected_pil.size,
+                        )
+                        del orig_img, corrected  # メモリ解放
+                else:
+                    logger.debug("  元画像が見つかりません: %s", orig_path)
+
+            # 高解像度変換に失敗した場合は00_Processing画像を使用
+            if corrected_pil is None:
+                corrected_pil = Image.open(img_path)
+                scale = 1.0
+                logger.debug("  00_Processing使用: %s size=%s", filename, corrected_pil.size)
+
+            img_w, img_h = corrected_pil.size
+
+            # 全問題の領域を一括切り出し
+            for q in questions:
+                q_id = q["id"]
+                region = q["region"]  # [left, top, right, bottom]
+                left = max(0, min(int(region[0] * scale), img_w))
+                top = max(0, min(int(region[1] * scale), img_h))
+                right = max(0, min(int(region[2] * scale), img_w))
+                bottom = max(0, min(int(region[3] * scale), img_h))
+
+                if left >= right or top >= bottom:
+                    logger.warning(
+                        "  領域スキップ: %s %s region=%s scaled=[%d,%d,%d,%d] img=%dx%d",
+                        filename, q_id, region, left, top, right, bottom, img_w, img_h,
+                    )
+                    continue
+
+                cropped = corrected_pil.crop((left, top, right, bottom))
+                out_path = output_base / q_id / filename
+                cropped.save(str(out_path), quality=90)
+                result[q_id][filename] = str(out_path)
+
+        except Exception as e:
+            logger.warning("  高解像度切り出し失敗 (%s): %s — フォールバック", filename, e)
+            # エラー時は00_Processing画像からフォールバック
+            try:
+                with Image.open(img_path) as fallback_img:
+                    fb_w, fb_h = fallback_img.size
+                    for q in questions:
+                        q_id = q["id"]
+                        region = q["region"]
+                        left = max(0, min(int(region[0]), fb_w))
+                        top = max(0, min(int(region[1]), fb_h))
+                        right = max(0, min(int(region[2]), fb_w))
+                        bottom = max(0, min(int(region[3]), fb_h))
+                        if left < right and top < bottom:
+                            cropped = fallback_img.crop((left, top, right, bottom))
+                            out_path = output_base / q_id / filename
+                            cropped.save(str(out_path), quality=90)
+                            result[q_id][filename] = str(out_path)
+            except Exception as e2:
+                logger.error("  切り出しエラー: %s: %s (フォールバックも失敗: %s)", filename, e, e2)
+        finally:
+            if corrected_pil is not None:
+                corrected_pil.close()
+
+    total_cropped = sum(len(v) for v in result.values())
+    logger.info(
+        "trim_descriptive_regions 完了: 問題数=%d, 切り出し画像総数=%d",
+        len(result), total_cropped,
+    )
+    return result
+
+
+# ============================================================
+# 返却答案生成
+# ============================================================
+
+def generate_return_sheets(
+    image_folder: str,
+    config: dict,
+    descriptive_scores: dict,
+    coord_excel_path: str,
+    template_path: str,
+    mark2_result_path: str,
+    skip_questions: int,
+    output_folder: str,
+    log_callback=None,
+    rendering_settings=None,
+    progress_callback=None,
+    cancel_event=None,
+) -> dict:
+    """
+    マーク採点 + 記述採点を合成した返却用画像を生成する。
+
+    既存の saitensamurai の採点描画関数を呼び出してマーク部分を描画し、
+    その上に記述得点と合計点を追加描画する。
+
+    Args:
+        image_folder: 元画像フォルダ
+        config: descriptive_config
+        descriptive_scores: {image_filename: {question_id: score, ...}, ...}
+        coord_excel_path: 座標Excel
+        template_path: Answer Key Excel
+        mark2_result_path: OMR結果Excel
+        skip_questions: スキップ問題数
+        output_folder: 出力フォルダ (02_Graded_Detail)
+        log_callback: ログ出力関数
+
+    Returns:
+        {'success_count': int, 'error_count': int, 'total_count': int}
+    """
+    def log(msg, replace_last=False):
+        if log_callback:
+            try:
+                log_callback(msg, replace_last=replace_last)
+            except TypeError:
+                log_callback(msg)
+        else:
+            logger.info(msg)
+
+    # saitensamurai から必要な関数をインポート（遅延インポート）
+    from saitensamurai import (
+        detect_corner_markers, apply_perspective_transform,
+        compute_output_scale,
+        parse_excel_coordinates, load_template, load_mark2_results,
+        score_answers, draw_scoring_results,
+    )
+
+    image_folder = Path(image_folder)  # type: ignore[assignment]
+    output_folder = Path(output_folder)  # type: ignore[assignment]
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    log(f"{'='*60}")
+    log("返却答案生成")
+    log(f"{'='*60}")
+
+    template_dict = load_template(template_path)
+    mark2_results = load_mark2_results(mark2_result_path, skip_questions)
+    coordinates, _ = parse_excel_coordinates(coord_excel_path, skip_questions)
+
+    log(f"✓ テンプレート: {len(template_dict)}問")
+    log(f"✓ Mark2結果: {len(mark2_results)}件")
+    log(f"✓ 記述問題: {len(config['questions'])}問")
+
+    # マーカーキャッシュ読み込み（Step 1 で保存済みならマーカー検出をスキップ）
+    from image_renderer import _load_marker_cache
+    from constants import RESULTS_FOLDER
+    _results_folder = image_folder / RESULTS_FOLDER
+    marker_cache = _load_marker_cache(_results_folder)
+    if marker_cache:
+        log(f"✓ マーカーキャッシュ: {len(marker_cache)}件（高速モード）")
+
+    log("")
+
+    success_count = 0
+    error_count = 0
+
+    for idx, result_data in enumerate(mark2_results, 1):
+        # 中断チェック
+        if cancel_event and cancel_event.is_set():
+            log(f"⏹ 中断されました ({idx-1}/{len(mark2_results)}件処理済み)")
+            break
+        image_name = result_data['image']
+        student_answers = result_data['answers']
+
+        try:
+            image_path = image_folder / image_name
+            if not image_path.exists():
+                raise FileNotFoundError(f"画像が見つかりません: {image_path}")
+
+            with open(str(image_path), 'rb') as f:
+                img_bytes = f.read()
+            image = cv2.imdecode(
+                np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR
+            )
+            if image is None:
+                raise ValueError("画像を読み込めません")
+
+            # 高解像度で射影変換（キャッシュがあればマーカー検出をスキップ）
+            cached = marker_cache.get(image_name)
+            if cached:
+                markers = cached
+            else:
+                markers = detect_corner_markers(image, debug=False)
+            output_scale = compute_output_scale(image)
+            corrected, _ = apply_perspective_transform(image, markers, output_scale=output_scale)
+
+            # マーク採点
+            scoring_result = score_answers(student_answers, template_dict)
+
+            # マーク ○× 描画
+            result_image = draw_scoring_results(
+                corrected, coordinates, scoring_result, skip_questions,
+                output_scale=output_scale, rendering_settings=rendering_settings,
+            )
+
+            # 記述得点描画
+            desc_scores = descriptive_scores.get(image_name, {})
+            result_image = draw_descriptive_on_image(
+                result_image, config, desc_scores,
+                output_scale=output_scale, rendering_settings=rendering_settings,
+            )
+
+            # 合計点描画（マーク + 記述）
+            # ※ draw_total_score() は使わず、合計版を使う
+            result_image = draw_combined_total(
+                result_image, scoring_result, config,
+                desc_scores, coordinates,
+                output_scale=output_scale,
+            )
+
+            # 保存 (JPEG品質85: 画質と容量のバランス)
+            out_path = output_folder / image_name
+            ok, encoded = cv2.imencode('.jpg', result_image,
+                                       [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ok:
+                encoded.tofile(str(out_path))
+
+            mark_score = scoring_result['total_score']
+            desc_score = sum(
+                desc_scores.get(q["id"], 0) for q in config["questions"]
+            )
+            total = mark_score + desc_score
+
+            log(
+                f"  [{idx}/{len(mark2_results)}] ✓ {image_name}: "
+                f"マーク{mark_score} + 記述{desc_score} = {total}点",
+                replace_last=True,
+            )
+            success_count += 1
+            if progress_callback:
+                try:
+                    progress_callback(idx, len(mark2_results))
+                except Exception:
+                    pass
+
+        except Exception as e:
+            log(f"  [{idx}/{len(mark2_results)}] ✗ エラー: {image_name} - {e}")
+            error_count += 1
+
+    log("")
+    log(f"{'='*60}")
+    log("返却答案生成完了")
+    log(f"{'='*60}")
+    log(f"✓ 成功: {success_count}件")
+    log(f"✓ エラー: {error_count}件")
+    log(f"✓ 出力先: {output_folder}")
+    log("")
+
+    return {
+        'total_count': len(mark2_results),
+        'success_count': success_count,
+        'error_count': error_count,
+    }
+
+
+
+# ============================================================
+#   記述のみモード: 採点済み答案生成
+# ============================================================
+
+def generate_descriptive_only_sheets(
+    boxed_folder: str,
+    config: dict,
+    descriptive_scores: dict,
+    output_folder: str,
+    log_callback=None,
+    rendering_settings=None,
+) -> dict:
+    """記述のみモード: 記述得点のみを描画した返却答案を生成する。
+
+    マーク採点を行わず、画像に記述採点の結果（○△×・得点・観点）と
+    合計点のみを描画して出力する。
+
+    Args:
+        boxed_folder: 00_Processing フォルダパス
+        config: descriptive_config dict (questions, total_display_region)
+        descriptive_scores: {filename: {question_id: score, ...}}
+        output_folder: 出力フォルダパス
+        log_callback: ログ出力コールバック
+        rendering_settings: 描画設定 dict
+
+    Returns:
+        {'total_count', 'success_count', 'error_count'}
+    """
+    def log(msg):
+        if log_callback:
+            log_callback(msg)
+        else:
+            logger.info(msg)
+
+    boxed_path = Path(boxed_folder)
+    out_path = Path(output_folder)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    # 画像ファイル一覧
+    image_files = sorted([
+        f for f in boxed_path.iterdir()
+        if f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif')
+    ])
+
+    if not image_files:
+        log("エラー: 00_Processing フォルダに画像がありません")
+        return {'total_count': 0, 'success_count': 0, 'error_count': 0}
+
+    log(f"{'='*60}")
+    log("返却答案生成開始（記述のみモード）")
+    log(f"{'='*60}")
+    log(f"✓ 対象画像: {len(image_files)}件")
+    log(f"✓ 記述問題: {len(config.get('questions', []))}問")
+    log(f"✓ 出力先: {out_path}")
+    log("")
+
+    # マーク採点結果ダミー（mark_scoring_result の互換用）
+    empty_mark_result = {
+        'total_score': 0,
+        'aspect_scores': {},
+        'aspect_max_scores': {},
+    }
+
+    success_count = 0
+    error_count = 0
+
+    for idx, img_path in enumerate(image_files, 1):
+        fname = img_path.name
+        try:
+            log(f"[{idx}/{len(image_files)}] {fname}")
+
+            # Unicode パス対応: cv2.imdecode + np.fromfile
+            image = cv2.imdecode(
+                np.fromfile(str(img_path), dtype=np.uint8), cv2.IMREAD_COLOR
+            )
+            if image is None:
+                log(f"  ⚠ 画像読み込み失敗: {fname}")
+                error_count += 1
+                continue
+
+            # 記述のみモードでは座標は画像の実ピクセル基準で保存されている
+            # ため output_scale = 1.0 とし、二重スケーリングを防ぐ。
+            output_scale = 1.0
+
+            # 記述採点の描画
+            scores_for_img = descriptive_scores.get(fname, {})
+            image = draw_descriptive_on_image(
+                image, config, scores_for_img,
+                output_scale=output_scale,
+                rendering_settings=rendering_settings,
+            )
+
+            # 合計点描画（マーク = 0、記述得点のみ）
+            image = draw_combined_total(
+                image,
+                mark_scoring_result=empty_mark_result,
+                config=config,
+                descriptive_scores_for_image=scores_for_img,
+                coordinates=None,
+                output_scale=output_scale,
+            )
+
+            # 保存（Unicode パス対応: cv2.imencode + tofile）
+            out_file = out_path / fname
+            ext = out_file.suffix.lower() if out_file.suffix else '.jpg'
+            encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85] if ext in ('.jpg', '.jpeg') else []
+            success_enc, buf = cv2.imencode(ext, image, encode_params)
+            if success_enc:
+                buf.tofile(str(out_file))
+                success_count += 1
+            else:
+                log(f"  ⚠ 画像エンコード失敗: {fname}")
+                error_count += 1
+
+        except Exception as e:
+            log(f"  ✕ エラー ({fname}): {e}")
+            error_count += 1
+
+    log("")
+    log(f"{'='*60}")
+    log("返却答案生成完了（記述のみモード）")
+    log(f"{'='*60}")
+    log(f"✓ 成功: {success_count}件")
+    log(f"✓ エラー: {error_count}件")
+    log(f"✓ 出力先: {output_folder}")
+    log("")
+
+    return {
+        'total_count': len(image_files),
+        'success_count': success_count,
+        'error_count': error_count,
+    }
+
+
+
+
+# ============================================================
+# 後方互換 re-export
+# ============================================================
+# descriptive_gui.py / descriptive_renderer.py から分離されたシンボルを
+# 本モジュール経由でもインポート可能にする。
+# descriptive_renderer のシンボルは上部 import で既にモジュール名前空間に存在。
+# descriptive_gui のシンボルはここで追加する（循環回避のためファイル末尾に配置）。
+
+from descriptive_gui import (  # noqa: F401, E402
+    MAX_KEYBOARD_SCORE,
+    _OVERLAY_COLORS_RGB,
+    setup_descriptive_regions,
+    _ask_add_more,
+    _create_overlay_image,
+    IntegratedDescriptiveSetup,
+    setup_descriptive_regions_integrated,
+    select_total_position,
+    _ask_question_info,
+    DescriptiveScorerGUI,
+    _SingleQuestionScorer,
+    DescriptiveReviewGUI,
+)

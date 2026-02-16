@@ -1,130 +1,130 @@
-# 記述式採点の使ぁE��
+# 記述式採点の使い方
 
-スキャン画像から採点領域を指定し、記述式�E答案を効玁E��に採点するモードです、E
-
----
-
-## ワークフロー概要E
-
-```
-スキャン画像読込 ↁE採点領域の設宁EↁE問題ごとに採点 ↁE結果出劁E
-```
+スキャン画像から採点領域を指定し、記述式の答案を効率的に採点するモードです。
 
 ---
 
-## 1. スキャン画像�E準備
+## ワークフロー概要
 
-記述式採点モードでは、Mark2 座標ファイルは不要です。忁E��なのはスキャン画像�Eみです、E
+```
+スキャン画像読込 → 採点領域の設定 → 問題ごとに採点 → 結果出力
+```
 
-| 忁E��なも�E | 説昁E|
+---
+
+## 1. スキャン画像の準備
+
+記述式採点モードでは、Mark2 座標ファイルは不要です。必要なのはスキャン画像のみです。
+
+| 必要なもの | 説明 |
 |---|---|
-| **スキャン画僁E* | 答案をスキャンした JPEG / PNG / PDF |
+| **スキャン画像** | 答案をスキャンした JPEG / PNG / PDF |
 
-!!! tip "スキャン時�EポインチE
-    - 解像度は **200、E00 dpi** がおすすめでぁE
-    - コーナ�Eマ�Eカーがある場合�E、傾き補正が�E動で行われまぁE
-    - 普通�Eコピ�E機�E「スキャン→フォルダ保存」機�Eで十�EでぁE
+!!! tip "スキャン時のポイント"
+    - 解像度は **200〜300 dpi** がおすすめです
+    - コーナーマーカーがある場合は、傾き補正が自動で行われます
+    - 普通のコピー機の「スキャン → フォルダ保存」機能で十分です
 
 ---
 
 ## 2. メイン画面
 
-モード選択で **「記述式採点、E* を選ぶと、記述式専用のメイン画面が開きます、E
+モード選択で **「記述式採点」** を選ぶと、記述式専用のメイン画面が開きます。
 
 ![記述式メイン画面](../images/02c_main_descriptive_only.png){ .screenshot }
-<span class="caption">記述式採点モード�Eメイン画面</span>
+<span class="caption">記述式採点モードのメイン画面</span>
 
 ---
 
-## 3. 採点領域の設宁E
+## 3. 採点領域の設定
 
-答案画像上で、各問題�E採点領域を�EウスドラチE��で持E��します、E
+答案画像上で、各問題の採点領域をマウスドラッグで指定します。
 
-問題�E数だけ領域を設定します。追加の領域が忁E��かどぁE��を、ダイアログで確認されます、E
+問題の数だけ領域を設定します。追加の領域が必要かどうかを、ダイアログで確認されます。
 
 ![領域選択](../images/15_select_region.png){ .screenshot }
-<span class="caption">マウスドラチE��で採点領域を指宁E/span>
+<span class="caption">マウスドラッグで採点領域を指定</span>
 
-問題情報�E��E点、採点方式）を設定するダイアログが表示されます、E
+問題情報（配点、採点方式）を設定するダイアログが表示されます。
 
 ![問題情報の設定](../images/04_ask_question_info.png){ .screenshot-small }
 <span class="caption">問題情報の設定ダイアログ</span>
 
-追加の問題がある場合�E、続けて設定します、E
+追加の問題がある場合は、続けて設定します。
 
 ![追加確認](../images/05_ask_add_more.png){ .screenshot-small }
-<span class="caption">問題�E追加確誁E/span>
+<span class="caption">問題の追加確認</span>
 
 ---
 
-## 4. 採点方況E
+## 4. 採点方法
 
-記述式採点には **2 つの表示モーチE* があります、E
+記述式採点には **2 つの表示モード** があります。
 
-### 1枚ずつ採点モーチE
+### 1枚ずつ採点モード
 
-1 人の答案を 1 枚ずつ表示し、拡大画像を見ながら採点します、E
-○（正解�E��E×（不正解�E��E△�E�部刁E���E��Eタンで判定します、E
+1 人の答案を 1 枚ずつ表示し、拡大画像を見ながら採点します。
+○（正解）・×（不正解）・△（部分点）ボタンで判定します。
 
 ![1枚ずつ採点](../images/desc_02_scorer_buttons.png){ .screenshot }
-<span class="caption">1枚ずつの採点画面  E○×△ボタンで判宁E/span>
+<span class="caption">1枚ずつの採点画面 — ○×△ボタンで判定</span>
 
-採点結果は即座にフィードバチE��表示されます、E
+採点結果は即座にフィードバック表示されます。
 
-=== "○（正解�E�E
+=== "○（正解）"
 
     ![正解の表示](../images/desc_03_scored_maru.png){ .screenshot }
     <span class="caption">○判定：背景が緑に変化</span>
 
-=== "×（不正解�E�E
+=== "×（不正解）"
 
     ![不正解の表示](../images/desc_04_scored_batsu.png){ .screenshot }
     <span class="caption">×判定：背景が赤に変化</span>
 
-=== "△�E�部刁E���E�E
+=== "△（部分点）"
 
-    ![部刁E��の表示](../images/desc_05_scored_middle.png){ .screenshot }
-    <span class="caption">△判定：部刁E��を�E劁E/span>
+    ![部分点の表示](../images/desc_05_scored_middle.png){ .screenshot }
+    <span class="caption">△判定：部分点を入力</span>
 
-### グリチE��一覧モーチE
+### グリッド一覧モード
 
-全生徒�E同じ問題を一覧グリチE��で表示し、素早く採点できます、E
-大量�E答案を効玁E��に処琁E��たいときに便利です、E
+全生徒の同じ問題を一覧グリッドで表示し、素早く採点できます。
+大量の答案を効率的に処理したいときに便利です。
 
-![グリチE��モード](../images/desc_08_grid_mode.png){ .screenshot-wide }
-<span class="caption">グリチE��一覧モーチE E全生徒�E解答を一覧表示</span>
+![グリッドモード](../images/desc_08_grid_mode.png){ .screenshot-wide }
+<span class="caption">グリッド一覧モード — 全生徒の解答を一覧表示</span>
 
 ---
 
 ## 5. 未採点フィルタ
 
-採点漏れを防ぐために、未採点の答案だけを表示するフィルタ機�Eがあります、E
+採点漏れを防ぐために、未採点の答案だけを表示するフィルタ機能があります。
 
 ![未採点フィルタ](../images/desc_06_filter_active.png){ .screenshot }
-<span class="caption">未採点フィルタを有効にした状慁E/span>
+<span class="caption">未採点フィルタを有効にした状態</span>
 
-すべての採点が完亁E��ると表示が�Eり替わります、E
+すべての採点が完了すると表示が切り替わります。
 
-![全採点完亁E(../images/desc_07_all_scored.png){ .screenshot }
-<span class="caption">すべての採点が完亁E��た状慁E/span>
+![全採点完了](../images/desc_07_all_scored.png){ .screenshot }
+<span class="caption">すべての採点が完了した状態</span>
 
 ---
 
-## 6. 描画設宁E
+## 6. 描画設定
 
-記述式採点用の描画設定では、○×△マ�Eクの表示めE��点チE��スト�Eスタイルをカスタマイズできます、E
+記述式採点用の描画設定では、○×△マークの表示や得点テキストのスタイルをカスタマイズできます。
 
 ![描画設定（記述式）](../images/03_rendering_settings_desc_only.png){ .screenshot }
-<span class="caption">記述式採点の描画設宁E/span>
+<span class="caption">記述式採点の描画設定</span>
 
 ---
 
-## 7. 結果の出劁E
+## 7. 結果の出力
 
-採点が完亁E��ると、以下�EファイルぁE`_saiten_grading_results/` フォルダに自動生成されます、E
+採点が完了すると、以下のファイルが `_saiten_grading_results/` フォルダに自動生成されます。
 
-| 出力�E | 冁E�� |
+| 出力先 | 内容 |
 |---|---|
 | `01_Results/` | 生徒別成績サマリー Excel |
-| `02_Graded_Detail/` | 採点済み答案画像（○×△マ�Eク・得点付き�E�E|
-| `03_Final_Report/` | 試験統訁EExcel |
+| `02_Graded_Detail/` | 採点済み答案画像（○×△マーク・得点付き） |
+| `03_Final_Report/` | 試験統計 Excel |

@@ -27,18 +27,30 @@ class TestSafetyImprovements(unittest.TestCase):
 
     def test_empty_answer_key_detection(self):
         """Test detection of an empty (header-only) answer key."""
-        # Create an empty DataFrame (only headers)
-        df = pd.DataFrame(columns=["Question", "Answer", "Score"])
+        # Create a dummy answer_key.xlsx with rows but empty answers (simulating OMR engine)
+        df = pd.DataFrame({
+            '問題番号': [1, 2, 3],
+            '正答': ['', '', ''],
+            '配点': ['', '', ''],
+            '観点': ['', '', '']
+        })
         df.to_excel(self.answer_key_path, index=False)
 
         # Logic to check if empty
         is_empty = False
         if self.answer_key_path.exists():
             df_read = pd.read_excel(self.answer_key_path)
+            
+            # Expanded logic
             if len(df_read) == 0:
                 is_empty = True
+            elif '正答' in df_read.columns and '配点' in df_read.columns:
+                 answers = df_read['正答'].fillna('').astype(str).str.strip()
+                 points = df_read['配点'].fillna('').astype(str).str.strip()
+                 if (answers == '').all() and (points == '').all():
+                     is_empty = True
         
-        self.assertTrue(is_empty, "Should detect empty answer key")
+        self.assertTrue(is_empty, "Should detect empty answer key (even with rows)")
 
     def test_filled_answer_key_detection(self):
         """Test detection of a filled answer key."""
@@ -68,9 +80,20 @@ class TestSafetyImprovements(unittest.TestCase):
         mock_askyesno.return_value = True
 
         # Simulated Logic from main_gui.py
+        # Simulated Logic from main_gui.py
         if self.answer_key_path.exists():
             df_read = pd.read_excel(self.answer_key_path)
+            
+            is_effectively_empty = False
             if len(df_read) == 0:
+                is_effectively_empty = True
+            elif '正答' in df_read.columns and '配点' in df_read.columns:
+                 answers = df_read['正答'].fillna('').astype(str).str.strip()
+                 points = df_read['配点'].fillna('').astype(str).str.strip()
+                 if (answers == '').all() and (points == '').all():
+                     is_effectively_empty = True
+
+            if is_effectively_empty:
                 if mock_askyesno("Title", "Message"):
                     import subprocess
                     subprocess.Popen(f'explorer "{self.test_dir}"')

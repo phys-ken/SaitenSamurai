@@ -2476,8 +2476,22 @@ class SaitenSamuraiGUI:
                 if template_path.exists():
                     import pandas as pd
                     df = pd.read_excel(template_path)
-                    # ヘッダー行のみ（データ行が0）の場合は「空」とみなす
+                    
+                    # 判定ロジックを分離（行数が0、または正答・配点が全て空の場合）
+                    is_effectively_empty = False
                     if len(df) == 0:
+                        is_effectively_empty = True
+                    elif '正答' in df.columns and '配点' in df.columns:
+                        # 全て空（NaN または 空文字）かチェック
+                        # fillna('') で NaN を空文字に統一し、文字列化して空白削除
+                        answers = df['正答'].fillna('').astype(str).str.strip()
+                        points = df['配点'].fillna('').astype(str).str.strip()
+                        
+                        # どちらも全ての行が空なら「空」とみなす
+                        if (answers == '').all() and (points == '').all():
+                            is_effectively_empty = True
+
+                    if is_effectively_empty:
                         # メインスレッドでダイアログを表示
                         def _ask_open_folder():
                             if messagebox.askyesno(

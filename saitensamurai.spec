@@ -8,12 +8,20 @@
 """
 
 import os
+import re
 import sys
 
 block_cipher = None
 
 # main_src をインポートパスに追加
 MAIN_SRC = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'main_src')
+
+# saitensamurai.py からバージョンを読み取り、exe 名に付与
+_version_file = os.path.join(MAIN_SRC, 'saitensamurai.py')
+with open(_version_file, 'r', encoding='utf-8') as _f:
+    _m = re.search(r'バージョン:\s*(\S+)', _f.read())
+    _version = _m.group(1) if _m else 'unknown'
+EXE_NAME = f'SaitenSamurai_v{_version}'
 
 a = Analysis(
     ['main_src/saitensamurai.py'],
@@ -176,7 +184,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='SaitenSamurai',
+    name=EXE_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

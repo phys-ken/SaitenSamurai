@@ -158,7 +158,7 @@ class SaitenSamuraiGUI:
             MODE_DESCRIPTIVE_ONLY: "記述採点",
         }
         mode_label = mode_labels.get(mode, "")
-        self.root.title(f"採点侍 v4.1 — {mode_label}")
+        self.root.title(f"採点侍 v4.3 — {mode_label}")
         self.root.geometry("1100x600")
         
         # ウィンドウアイコン設定
@@ -286,11 +286,11 @@ class SaitenSamuraiGUI:
 
         # モード別タイトルテキスト
         mode_titles = {
-            MODE_MARK_ONLY: "採点侍 v4.1 — マーク採点",
-            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.1 — マーク＋記述採点",
-            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.1 — 記述採点",
+            MODE_MARK_ONLY: "採点侍 v4.3 — マーク採点",
+            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.3 — マーク＋記述採点",
+            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.3 — 記述採点",
         }
-        title_text = mode_titles.get(self.app_mode, "採点侍 v4.1")
+        title_text = mode_titles.get(self.app_mode, "採点侍 v4.3")
         tk.Label(title_row, text=title_text, font=FONT_TITLE, fg="#1976D2", bg=BG_COLOR).pack(side=tk.LEFT)
         tk.Button(
             title_row, text="📂 前回の状態を復元",
@@ -2429,58 +2429,19 @@ class SaitenSamuraiGUI:
     
     def _run_box_drawer_thread(self, params):
         """枠描画処理の実際の実行（別スレッド）"""
+        gui_handler, suppressed = self._attach_gui_log_handler()
         try:
-            import io
-            from contextlib import redirect_stdout, redirect_stderr
-            
-            stdout_stream = io.StringIO()
-            stderr_stream = io.StringIO()
-            
-            result = None
-            with redirect_stdout(stdout_stream), redirect_stderr(stderr_stream):
-                result = process_folder(
-                    params['image_folder'],
-                    params['coord_excel'],
-                    skip_questions=params['skip_questions'],
-                    output_base_folder=None,
-                    debug=False,
-                    color_threshold=params['color_threshold'],
-                    area_threshold=params['area_threshold'],
-                    progress_callback=self._update_progress,
-                    cancel_event=self._cancel_event,
-                )
-            
-            stdout_text = stdout_stream.getvalue()
-            stderr_text = stderr_stream.getvalue()
-            
-            if stdout_text:
-                # \rで分割して処理（TQDM対応）
-                # \rが含まれている場合は、最後の要素以外は無視するか、あるいは
-                # 最後の要素だけを表示するのがTQDMの挙動に近い
-                
-                if '\r' in stdout_text:
-                    # \rで区切られた最後の塊を取得
-                    lines = stdout_text.split('\r')
-                    # 最後の要素が空ならその前
-                    last_line = lines[-1] if lines[-1] else lines[-2]
-                    
-                    # 通常の改行も含まれている可能性があるので、\nでさらに分割
-                    sublines = last_line.split('\n')
-                    for line in sublines:
-                        if line:
-                            if line.startswith("[") and "処理中" in line:
-                                self.log_message(line, replace_last=True)
-                            else:
-                                self.log_message(line)
-                else:
-                    for line in stdout_text.split('\n'):
-                        if line:
-                            self.log_message(line)
-            
-            if stderr_text:
-                for line in stderr_text.split('\n'):
-                    if line:
-                        self.log_message(f"[ERROR] {line}")
+            result = process_folder(
+                params['image_folder'],
+                params['coord_excel'],
+                skip_questions=params['skip_questions'],
+                output_base_folder=None,
+                debug=False,
+                color_threshold=params['color_threshold'],
+                area_threshold=params['area_threshold'],
+                progress_callback=self._update_progress,
+                cancel_event=self._cancel_event,
+            )
             
             # 中断された場合
             if self._cancel_event.is_set():
@@ -2505,7 +2466,32 @@ class SaitenSamuraiGUI:
             self.root.after(0, lambda: self._auto_detect_omr_result(results_folder))
             self.root.after(0, self._save_session_state)
             self.root.after(0, self._update_step_availability)
-            
+
+            # --- Answer Key 空検出: 正答・配点が未入力の場合にダイアログで案内 ---
+            try:
+                results_data_folder = Path(params['image_folder']) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
+                template_path = results_data_folder / ANSWER_KEY_FILE
+
+                if template_path.exists():
+                    import pandas as pd
+                    df = pd.read_excel(template_path)
+
+                    is_effectively_empty = False
+                    if len(df) == 0:
+                        is_effectively_empty = True
+                    elif '正答' in df.columns and '配点' in df.columns:
+                        answers = df['正答'].fillna('').astype(str).str.strip()
+                        points = df['配点'].fillna('').astype(str).str.strip()
+                        if (answers == '').all() and (points == '').all():
+                            is_effectively_empty = True
+
+                    if is_effectively_empty:
+                        def _show_answer_key_guide():
+                            self._show_answer_key_guide_dialog(results_data_folder)
+                        self.root.after(0, _show_answer_key_guide)
+            except Exception as e:
+                self.log_message(f"Answer Key 確認処理中にエラー: {e}")
+
             if result:
                 summary = f"""処理が正常に完了しました！
 
@@ -2544,7 +2530,102 @@ class SaitenSamuraiGUI:
             self.root.after(0, lambda: messagebox.showerror("エラー", self._friendly_error_message(e)))
 
         finally:
+            self._detach_gui_log_handler(gui_handler, suppressed)
             self.root.after(0, self._set_processing_state, False)
+
+    def _show_answer_key_guide_dialog(self, results_data_folder):
+        """Answer Key 未入力時のガイドダイアログ（カスタム・高視認性）
+
+        標準の messagebox ではなく、大きなフォント・アイコン・色分けで
+        ユーザーにわかりやすく案内するカスタムダイアログ。
+        """
+        dialog = tk.Toplevel(self.root)
+        dialog.title("📋 正答・配点の入力が必要です")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        dialog.configure(bg="#FFFDE7")
+
+        # ヘッダー（黄色の注意帯）
+        header_frame = tk.Frame(dialog, bg="#FFF9C4", padx=20, pady=12)
+        header_frame.pack(fill=tk.X)
+        tk.Label(
+            header_frame, text="⚠️ 正答・配点の入力が必要です",
+            font=("Yu Gothic UI", 14, "bold"), fg="#F57F17", bg="#FFF9C4",
+        ).pack(anchor=tk.W)
+
+        # 本文
+        body_frame = tk.Frame(dialog, bg="#FFFDE7", padx=20, pady=15)
+        body_frame.pack(fill=tk.X)
+
+        msg_lines = [
+            f"マーク認識が完了し、{ANSWER_KEY_FILE} が自動生成されました。",
+            "",
+            "次のステップとして、以下の作業を行ってください：",
+        ]
+        tk.Label(
+            body_frame, text="\n".join(msg_lines),
+            font=("Yu Gothic UI", 10), fg="#333333", bg="#FFFDE7",
+            justify=tk.LEFT, wraplength=420,
+        ).pack(anchor=tk.W)
+
+        # ステップリスト（番号付き）
+        steps_frame = tk.Frame(body_frame, bg="#FFF8E1", padx=15, pady=10,
+                                relief=tk.SOLID, bd=1)
+        steps_frame.pack(fill=tk.X, pady=(10, 5))
+
+        steps = [
+            f"① {ANSWER_KEY_FILE} を Excel で開く",
+            "② 各問題の「正答」「配点」「観点」を入力",
+            "③ 保存して Excel を閉じる",
+            "④ 採点侍で次のステップに進む",
+        ]
+        for step in steps:
+            tk.Label(
+                steps_frame, text=step,
+                font=("Yu Gothic UI", 10), fg="#333333", bg="#FFF8E1",
+                anchor=tk.W,
+            ).pack(anchor=tk.W, pady=1)
+
+        # ボタンフレーム
+        btn_frame = tk.Frame(dialog, bg="#FFFDE7", padx=20, pady=15)
+        btn_frame.pack(fill=tk.X)
+
+        def _open_folder():
+            import subprocess
+            try:
+                folder_path = str(Path(results_data_folder).resolve())
+                subprocess.Popen(f'explorer "{folder_path}"')
+            except Exception as e:
+                self.log_message(f"フォルダを開けませんでした: {e}")
+            dialog.destroy()
+
+        def _close():
+            dialog.destroy()
+
+        tk.Button(
+            btn_frame, text="📂 フォルダを開いて編集する",
+            command=_open_folder,
+            font=("Yu Gothic UI", 11, "bold"), bg="#FFD54F", fg="#333333",
+            activebackground="#FFC107", relief=tk.FLAT, cursor="hand2",
+            padx=20, pady=8,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        tk.Button(
+            btn_frame, text="後で入力する",
+            command=_close,
+            font=("Yu Gothic UI", 10), bg="#EEEEEE", fg="#666666",
+            relief=tk.FLAT, cursor="hand2",
+            padx=15, pady=8,
+        ).pack(side=tk.LEFT)
+
+        # ダイアログを親ウィンドウの中央に配置
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+        dialog.geometry(f"+{x}+{y}")
     
     def run_scoring(self):
         """採点処理を実行（モードに応じた処理分岐）"""

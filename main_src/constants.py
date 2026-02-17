@@ -297,7 +297,9 @@ def setup_logging(log_dir=None, level=logging.INFO):
     root_logger.addHandler(fh)
 
     # コンソールハンドラ（既存 print 互換フォーマット）
-    ch = logging.StreamHandler(sys.stdout)
+    # PyInstaller console=False 環境では sys.stdout が None になるためガード
+    stream = sys.stdout if sys.stdout is not None else open(os.devnull, 'w')
+    ch = logging.StreamHandler(stream)
     ch.setLevel(level)
     ch.setFormatter(logging.Formatter("%(message)s"))
     root_logger.addHandler(ch)
@@ -307,6 +309,8 @@ def setup_logging(log_dir=None, level=logging.INFO):
 
 def safe_print(*args, **kwargs):
     """Windows環境などでのUnicodeEncodeErrorを防ぐためのprintラッパー"""
+    if sys.stdout is None:
+        return
     try:
         print(*args, **kwargs)
     except UnicodeEncodeError:

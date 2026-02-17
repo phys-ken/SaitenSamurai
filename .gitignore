@@ -85,6 +85,9 @@ tests/tmp_output/
 # --- MkDocs ---
 site/
 
+# --- GAS / clasp project (personal deployment) ---
+gas_cloud_post/
+
 # --- Misc ---
 *.bak
 *.tmp

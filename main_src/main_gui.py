@@ -158,7 +158,7 @@ class SaitenSamuraiGUI:
             MODE_DESCRIPTIVE_ONLY: "記述採点",
         }
         mode_label = mode_labels.get(mode, "")
-        self.root.title(f"採点侍 v4.4 — {mode_label}")
+        self.root.title(f"採点侍 v4.4.1 — {mode_label}")
         self.root.geometry("1100x600")
         
         # ウィンドウアイコン設定
@@ -286,11 +286,11 @@ class SaitenSamuraiGUI:
 
         # モード別タイトルテキスト
         mode_titles = {
-            MODE_MARK_ONLY: "採点侍 v4.4 — マーク採点",
-            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.4 — マーク＋記述採点",
-            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.4 — 記述採点",
+            MODE_MARK_ONLY: "採点侍 v4.4.1 — マーク採点",
+            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.4.1 — マーク＋記述採点",
+            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.4.1 — 記述採点",
         }
-        title_text = mode_titles.get(self.app_mode, "採点侍 v4.4")
+        title_text = mode_titles.get(self.app_mode, "採点侍 v4.4.1")
         tk.Label(title_row, text=title_text, font=FONT_TITLE, fg="#1976D2", bg=BG_COLOR).pack(side=tk.LEFT)
         tk.Button(
             title_row, text="📂 前回の状態を復元",

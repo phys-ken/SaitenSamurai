@@ -432,7 +432,7 @@ class MarkCheckerGUI:
         if focused == self.correction_entry:
             return
         
-        if event.char in '1234567890':
+        if event.char and event.char in '1234567890':
             value = int(event.char)
             if value == 0:
                 value = 10
@@ -623,6 +623,7 @@ class MarkCheckerGUI:
             original_q_no = question_no + self.skip_questions
             
             # v3.9 高速化: 先読み済み画像があればそれを使用
+            # 先読み画像はオーバーレイ＋リサイズ適用済みのためそのまま使う
             if self._prefetched_index == self.current_index and self._prefetched_pil_img is not None:
                 pil_img = self._prefetched_pil_img
                 self._prefetched_pil_img = None
@@ -633,11 +634,12 @@ class MarkCheckerGUI:
                     scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
                     cache=self._image_cache
                 )
+                if pil_img:
+                    # 正答枠を描画（Answer Key が読み込まれている場合）
+                    pil_img = self._draw_answer_overlay(pil_img, filename, question_no)
+                    pil_img = fit_image_to_display(pil_img)
             
             if pil_img:
-                # 正答枠を描画（Answer Key が読み込まれている場合）
-                pil_img = self._draw_answer_overlay(pil_img, filename, question_no)
-                pil_img = fit_image_to_display(pil_img)
                 self.photo_image = pil_to_imagetk_checker(pil_img)
                 self.image_label.config(image=self.photo_image, text="", width=pil_img.width, height=pil_img.height)
             else:
@@ -2304,7 +2306,7 @@ class StartupModeDialog:
     def _build_dialog(self):
         """ダイアログUIを構築"""
         self.dialog = tk.Toplevel(self.root)
-        self.dialog.title("採点侍 v4.4")
+        self.dialog.title("採点侍 v4.4.1")
         # transient(root) は使わない: root.withdraw() 中に呼ぶと
         # ダイアログも非表示になりフリーズするため
         self.dialog.grab_set()

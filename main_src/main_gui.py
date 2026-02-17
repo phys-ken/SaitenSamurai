@@ -32,7 +32,7 @@ from constants import (
     safe_print, extract_pdf_to_images, combine_images_to_pdf,
     HAS_PYMUPDF,
     MARK2_WIDTH, MARK2_HEIGHT,
-    RESULTS_FOLDER, BOXED_FOLDER, RESULTS_DATA_FOLDER,
+    RESULTS_FOLDER, BOXED_FOLDER, PROCESSED_CLEAN_FOLDER, RESULTS_DATA_FOLDER,
     SCORED_FOLDER, FINAL_REPORT_FOLDER,
     MARK_AREAS_FILE, ANSWER_KEY_FILE,
     STUDENT_SUMMARY_FILE, EXAM_SUMMARY_FILE,
@@ -1839,7 +1839,14 @@ class SaitenSamuraiGUI:
             return
 
         boxed_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / BOXED_FOLDER
-        if not boxed_folder.exists():
+        clean_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / PROCESSED_CLEAN_FOLDER
+        
+        target_folder = boxed_folder
+        if clean_folder.exists():
+             # Improvement 1: 枠なし画像があればそちらを優先（見やすいため）
+             target_folder = clean_folder
+        
+        if not target_folder.exists():
             step1_name = "画像準備" if self.app_mode == MODE_DESCRIPTIVE_ONLY else "OMR認識"
             messagebox.showerror(
                 "エラー",
@@ -1849,7 +1856,7 @@ class SaitenSamuraiGUI:
             return
 
         # 最初の画像を取得
-        image_files = sorted(boxed_folder.glob("*.jpg")) + sorted(boxed_folder.glob("*.png"))
+        image_files = sorted(target_folder.glob("*.jpg")) + sorted(target_folder.glob("*.png"))
         if not image_files:
             messagebox.showerror("エラー", "補正済み画像が見つかりません")
             return
@@ -2028,7 +2035,14 @@ class SaitenSamuraiGUI:
             return
 
         boxed_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / BOXED_FOLDER
-        if not boxed_folder.exists():
+        clean_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / PROCESSED_CLEAN_FOLDER
+        
+        target_folder = boxed_folder
+        if clean_folder.exists():
+             # Improvement 1: 枠なし画像があればそちらを優先（見やすいため）
+             target_folder = clean_folder
+        
+        if not target_folder.exists():
             step1_name = "画像準備" if self.app_mode == MODE_DESCRIPTIVE_ONLY else "OMR認識"
             messagebox.showerror(
                 "エラー",
@@ -2053,7 +2067,7 @@ class SaitenSamuraiGUI:
         try:
             from descriptive_scorer import setup_descriptive_regions_integrated
             config = setup_descriptive_regions_integrated(
-                str(boxed_folder), config_path, parent=self.root
+                str(target_folder), config_path, parent=self.root
             )
             if config:
                 self.log_message(f"✓ 記述問題設定完了: {len(config['questions'])}問")
@@ -2134,6 +2148,12 @@ class SaitenSamuraiGUI:
             return
 
         boxed_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / BOXED_FOLDER
+        clean_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / PROCESSED_CLEAN_FOLDER
+        
+        target_folder = boxed_folder
+        if clean_folder.exists():
+            target_folder = clean_folder
+            
         results_data_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
         config_path = results_data_folder / "descriptive_config.json"
         scores_path = results_data_folder / "descriptive_scores.json"
@@ -2146,10 +2166,10 @@ class SaitenSamuraiGUI:
             )
             return
 
-        if not boxed_folder.exists():
+        if not target_folder.exists():
             messagebox.showerror(
                 "エラー",
-                "補正済み画像フォルダが存在しません。\n"
+                f"補正済み画像フォルダが存在しません。\n"
                 "Step 1（OMR認識）を先に実行してください。"
             )
             return
@@ -2171,7 +2191,7 @@ class SaitenSamuraiGUI:
             scorer = DescriptiveScorerGUI(
                 parent=self.root,
                 config=config,
-                image_folder=str(boxed_folder),
+                image_folder=str(target_folder),
                 scores_save_path=str(scores_path),
                 original_image_folder=orig_folder,
             )

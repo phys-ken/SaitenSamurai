@@ -29,7 +29,7 @@ from tkinter import messagebox
 import cv2
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw
 
 # 共通定数・ユーティリティ（constants.pyから）
 from constants import (
@@ -69,6 +69,25 @@ from threshold_calibrator import (
 
 class MarkCheckerGUI:
     """マークエラーチェックGUIクラス"""
+    def _draw_dashed_rect(self, draw, x, y, w, h, color='red', width=3, dash_len=5, gap_len=3):
+        """点線矩形を描画するヘルパー"""
+        # 上辺
+        for i in range(x, x + w, dash_len + gap_len):
+            end = min(i + dash_len, x + w)
+            draw.line([(i, y), (end, y)], fill=color, width=width)
+        # 下辺
+        for i in range(x, x + w, dash_len + gap_len):
+            end = min(i + dash_len, x + w)
+            draw.line([(i, y + h), (end, y + h)], fill=color, width=width)
+        # 左辺
+        for i in range(y, y + h, dash_len + gap_len):
+            end = min(i + dash_len, y + h)
+            draw.line([(x, i), (x, end)], fill=color, width=width)
+        # 右辺
+        for i in range(y, y + h, dash_len + gap_len):
+            end = min(i + dash_len, y + h)
+            draw.line([(x + w, i), (x + w, end)], fill=color, width=width)
+
     def __init__(self, parent_window, image_folder, coords_csv_path, xlsx_path, skip_questions=0, template_path=None):
         self._original_stdout_ref = None  # stdout復帰用（SaitenSamuraiGUIから設定される）
         
@@ -101,6 +120,7 @@ class MarkCheckerGUI:
         self.xlsx_path = Path(xlsx_path)
         self.skip_questions = skip_questions
         self.template_path = template_path
+        self.template_dict = None  # Improvement 2: 正答データ
         self.error_csv_path = self.xlsx_path.parent / "tmp_checking_dm_nm.csv"
         
         self.create_widgets()
@@ -275,7 +295,7 @@ class MarkCheckerGUI:
         if focused == self.correction_entry:
             return
         
-        if event.char in '1234567890':
+        if event.char and event.char in '1234567890':
             value = int(event.char)
             if value == 0:
                 value = 10
@@ -367,6 +387,15 @@ class MarkCheckerGUI:
             
             # 座標CSVから選択肢数を算出してボタン行を更新
             self._update_max_choices_from_coords()
+
+            # Improvement 2: 正答データを読み込む
+            if self.template_path and Path(self.template_path).exists():
+                from scoring_engine import load_template
+                try:
+                    self.template_dict = load_template(self.template_path)
+                    logger.info("正答データを読み込みました: %d問", len(self.template_dict))
+                except Exception as e:
+                    logger.warning("正答データの読み込みに失敗: %s", e)
             
             if len(self.error_df) > 0:
                 self.show_current()
@@ -471,11 +500,79 @@ class MarkCheckerGUI:
                 self._prefetched_pil_img = None
                 self._prefetched_index = -1
             else:
-                pil_img = get_display_image_checker(
+                pil_img, crop_info = get_display_image_checker(
                     self.coords_df, self.image_folder, filename, original_q_no,
                     scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
                     cache=self._image_cache
                 )
+            
+            # Improvement 2: 正答枠の描画（赤点線枠）
+            if pil_img and self.template_dict and crop_info:
+                try:
+                    correct_info = self.template_dict.get(question_no)
+                    if correct_info:
+                        correct_val = correct_info.get('正答', '')
+                        # 正答インデックスを取得
+                        target_indices = []
+                        # 複数正答対応
+                        vals = str(correct_val).replace('|', ';').split(';')
+                        for v in vals:
+                            v = v.strip()
+                            if v.isdigit() and int(v) >= 1:
+                                target_indices.append(int(v) - 1) # 1-based -> 0-based
+                            elif v == '0': # 0 often means 10
+                                target_indices.append(9)
+                        
+                        if target_indices and self.coords_df is not None:
+                            draw = ImageDraw.Draw(pil_img)
+                            # 座標CSVから該当選択肢の座標を取得
+                            q_rows = self.coords_df[self.coords_df['question_no'] == original_q_no]
+                            
+                            for target_idx in target_indices:
+                                # 選択肢のバウンディングボックスを取得
+                                choice_row = q_rows[q_rows['choice'] == target_idx]
+                                if choice_row.empty:
+                                    continue
+                                
+                                # Global coords (595x842 base)
+                                cx = int(choice_row.iloc[0]['x'])
+                                cy = int(choice_row.iloc[0]['y'])
+                                cw = int(choice_row.iloc[0]['width'])
+                                ch = int(choice_row.iloc[0]['height'])
+                                
+                                # Crop info
+                                # res_scale_x, res_scale_y are used to map global to corrected image size
+                                res_scale_x = crop_info['res_scale_x']
+                                res_scale_y = crop_info['res_scale_y']
+                                crop_x = crop_info['crop_x']
+                                crop_y = crop_info['crop_y']
+                                scale_x = crop_info['scale_x']
+                                scale_y = crop_info['scale_y']
+                                
+                                # Mapping to cropped image coordinates
+                                # 1. Scale to corrected image size
+                                tx_res = cx * res_scale_x
+                                ty_res = cy * res_scale_y
+                                tw_res = cw * res_scale_x
+                                th_res = ch * res_scale_y
+                                
+                                # 2. Map to crop coordinates
+                                draw_x = (tx_res - crop_x) * scale_x
+                                draw_y = (ty_res - crop_y) * scale_y
+                                draw_w = tw_res * scale_x
+                                draw_h = th_res * scale_y
+                                
+                                # 3. Draw dashed rect (slightly expanded for visibility)
+                                margin = 3
+                                self._draw_dashed_rect(
+                                    draw, 
+                                    int(draw_x - margin), int(draw_y - margin), 
+                                    int(draw_w + margin*2), int(draw_h + margin*2),
+                                    color='red', width=2
+                                )
+
+                except Exception as e:
+                    logger.warning("正答枠描画エラー: %s", e)
             
             if pil_img:
                 pil_img = fit_image_to_display(pil_img)
@@ -526,7 +623,7 @@ class MarkCheckerGUI:
                     self._image_cache.put(next_filename, corrected)
             
             # 先読み画像を生成
-            pil_img = get_display_image_checker(
+            pil_img, _ = get_display_image_checker(
                 self.coords_df, self.image_folder, next_filename, next_q_no,
                 scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
                 cache=self._image_cache

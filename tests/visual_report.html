@@ -1,0 +1,73 @@
+
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <title>SaitenSamurai v4.3.2 Improvements Visual Report</title>
+        <style>
+            body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 20px; background: #f5f5f5; color: #333; }
+            .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; }
+            h1 { border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+            .section { margin-bottom: 50px; border-bottom: 1px solid #eee; padding-bottom: 30px; }
+            .section:last-child { border-bottom: none; }
+            h2 { display: flex; align-items: center; margin-bottom: 15px; }
+            .screenshot { 
+                border: 1px solid #ddd; 
+                max-width: 100%; 
+                margin-top: 15px; 
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+                border-radius: 4px;
+            }
+            .meta { color: #666; font-size: 0.9em; margin-bottom: 20px; }
+            .badge { 
+                display: inline-block; padding: 4px 10px; border-radius: 20px; 
+                color: white; font-weight: bold; font-size: 0.8em; margin-left: 10px; 
+            }
+            .badge-green { background: #4CAF50; }
+            .badge-blue { background: #2196F3; }
+            .desc { line-height: 1.6; margin-bottom: 15px; }
+            .check-list { background: #e8f5e9; padding: 15px; border-radius: 6px; }
+            .check-list li { margin-bottom: 5px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>SaitenSamurai v4.3.2 改善項目ビジュアルレポート</h1>
+            <p class="meta">生成日時: 2026-02-17 11:22:20</p>
+            
+            <div class="section">
+                <h2>1. 記述式採点プレビューの改善 <span class="badge badge-green">Improvement</span></h2>
+                <p class="desc">
+                    記述式採点のプレビュー画面で、マーク認識枠が描画されていない「クリーンな画像」が使用されていることを確認します。
+                    従来は枠（BOXED）が表示されていましたが、文字の視認性を向上させるため、補正後の元画像を表示するように変更しました。
+                </p>
+                <div class="check-list">
+                    <strong>検証ポイント:</strong>
+                    <ul>
+                        <li>画像内に "CLEAN IMAGE (Correct)" という文字（テスト用ダミー）が表示されていること。</li>
+                        <li>"BOXED IMAGE (Wrong)" ではないこと。</li>
+                    </ul>
+                </div>
+                <img src="visual_report_images/01_descriptive_clean.png" class="screenshot">
+            </div>
+            
+            <div class="section">
+                <h2>2. マークチェック画面の正答表示 <span class="badge badge-blue">Improvement</span></h2>
+                <p class="desc">
+                    マークチェック画面において、正答（Answer Key）の箇所に「赤色の点線枠」を表示する機能です。
+                    ユーザーは採点結果の修正を行う際に、正解の場所を直感的に把握できます。
+                </p>
+                <div class="check-list">
+                    <strong>検証ポイント:</strong>
+                    <ul>
+                        <li>正答（Choice 1）の箇所（画面上の矩形）に赤色の点線枠が表示されていること。</li>
+                        <li>ダミー画像上の枠線（黒実線）とは別に、GUIによって描画された赤枠であること。</li>
+                    </ul>
+                </div>
+                <img src="visual_report_images/02_mark_checker_dashed.png" class="screenshot">
+            </div>
+            
+        </div>
+    </body>
+    </html>
+    

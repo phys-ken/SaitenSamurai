@@ -143,6 +143,14 @@ def crop_from_corrected_image(corrected_img, bbox, scale_factor=1.25,
     _load_and_correct_image() またはキャッシュから取得した corrected_img を受け取り、
     ベース座標系のbboxに基づいてクロップ・拡大・PIL変換を行う。
     ディスクI/O・マーカー検出・射影変換は含まない。
+    
+    Returns:
+        (pil_img, crop_info)
+        crop_info: {
+            'crop_x': int, 'crop_y': int, 
+            'scale_x': float, 'scale_y': float,
+            'res_scale_x': float, 'res_scale_y': float
+        }
     """
     img_height, img_width = corrected_img.shape[:2]
     res_scale_x = img_width / MARK2_BASE_WIDTH
@@ -181,7 +189,18 @@ def crop_from_corrected_image(corrected_img, bbox, scale_factor=1.25,
     scaled = cv2.resize(cropped, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
     
     rgb_img = cv2.cvtColor(scaled, cv2.COLOR_BGR2RGB)
-    return Image.fromarray(rgb_img)
+    rgb_img = cv2.cvtColor(scaled, cv2.COLOR_BGR2RGB)
+    
+    crop_info = {
+        'crop_x': x,
+        'crop_y': y,
+        'scale_x': new_width / w if w > 0 else 1.0,
+        'scale_y': new_height / h if h > 0 else 1.0,
+        'res_scale_x': res_scale_x,
+        'res_scale_y': res_scale_y,
+    }
+    
+    return Image.fromarray(rgb_img), crop_info
 
 
 def create_backup_checker(xlsx_path, backup_folder=DEFAULT_BACKUP_FOLDER):
@@ -457,8 +476,41 @@ def save_errors_checker(error_df, error_csv_path):
 
 
 def load_coordinates_csv_checker(csv_path):
-    """coordinates.csvを読み込み"""
-    return pd.read_csv(csv_path, encoding='utf-8')
+    """coordinates.csvを読み込み（選択肢ごとに展開）"""
+    df = pd.read_csv(csv_path, encoding='utf-8')
+    
+    # 既存のcolumnsに choice, x, y, width, height が無ければ展開処理を行う
+    if 'choice' not in df.columns and 'mark_coords' in df.columns:
+        expanded_rows = []
+        for _, row in df.iterrows():
+            mark_coords_str = row['mark_coords']
+            if pd.isna(mark_coords_str):
+                continue
+            
+            # coords format: "x;y;w;h|x;y;w;h|..."
+            choices = str(mark_coords_str).split('|')
+            for idx, c_str in enumerate(choices):
+                try:
+                    parts = c_str.split(';')
+                    if len(parts) == 4:
+                        x, y, w, h = map(int, parts)
+                        new_row = row.to_dict()
+                        new_row['choice'] = idx
+                        new_row['x'] = x
+                        new_row['y'] = y
+                        new_row['width'] = w
+                        new_row['height'] = h
+                        expanded_rows.append(new_row)
+                except ValueError:
+                    pass
+        
+        if expanded_rows:
+            return pd.DataFrame(expanded_rows)
+        else:
+            # 展開できなかった場合は元のDFを返す（エラー回避）
+            return df
+    
+    return df
 
 
 def get_bbox_for_question_checker(coords_df, image_filename, question_no):
@@ -505,6 +557,9 @@ def get_display_image_checker(coords_df, image_folder, image_filename, question_
                       expand_factor_y=DEFAULT_EXPAND_FACTOR_Y, cache=None):
     """表示用の画像を取得
     
+    Returns:
+        (pil_img, crop_info) or (None, None)
+    
     Args:
         cache: CorrectedImageCache インスタンス。指定時はキャッシュを利用して
                ディスクI/O・マーカー検出・射影変換をスキップする。
@@ -513,13 +568,13 @@ def get_display_image_checker(coords_df, image_folder, image_filename, question_
     
     if bbox is None:
         logger.warning("座標が見つかりません: %s, Q%s", image_filename, question_no)
-        return None
+        return None, None
     
     image_path = Path(image_folder) / image_filename
     
     if not image_path.exists():
         logger.warning("画像ファイルが見つかりません: %s", image_path)
-        return None
+        return None, None
     
     try:
         if cache is not None:
@@ -528,18 +583,18 @@ def get_display_image_checker(coords_df, image_folder, image_filename, question_
             if corrected_img is None:
                 corrected_img = _load_and_correct_image(image_path)
                 cache.put(image_filename, corrected_img)
-            pil_img = crop_from_corrected_image(
+            pil_img, crop_info = crop_from_corrected_image(
                 corrected_img, bbox, scale_factor, expand_factor, expand_factor_y
             )
         else:
             # 従来パス（後方互換）
-            pil_img = crop_and_scale_image_checker(
+            pil_img, crop_info = crop_and_scale_image_checker(
                 image_path, bbox, scale_factor, expand_factor, expand_factor_y
             )
-        return pil_img
+        return pil_img, crop_info
     except Exception as e:
         logger.error("画像処理エラー: %s", e)
-        return None
+        return None, None
 
 
 def fit_image_to_display(pil_img, max_width=MAX_DISPLAY_WIDTH, max_height=MAX_DISPLAY_HEIGHT):

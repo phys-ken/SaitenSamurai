@@ -40,7 +40,9 @@ from constants import (
     RESULTS_DATA_FOLDER,
     ANSWER_KEY_FILE,
     READING_RESULTS_FOLDER_NAME,
+    READING_RESULTS_FOLDER_NAME,
     MARKER_CACHE_FILE,
+    PROCESSED_CLEAN_FOLDER,
 )
 
 logger = logging.getLogger(__name__)
@@ -662,17 +664,18 @@ def _process_single_image(args: tuple) -> dict:
     各ワーカープロセスで独立して実行される。
 
     Args:
-        args: (image_path_str, boxed_folder_str, coordinates,
+        args: (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
                question_groups, color_threshold, area_threshold)
 
     Returns:
         dict with keys: filename, marks, marker_data, csv_data, success
     """
-    (image_path_str, boxed_folder_str, coordinates,
+    (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
      question_groups, color_threshold, area_threshold) = args
 
     image_path = Path(image_path_str)
     boxed_folder = Path(boxed_folder_str)
+    clean_folder = Path(clean_folder_str) if clean_folder_str else None
 
     with open(str(image_path), 'rb') as f:
         image_data_bytes = f.read()
@@ -692,6 +695,14 @@ def _process_single_image(args: tuple) -> dict:
         corrected_image, coordinates,
         color_threshold=color_threshold, area_threshold=area_threshold,
     )
+
+    # 枠なし補正済み画像を保存 (Improvement 1)
+    if clean_folder:
+        clean_path = clean_folder / image_path.name
+        # cv2.imencode で日本語パス対応
+        _, encoded_clean = cv2.imencode('.jpg', corrected_image)
+        with open(str(clean_path), 'wb') as f:
+            f.write(encoded_clean)
 
     # 枠描画
     result_image, _mark_count, _group_count = draw_all_areas(
@@ -764,6 +775,10 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     boxed_folder = results_folder / BOXED_FOLDER
     boxed_folder.mkdir(exist_ok=True)
 
+    # 枠なし補正済み画像フォルダ (Improvement 1)
+    clean_folder = results_folder / PROCESSED_CLEAN_FOLDER
+    clean_folder.mkdir(exist_ok=True)
+
     results_data_folder = results_folder / RESULTS_DATA_FOLDER
     results_data_folder.mkdir(exist_ok=True)
 
@@ -819,7 +834,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     logger.info("並列ワーカー数: %d", max_workers)
 
     worker_args = [
-        (str(img), str(boxed_folder), coordinates, question_groups,
+        (str(img), str(boxed_folder), str(clean_folder), coordinates, question_groups,
          color_threshold, area_threshold)
         for img in image_files
     ]

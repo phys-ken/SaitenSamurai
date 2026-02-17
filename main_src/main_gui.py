@@ -32,7 +32,7 @@ from constants import (
     safe_print, extract_pdf_to_images, combine_images_to_pdf,
     HAS_PYMUPDF,
     MARK2_WIDTH, MARK2_HEIGHT,
-    RESULTS_FOLDER, BOXED_FOLDER, RESULTS_DATA_FOLDER,
+    RESULTS_FOLDER, BOXED_FOLDER, CLEAN_FOLDER, RESULTS_DATA_FOLDER,
     SCORED_FOLDER, FINAL_REPORT_FOLDER,
     MARK_AREAS_FILE, ANSWER_KEY_FILE,
     STUDENT_SUMMARY_FILE, EXAM_SUMMARY_FILE,
@@ -158,7 +158,7 @@ class SaitenSamuraiGUI:
             MODE_DESCRIPTIVE_ONLY: "記述採点",
         }
         mode_label = mode_labels.get(mode, "")
-        self.root.title(f"採点侍 v4.3 — {mode_label}")
+        self.root.title(f"採点侍 v4.4 — {mode_label}")
         self.root.geometry("1100x600")
         
         # ウィンドウアイコン設定
@@ -286,11 +286,11 @@ class SaitenSamuraiGUI:
 
         # モード別タイトルテキスト
         mode_titles = {
-            MODE_MARK_ONLY: "採点侍 v4.3 — マーク採点",
-            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.3 — マーク＋記述採点",
-            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.3 — 記述採点",
+            MODE_MARK_ONLY: "採点侍 v4.4 — マーク採点",
+            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.4 — マーク＋記述採点",
+            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.4 — 記述採点",
         }
-        title_text = mode_titles.get(self.app_mode, "採点侍 v4.3")
+        title_text = mode_titles.get(self.app_mode, "採点侍 v4.4")
         tk.Label(title_row, text=title_text, font=FONT_TITLE, fg="#1976D2", bg=BG_COLOR).pack(side=tk.LEFT)
         tk.Button(
             title_row, text="📂 前回の状態を復元",
@@ -2134,6 +2134,7 @@ class SaitenSamuraiGUI:
             return
 
         boxed_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / BOXED_FOLDER
+        clean_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / CLEAN_FOLDER
         results_data_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
         config_path = results_data_folder / "descriptive_config.json"
         scores_path = results_data_folder / "descriptive_scores.json"
@@ -2168,10 +2169,15 @@ class SaitenSamuraiGUI:
                 if self.app_mode != MODE_DESCRIPTIVE_ONLY
                 else None
             )
+
+            # クリーン画像フォルダ（枠描画なし）を優先使用
+            # 存在しない場合はboxedフォルダにフォールバック
+            image_folder_for_desc = str(clean_folder) if clean_folder.exists() else str(boxed_folder)
+
             scorer = DescriptiveScorerGUI(
                 parent=self.root,
                 config=config,
-                image_folder=str(boxed_folder),
+                image_folder=image_folder_for_desc,
                 scores_save_path=str(scores_path),
                 original_image_folder=orig_folder,
             )
@@ -2462,36 +2468,43 @@ class SaitenSamuraiGUI:
             
             self.root.after(0, lambda: self.open_boxed_btn.config(state=tk.NORMAL))
             
-            self.root.after(0, self.auto_detect_template)
+            # ユーザーが既にテンプレートパスを設定済みの場合は上書きしない
+            user_template = self.template_path.get().strip()
+            if not user_template:
+                self.root.after(0, self.auto_detect_template)
+            
             self.root.after(0, lambda: self._auto_detect_omr_result(results_folder))
             self.root.after(0, self._save_session_state)
             self.root.after(0, self._update_step_availability)
 
-            # --- Answer Key 空検出: 正答・配点が未入力の場合にダイアログで案内 ---
+            # --- Answer Key 空検出 ---
+            # ユーザーが既にテンプレートを指定している場合（再実行シナリオ等）は
+            # そのファイルの中身を確認し、正答入力済みならガイドをスキップする
+            need_answer_key_guide = False
+            results_data_folder = Path(params['image_folder']) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
             try:
-                results_data_folder = Path(params['image_folder']) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
-                template_path = results_data_folder / ANSWER_KEY_FILE
+                # ユーザー指定のテンプレートがあればそちらを確認
+                check_path = Path(user_template) if user_template else results_data_folder / ANSWER_KEY_FILE
 
-                if template_path.exists():
+                if check_path.exists():
                     import pandas as pd
-                    df = pd.read_excel(template_path)
+                    df = pd.read_excel(check_path)
 
-                    is_effectively_empty = False
                     if len(df) == 0:
-                        is_effectively_empty = True
+                        need_answer_key_guide = True
                     elif '正答' in df.columns and '配点' in df.columns:
                         answers = df['正答'].fillna('').astype(str).str.strip()
                         points = df['配点'].fillna('').astype(str).str.strip()
                         if (answers == '').all() and (points == '').all():
-                            is_effectively_empty = True
-
-                    if is_effectively_empty:
-                        def _show_answer_key_guide():
-                            self._show_answer_key_guide_dialog(results_data_folder)
-                        self.root.after(0, _show_answer_key_guide)
+                            need_answer_key_guide = True
+                else:
+                    # テンプレートファイル自体が存在しない場合もガイド不要
+                    # （auto_detect_template未実行の初回等）
+                    need_answer_key_guide = False
             except Exception as e:
                 self.log_message(f"Answer Key 確認処理中にエラー: {e}")
 
+            # 完了報告とAnswer Keyガイドを1つのフローにまとめる
             if result:
                 summary = f"""処理が正常に完了しました！
 
@@ -2506,16 +2519,18 @@ class SaitenSamuraiGUI:
 【生成ファイル】
 ・マーク認識結果Excel (Mark2-Result-...)
 ・枠描画済み画像
-・coordinates.csv
-
-次のステップ:
-1. {ANSWER_KEY_FILE}を開き、正答・配点・観点を入力
-2. OMR読取結果を選択
-3. 「採点処理を実行」をクリック"""
+・coordinates.csv"""
             else:
                 summary = "マーク認識・枠描画処理が正常に完了しました！"
-            
-            self.root.after(0, lambda: messagebox.showinfo("完了", summary))
+
+            if need_answer_key_guide:
+                # 完了情報を含んだガイドダイアログを1つだけ表示
+                def _show_combined():
+                    self._show_answer_key_guide_dialog(results_data_folder, completion_summary=summary)
+                self.root.after(0, _show_combined)
+            else:
+                # ガイド不要（正答入力済みまたは再実行）→ 完了メッセージのみ
+                self.root.after(0, lambda: messagebox.showinfo("完了", summary))
             
         except Exception as e:
             self.log_message("")
@@ -2533,18 +2548,33 @@ class SaitenSamuraiGUI:
             self._detach_gui_log_handler(gui_handler, suppressed)
             self.root.after(0, self._set_processing_state, False)
 
-    def _show_answer_key_guide_dialog(self, results_data_folder):
+    def _show_answer_key_guide_dialog(self, results_data_folder, completion_summary=None):
         """Answer Key 未入力時のガイドダイアログ（カスタム・高視認性）
 
-        標準の messagebox ではなく、大きなフォント・アイコン・色分けで
-        ユーザーにわかりやすく案内するカスタムダイアログ。
+        処理完了情報と Answer Key 入力案内を1つのダイアログにまとめて表示する。
+        「後で入力する」を選んだ場合はテンプレートパスの自動設定を行わない
+        （ユーザーが自分で管理するエキスパートフローとして扱う）。
+
+        Args:
+            results_data_folder: 01_Results フォルダのパス
+            completion_summary: 処理完了サマリー文字列（Noneなら非表示）
         """
         dialog = tk.Toplevel(self.root)
-        dialog.title("📋 正答・配点の入力が必要です")
+        dialog.title("📋 処理完了 — 正答・配点の入力が必要です")
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.resizable(False, False)
         dialog.configure(bg="#FFFDE7")
+
+        # 処理完了サマリー（緑の完了帯）
+        if completion_summary:
+            done_frame = tk.Frame(dialog, bg="#E8F5E9", padx=20, pady=10)
+            done_frame.pack(fill=tk.X)
+            tk.Label(
+                done_frame, text="✅ " + completion_summary,
+                font=("Yu Gothic UI", 9), fg="#2E7D32", bg="#E8F5E9",
+                justify=tk.LEFT, wraplength=480,
+            ).pack(anchor=tk.W)
 
         # ヘッダー（黄色の注意帯）
         header_frame = tk.Frame(dialog, bg="#FFF9C4", padx=20, pady=12)
@@ -2598,9 +2628,13 @@ class SaitenSamuraiGUI:
                 subprocess.Popen(f'explorer "{folder_path}"')
             except Exception as e:
                 self.log_message(f"フォルダを開けませんでした: {e}")
+            # フォルダを開く → テンプレートパスを自動設定
+            self.auto_detect_template()
             dialog.destroy()
 
         def _close():
+            # 「後で入力する」 → エキスパートユーザーと判断
+            # テンプレートパスの自動設定は行わない
             dialog.destroy()
 
         tk.Button(

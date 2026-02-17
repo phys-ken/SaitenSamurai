@@ -37,6 +37,7 @@ from constants import (
     OUTPUT_SCALE_MAX,
     RESULTS_FOLDER,
     BOXED_FOLDER,
+    CLEAN_FOLDER,
     RESULTS_DATA_FOLDER,
     ANSWER_KEY_FILE,
     READING_RESULTS_FOLDER_NAME,
@@ -668,11 +669,12 @@ def _process_single_image(args: tuple) -> dict:
     Returns:
         dict with keys: filename, marks, marker_data, csv_data, success
     """
-    (image_path_str, boxed_folder_str, coordinates,
+    (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
      question_groups, color_threshold, area_threshold) = args
 
     image_path = Path(image_path_str)
     boxed_folder = Path(boxed_folder_str)
+    clean_folder = Path(clean_folder_str) if clean_folder_str else None
 
     with open(str(image_path), 'rb') as f:
         image_data_bytes = f.read()
@@ -720,6 +722,13 @@ def _process_single_image(args: tuple) -> dict:
     with open(str(output_path), 'wb') as f:
         f.write(encoded)
 
+    # クリーン画像（枠描画なし）を保存 — 記述式採点プレビュー用
+    if clean_folder is not None:
+        clean_output_path = clean_folder / image_path.name
+        _, clean_encoded = cv2.imencode('.jpg', corrected_image)
+        with open(str(clean_output_path), 'wb') as f:
+            f.write(clean_encoded)
+
     # CSVデータ構築
     csv_data = []
     for question_no, group_data in question_groups.items():
@@ -763,6 +772,9 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     
     boxed_folder = results_folder / BOXED_FOLDER
     boxed_folder.mkdir(exist_ok=True)
+
+    clean_folder = results_folder / CLEAN_FOLDER
+    clean_folder.mkdir(exist_ok=True)
 
     results_data_folder = results_folder / RESULTS_DATA_FOLDER
     results_data_folder.mkdir(exist_ok=True)
@@ -819,7 +831,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     logger.info("並列ワーカー数: %d", max_workers)
 
     worker_args = [
-        (str(img), str(boxed_folder), coordinates, question_groups,
+        (str(img), str(boxed_folder), str(clean_folder), coordinates, question_groups,
          color_threshold, area_threshold)
         for img in image_files
     ]

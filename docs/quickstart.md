@@ -144,10 +144,10 @@ OMR 認識を実行すると、スキャン画像フォルダの中に `_saiten_
 ├── 生徒02.jpg
 ├── …
 └── _saiten_grading_results/       ← ★ ここに出力されます
-    ├── 00_Processing/             ← 中間処理ファイル
+    ├── 00_Processing/             ← 枠描画済み画像（中間ファイル）
+    ├── 00_Processing_Clean/       ← 補正済み画像（枠なし）
     ├── 01_Results/                ← OMR データ・正答ファイル
-    │   └── results_data/
-    │       └── answer_key.xlsx    ← 正答データ
+    │   └── answer_key.xlsx        ← 正答データ
     ├── 02_Graded_Detail/          ← 採点済み答案画像（○×マーク付き）
     └── 03_Final_Report/           ← 成績サマリー・統計レポート・CTT分析
 ```

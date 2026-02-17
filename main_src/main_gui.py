@@ -2466,6 +2466,39 @@ class SaitenSamuraiGUI:
             self.root.after(0, self._save_session_state)
             self.root.after(0, self._update_step_availability)
             
+            
+            # --- 新機能: Answer Key が自動生成された場合（空の場合）はフォルダを開く ---
+            try:
+                # 処理完了後のフォルダ構成を確認
+                results_data_folder = Path(params['image_folder']) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
+                template_path = results_data_folder / ANSWER_KEY_FILE
+
+                if template_path.exists():
+                    import pandas as pd
+                    df = pd.read_excel(template_path)
+                    # ヘッダー行のみ（データ行が0）の場合は「空」とみなす
+                    if len(df) == 0:
+                        # メインスレッドでダイアログを表示
+                        def _ask_open_folder():
+                            if messagebox.askyesno(
+                                "確認",
+                                f"{ANSWER_KEY_FILE}が自動で作成されました。\n"
+                                f"マーク問題の正答や配点は、{ANSWER_KEY_FILE}に入力してください。\n\n"
+                                f"{ANSWER_KEY_FILE}が保存されているフォルダを開きますか？"
+                            ):
+                                # フォルダを開く (Windows: explorer)
+                                import subprocess
+                                try:
+                                    # フォルダパスをダブルクォートで囲むのが安全
+                                    folder_path = str(results_data_folder.resolve())
+                                    subprocess.Popen(f'explorer "{folder_path}"')
+                                except Exception as e:
+                                    self.log_message(f"フォルダを開けませんでした: {e}")
+
+                        self.root.after(0, _ask_open_folder)
+            except Exception as e:
+                self.log_message(f"Answer Key 確認処理中にエラー: {e}")
+
             if result:
                 summary = f"""処理が正常に完了しました！
 

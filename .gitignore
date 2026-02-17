@@ -79,6 +79,7 @@ sample_bigfiles/
 template_coordinates.csv
 tmp_checking_dm_nm.csv
 tests/tmp_output/
+tests/tmp_safety_check/
 
 # --- MkDocs ---
 site/

@@ -12,7 +12,7 @@ REM 使い方:
 REM   build_exe.bat
 REM
 REM 出力:
-REM   dist/SaitenSamurai.exe
+REM   dist/SaitenSamurai_vX.Y.exe  (バージョン番号は自動付与)
 REM =====================================================
 
 echo.
@@ -85,18 +85,18 @@ REM --- 完了 ---
 echo.
 echo ===================================================
 echo  ビルド完了！
-echo  出力: dist\SaitenSamurai.exe
 echo ===================================================
 echo.
 
 REM --- ファイルサイズ表示 ---
-for %%F in (dist\SaitenSamurai.exe) do (
-    set /a "size_mb=%%~zF / 1048576"
+for %%F in (dist\SaitenSamurai_v*.exe) do (
+    echo  出力: %%F
     echo  ファイルサイズ: 約 %%~zF bytes
 )
 
 echo.
 echo  デスクトップにコピーして使用してください。
+echo.
 echo.
 
 call venv_build\Scripts\deactivate.bat 2>nul

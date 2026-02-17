@@ -44,14 +44,18 @@ jobs:
       - name: Build exe
         run: pyinstaller saitensamurai.spec --noconfirm --clean
 
-      - name: Verify exe exists
+      - name: Detect exe name
+        id: exe-name
         run: |
-          if (!(Test-Path "dist/SaitenSamurai.exe")) {
-            Write-Error "SaitenSamurai.exe not found in dist/"
+          $exe = Get-ChildItem "dist/SaitenSamurai_v*.exe" | Select-Object -First 1
+          if (!$exe) {
+            Write-Error "SaitenSamurai_v*.exe not found in dist/"
             exit 1
           }
-          $size = (Get-Item "dist/SaitenSamurai.exe").Length / 1MB
-          Write-Host "SaitenSamurai.exe: $([math]::Round($size, 1)) MB"
+          $size = $exe.Length / 1MB
+          Write-Host "$($exe.Name): $([math]::Round($size, 1)) MB"
+          "EXE_NAME=$($exe.Name)" >> $env:GITHUB_OUTPUT
+          "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -62,7 +66,7 @@ jobs:
 
             ### ダウンロード
 
-            下の **Assets** セクションから `SaitenSamurai.exe` をダウンロードしてください。
+            下の **Assets** セクションから `${{ steps.exe-name.outputs.EXE_NAME }}` をダウンロードしてください。
 
             ### 動作環境
 
@@ -73,7 +77,7 @@ jobs:
 
             ### 使い方
 
-            1. `SaitenSamurai.exe` をダウンロード
+            1. `${{ steps.exe-name.outputs.EXE_NAME }}` をダウンロード
             2. 任意のフォルダに配置
             3. ダブルクリックで起動
 
@@ -88,4 +92,4 @@ jobs:
             :book: [ドキュメント](https://phys-ken.github.io/SaitenSamurai/) | :beetle: [バグ報告](https://github.com/phys-ken/SaitenSamurai/issues)
           draft: false
           prerelease: false
-          files: dist/SaitenSamurai.exe
+          files: dist/${{ steps.exe-name.outputs.EXE_NAME }}

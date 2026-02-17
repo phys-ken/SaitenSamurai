@@ -51,6 +51,11 @@ htmlcov/
 tests/_test_result*.txt
 tests/_cov_report.txt
 tests/test_result*.txt
+tests/gui_captures/
+tests/descriptive_scoring_report/
+tests/grid_scoring_mode*
+tests/temp_capture_env/
+tests/tmp_safety_check/
 
 # --- Logs ---
 *.log

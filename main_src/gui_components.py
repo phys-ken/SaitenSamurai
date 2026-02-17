@@ -35,8 +35,9 @@ from PIL import Image, ImageTk
 from constants import (
     ERROR_TYPE_NO_MARK, ERROR_TYPE_DOUBLE_MARK, ERROR_TYPE_INVALID,
     DEFAULT_CORRECTION, DEFAULT_SCALE_FACTOR,
-    DEFAULT_EXPAND_FACTOR,
+    DEFAULT_EXPAND_FACTOR, DEFAULT_EXPAND_FACTOR_Y,
     DEFAULT_BACKUP_FOLDER,
+    MARK2_BASE_WIDTH, MARK2_BASE_HEIGHT,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
 )
 
@@ -103,6 +104,9 @@ class MarkCheckerGUI:
         self.template_path = template_path
         self.error_csv_path = self.xlsx_path.parent / "tmp_checking_dm_nm.csv"
         
+        # 正答データ（マークチェック時の正答枠表示用）
+        self._answer_key = self._load_answer_key()
+        
         self.create_widgets()
         
         # ウィンドウが閉じられたときの処理
@@ -125,6 +129,159 @@ class MarkCheckerGUI:
         except Exception as e:
             logger.warning("テンプレート読み込みエラー（全問チェックにフォールバック）: %s", e)
             return None
+
+    def _load_answer_key(self):
+        """テンプレートから正答データを読み込む。
+        
+        Returns:
+            {question_no: {'正答': str, ...}} または空辞書
+        """
+        if not self.template_path:
+            return {}
+        try:
+            from scoring_engine import load_template
+            return load_template(self.template_path)
+        except Exception as e:
+            logger.warning("正答データ読み込みエラー: %s", e)
+            return {}
+
+    def _draw_answer_overlay(self, pil_img, filename, question_no):
+        """正答の選択肢に赤色点線枠を描画する。
+        
+        mark_coords から該当選択肢の座標を取得し、
+        crop_from_corrected_image と同じ座標変換を再現して描画する。
+        
+        Args:
+            pil_img: 表示用にクロップ・拡大済みの PIL.Image
+            filename: 画像ファイル名
+            question_no: エラーDFの問題番号（skip後の番号）
+        
+        Returns:
+            オーバーレイ描画済みの PIL.Image
+        """
+        if not self._answer_key or question_no not in self._answer_key:
+            return pil_img
+        
+        correct_answer_str = self._answer_key[question_no]['正答']
+        try:
+            correct_choice = int(float(correct_answer_str))
+        except (ValueError, TypeError):
+            return pil_img
+        
+        if correct_choice < 1:
+            return pil_img
+        
+        # 座標CSVは元の問題番号（skip込み）で記録されている
+        original_q_no = question_no + self.skip_questions
+        if self.coords_df is None:
+            return pil_img
+        
+        row = self.coords_df[
+            (self.coords_df['image_path'] == filename) & 
+            (self.coords_df['question_no'] == original_q_no)
+        ]
+        if row.empty:
+            return pil_img
+        
+        # mark_coords をパース: choice0_x;y;w;h|choice1_x;y;w;h|...
+        mark_coords_str = row.iloc[0].get('mark_coords', '')
+        if pd.isna(mark_coords_str) or not mark_coords_str:
+            return pil_img
+        
+        parts = str(mark_coords_str).split('|')
+        if correct_choice > len(parts):
+            return pil_img
+        
+        choice_str = parts[correct_choice - 1]  # 1-indexed → 0-indexed
+        try:
+            mx, my, mw, mh = map(int, choice_str.split(';'))
+        except (ValueError, IndexError):
+            return pil_img
+        
+        # choices_bbox（クロップ元領域）をパース
+        bbox_str = row.iloc[0]['choices_bbox']
+        try:
+            bx, by, bw, bh = map(int, bbox_str.split(';'))
+        except (ValueError, IndexError):
+            return pil_img
+        
+        # キャッシュから補正済み画像のサイズを取得
+        corrected_img = self._image_cache.get(filename) if self._image_cache else None
+        if corrected_img is None:
+            img_path = self.image_folder / filename
+            if img_path.exists():
+                corrected_img = _load_and_correct_image(img_path)
+            if corrected_img is None:
+                return pil_img
+        
+        img_h, img_w = corrected_img.shape[:2]
+        res_scale_x = img_w / MARK2_BASE_WIDTH
+        res_scale_y = img_h / MARK2_BASE_HEIGHT
+        
+        # crop_from_corrected_image の座標変換を再現
+        sx = int(bx * res_scale_x)
+        sy = int(by * res_scale_y)
+        sw = int(bw * res_scale_x)
+        sh = int(bh * res_scale_y)
+        
+        center_x = sx + sw / 2
+        center_y = sy + sh / 2
+        expanded_w = sw * DEFAULT_EXPAND_FACTOR
+        expanded_h = sh * DEFAULT_EXPAND_FACTOR * DEFAULT_EXPAND_FACTOR_Y
+        crop_x = center_x - expanded_w / 2
+        crop_y = center_y - expanded_h / 2
+        
+        crop_x = max(0, min(int(crop_x), img_w - 1))
+        crop_y = max(0, min(int(crop_y), img_h - 1))
+        
+        # マーク座標をクロップ＋拡大後の画像座標に変換
+        smx = mx * res_scale_x
+        smy = my * res_scale_y
+        smw = mw * res_scale_x
+        smh = mh * res_scale_y
+        
+        draw_x = (smx - crop_x) * DEFAULT_SCALE_FACTOR
+        draw_y = (smy - crop_y) * DEFAULT_SCALE_FACTOR
+        draw_w = smw * DEFAULT_SCALE_FACTOR
+        draw_h = smh * DEFAULT_SCALE_FACTOR
+        
+        # 赤色点線矩形を描画
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(pil_img)
+        self._draw_dashed_rect(
+            draw,
+            int(draw_x), int(draw_y),
+            int(draw_x + draw_w), int(draw_y + draw_h),
+            color='red', dash=(6, 4), width=2,
+        )
+        return pil_img
+
+    @staticmethod
+    def _draw_dashed_rect(draw, x0, y0, x1, y1, color='red', dash=(6, 4), width=2):
+        """PIL ImageDraw で点線矩形を描画する。"""
+        import math
+        lines = [(x0, y0, x1, y0), (x1, y0, x1, y1),
+                 (x1, y1, x0, y1), (x0, y1, x0, y0)]
+        for lx0, ly0, lx1, ly1 in lines:
+            dx = lx1 - lx0
+            dy = ly1 - ly0
+            length = math.sqrt(dx * dx + dy * dy)
+            if length == 0:
+                continue
+            ux, uy = dx / length, dy / length
+            pos = 0.0
+            drawing = True
+            while pos < length:
+                seg = dash[0] if drawing else dash[1]
+                end_pos = min(pos + seg, length)
+                if drawing:
+                    sx = lx0 + ux * pos
+                    sy = ly0 + uy * pos
+                    ex = lx0 + ux * end_pos
+                    ey = ly0 + uy * end_pos
+                    draw.line([(sx, sy), (ex, ey)], fill=color, width=width)
+                pos = end_pos
+                drawing = not drawing
 
     def on_close(self):
         """ウィンドウが閉じられるときの処理"""
@@ -478,6 +635,8 @@ class MarkCheckerGUI:
                 )
             
             if pil_img:
+                # 正答枠を描画（Answer Key が読み込まれている場合）
+                pil_img = self._draw_answer_overlay(pil_img, filename, question_no)
                 pil_img = fit_image_to_display(pil_img)
                 self.photo_image = pil_to_imagetk_checker(pil_img)
                 self.image_label.config(image=self.photo_image, text="", width=pil_img.width, height=pil_img.height)
@@ -517,6 +676,7 @@ class MarkCheckerGUI:
             next_row = self.error_df.iloc[target_index]
             next_filename = next_row['filename']
             next_q_no = int(next_row['question_no']) + self.skip_questions
+            next_scored_q_no = int(next_row['question_no'])
             
             # キャッシュに次の画像がなければ先にロード
             if not self._image_cache.has(next_filename):
@@ -532,6 +692,8 @@ class MarkCheckerGUI:
                 cache=self._image_cache
             )
             if pil_img:
+                # 正答枠を先読み画像にも描画
+                pil_img = self._draw_answer_overlay(pil_img, next_filename, next_scored_q_no)
                 pil_img = fit_image_to_display(pil_img)
                 self._prefetched_pil_img = pil_img
                 self._prefetched_index = target_index
@@ -2142,7 +2304,7 @@ class StartupModeDialog:
     def _build_dialog(self):
         """ダイアログUIを構築"""
         self.dialog = tk.Toplevel(self.root)
-        self.dialog.title("採点侍 v4.3")
+        self.dialog.title("採点侍 v4.4")
         # transient(root) は使わない: root.withdraw() 中に呼ぶと
         # ダイアログも非表示になりフリーズするため
         self.dialog.grab_set()

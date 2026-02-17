@@ -45,6 +45,7 @@ OUTPUT_SCALE_MAX = 2.0
 # フォルダ構造定数 (v3: 構造化出力)
 RESULTS_FOLDER = "_saiten_grading_results"
 BOXED_FOLDER = "00_Processing"          # 枠描画済み画像（中間ファイル）
+CLEAN_FOLDER = "00_Processing_Clean"    # 補正済み画像（枠描画なし、記述採点用）
 RESULTS_DATA_FOLDER = "01_Results"      # OMRデータ、Answer Key、coordinates.csv
 SCORED_FOLDER = "02_Graded_Detail"      # 個別採点済み画像
 FINAL_REPORT_FOLDER = "03_Final_Report" # サマリーExcel、統合PDF

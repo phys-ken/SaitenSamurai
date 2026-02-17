@@ -2142,7 +2142,7 @@ class StartupModeDialog:
     def _build_dialog(self):
         """ダイアログUIを構築"""
         self.dialog = tk.Toplevel(self.root)
-        self.dialog.title("採点侍 v4.1")
+        self.dialog.title("採点侍 v4.3")
         # transient(root) は使わない: root.withdraw() 中に呼ぶと
         # ダイアログも非表示になりフリーズするため
         self.dialog.grab_set()

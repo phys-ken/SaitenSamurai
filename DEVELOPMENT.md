@@ -1,6 +1,6 @@
 # 開発ガイド
 
-採点侍 (SaitenSamurai) v4.1 の開発に参加する方向けの技術情報です。
+採点侍 (SaitenSamurai) の開発に参加する方向けの技術情報です。
 
 ---
 
@@ -125,6 +125,38 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 - **scoring_engine.py** は純粋ロジックのみ（ファイル I/O や画像処理に依存しない）
 - **GUI 依存のない処理**は `*_engine.py` / `*_checker.py` 等に分離
 - **遅延 import**: 循環回避やオプション機能の分離のため、多くのモジュールで `[lazy]` パターンを使用
+
+---
+
+## 画像パイプラインのアーキテクチャ
+
+### 処理画像の生成 (`omr_engine.py`)
+
+`process_box_drawer()` は各画像に対して以下の2種類の画像を生成します:
+
+| フォルダ | 定数 | 内容 |
+|---|---|---|
+| `00_Processing_Boxed/` | `BOXED_FOLDER` | マーク認識枠を描画した画像（マークチェック用） |
+| `00_Processing_Clean/` | `CLEAN_FOLDER` | 射影変換のみ適用したクリーン画像（記述式採点プレビュー用） |
+
+> **並列処理制約**: `_process_single_image()` は `ProcessPoolExecutor` で並列実行されます。
+> 引数タプルのアンパック順序（7要素）を変更する場合、全ワーカーに影響するため注意してください。
+
+### マークチェック正答オーバーレイ (`gui_components.py`)
+
+`MarkCheckerGUI` は正答枠（赤色点線）をプレビュー画像に描画します。
+
+**先読み画像との二重描画に注意**: `_do_prefetch()` で生成した先読み画像には
+既にオーバーレイ描画と `fit_image_to_display` が適用済みです。
+`show_current()` で先読み画像を使用する場合、重ねてオーバーレイ描画や fit を行うと
+二重描画や座標ズレが発生します。
+
+**問題番号のオフセット**:
+
+| 用途 | 問題番号 | 説明 |
+|---|---|---|
+| テンプレート参照 | `question_no` | skip 後の採点用番号（1始まり） |
+| coordinates.csv 参照 | `question_no + skip_questions` | 元の問題番号（skip 込み） |
 
 ### OMR 値変換パイプライン
 

@@ -306,6 +306,84 @@ python -m pytest tests/ -q --timeout=60 -p no:warnings --cov=main_src --cov-repo
 
 ---
 
+## Git 運用ガイド（初心者向け）
+
+この章は、Git に不慣れな開発者が安全に運用できるようにするための最小ルールです。
+アプリ本体の実装ルールとは独立しているため、引き継ぎ時の共通手順として利用できます。
+
+### ブランチ方針
+
+| ブランチ | 用途 | 誰が更新するか |
+|---|---|---|
+| `main` | アプリ本体・ドキュメント・ワークフロー定義 | 開発者 |
+| `stats-data` | リリースDL集計 (`downloads.csv`) の機械生成履歴 | GitHub Actions |
+
+`stats-data` を分離することで、`main` に日次の自動コミットが混ざらず、履歴ノイズと pull 競合を減らせます。
+
+### 普段使う最小コマンド
+
+```bash
+# 1) 取り込み（merge commit を作らない）
+git pull --rebase
+
+# 2) 状態確認
+git status -sb
+
+# 3) 変更を記録
+git add -A
+git commit -m "feat: 変更内容"
+
+# 4) 反映
+git push
+```
+
+### 初回に入れておく推奨設定
+
+```bash
+git config --global pull.rebase true
+git config --global rebase.autoStash true
+git config --global pull.ff only
+```
+
+上記により、`git pull` 時の不要な merge commit を予防できます。
+
+### 自動DL集計の流れ（main を汚さない）
+
+1. Actions が GitHub API からダウンロード数を取得
+2. `downloads.csv` を更新
+3. 更新結果を `stats-data` ブランチへ push
+
+`main` への自動書き込みは行いません。
+
+### 公開してよい情報 / だめな情報
+
+Git の運用手順そのものは個人情報ではないため、開発者向けドキュメントに記載して問題ありません。
+ただし、以下は公開しないでください。
+
+| 種別 | 例 |
+|---|---|
+| 秘密情報 | トークン、APIキー、パスワード |
+| 個人情報 | 生徒名簿、個票データ、メールアドレス一覧 |
+| 環境固有情報 | 個人PCの絶対パス、組織内サーバー名 |
+
+### トラブル時の復旧（最小）
+
+```bash
+# 作業中変更を退避
+git stash -u
+
+# main を最新へ
+git checkout main
+git pull --rebase
+
+# 退避を戻す
+git stash pop
+```
+
+競合が出た場合は、慌てて push せず `git status` で競合ファイルを確認してから解決してください。
+
+---
+
 ## コーディング規約
 
 ### 全般

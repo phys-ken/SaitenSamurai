@@ -88,6 +88,9 @@ site/
 # --- GAS / clasp project (personal deployment) ---
 gas_cloud_post/
 
+# --- mark認識研究 (実データを含む開発研究フォルダ — NEVER commit) ---
+mark認識研究/
+
 # --- Misc ---
 *.bak
 *.tmp

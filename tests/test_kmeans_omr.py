@@ -219,6 +219,7 @@ class TestRecognizeMarksKmeans:
         gray, coords, _ = self._make_test_image_with_marks(n_questions=20)
         _, info = recognize_marks_kmeans(gray, coords, min_samples=10)
 
+        assert info is not None
         assert 'n_marked' in info
         assert 'n_empty' in info
         assert 'cluster_means' in info

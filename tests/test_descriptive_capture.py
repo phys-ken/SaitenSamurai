@@ -62,10 +62,15 @@ def _can_capture() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(
-    not _can_capture(),
-    reason="ディスプレイなし (ヘッドレス環境)"
-)
+pytestmark = [
+    pytest.mark.visual,
+    pytest.mark.gui_heavy,
+    pytest.mark.legacy_mock,
+    pytest.mark.skipif(
+        not _can_capture(),
+        reason="ディスプレイなし (ヘッドレス環境)",
+    ),
+]
 
 
 # ============================================================

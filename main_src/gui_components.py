@@ -447,6 +447,18 @@ class MarkCheckerGUI:
         )
         self._grid_count_label.pack(side=tk.RIGHT, padx=10)
 
+        # カードサイズスライダー
+        self._grid_size_var = tk.IntVar(value=self._grid_thumb_size)
+        tk.Label(toolbar, text="サイズ:", font=('Yu Gothic UI', 9), bg='#37474F', fg='white').pack(side=tk.RIGHT)
+        self._grid_size_slider = tk.Scale(
+            toolbar, variable=self._grid_size_var, from_=80, to=300,
+            orient=tk.HORIZONTAL, length=120, showvalue=False,
+            bg='#37474F', fg='white', highlightthickness=0,
+            troughcolor='#546E7A', activebackground='#90CAF9',
+            command=self._on_grid_size_changed,
+        )
+        self._grid_size_slider.pack(side=tk.RIGHT, padx=(0, 5))
+
         # スクロール可能キャンバス
         canvas_frame = tk.Frame(self._grid_view_frame)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
@@ -483,6 +495,24 @@ class MarkCheckerGUI:
             if hasattr(self, '_grid_resize_after') and self._grid_resize_after:
                 self.window.after_cancel(self._grid_resize_after)
             self._grid_resize_after = self.window.after(150, self._refresh_grid_view)
+
+    def _on_grid_size_changed(self, _value=None):
+        """カードサイズスライダーの変更ハンドラ (v4.5)"""
+        new_size = self._grid_size_var.get()
+        if new_size == self._grid_thumb_size:
+            return
+        self._grid_thumb_size = new_size
+        # キャンバス幅からカラム数を再計算
+        try:
+            canvas_w = self._grid_canvas.winfo_width()
+            if canvas_w > 1:
+                self._grid_cols = max(1, canvas_w // (self._grid_thumb_size + 20))
+        except Exception:
+            pass
+        # デバウンス: 連続スライド中の負荷を抑える
+        if hasattr(self, '_grid_size_after') and self._grid_size_after:
+            self.window.after_cancel(self._grid_size_after)
+        self._grid_size_after = self.window.after(200, self._refresh_grid_view)
 
     def _toggle_view_mode(self):
         """単体表示 ↔ グリッド表示を切り替える (v4.5)"""

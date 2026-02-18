@@ -59,7 +59,11 @@ class TestV45OmrModeContract:
         top, app = _create_main_gui()
         try:
             assert app.omr_mode.get() == OMR_MODE_KMEANS
-            assert tuple(app._omr_mode_combo["values"]) == ("kmeans", "threshold")
+            # コンボボックスの表示ラベルがユーザーフレンドリーな日本語であること
+            combo_values = tuple(app._omr_mode_combo["values"])
+            assert len(combo_values) == 2
+            assert "クラスタリング" in combo_values[0]
+            assert "しきい値" in combo_values[1]
         finally:
             _destroy_top(top)
 
@@ -69,14 +73,17 @@ class TestV45OmrModeContract:
             top.update_idletasks()
             assert app._omr_slider_row.winfo_manager() == ""
 
-            app.omr_mode.set(OMR_MODE_THRESHOLD)
+            # 表示ラベル経由で切り替え（実際のユーザー操作を再現）
+            app._omr_display_var.set(app._omr_value_to_label[OMR_MODE_THRESHOLD])
             app._on_omr_mode_changed()
             top.update_idletasks()
+            assert app.omr_mode.get() == OMR_MODE_THRESHOLD
             assert app._omr_slider_row.winfo_manager() == "pack"
 
-            app.omr_mode.set(OMR_MODE_KMEANS)
+            app._omr_display_var.set(app._omr_value_to_label[OMR_MODE_KMEANS])
             app._on_omr_mode_changed()
             top.update_idletasks()
+            assert app.omr_mode.get() == OMR_MODE_KMEANS
             assert app._omr_slider_row.winfo_manager() == ""
         finally:
             _destroy_top(top)
@@ -157,6 +164,19 @@ class TestV45MarkCheckerGridContract:
         assert gui._view_mode == "single"
         assert gui._btn_toggle_view["text"] == "グリッド表示"
         assert gui._single_view_frame.winfo_manager() == "pack"
+
+    def test_grid_card_size_slider(self, mark_checker_gui):
+        gui = mark_checker_gui
+        # 初期サイズ 160
+        assert gui._grid_thumb_size == 160
+        assert gui._grid_size_var.get() == 160
+        # スライダーが存在すること
+        assert hasattr(gui, '_grid_size_slider')
+        # サイズ変更が反映されること
+        gui._grid_size_var.set(200)
+        gui._on_grid_size_changed()
+        gui.window.update_idletasks()
+        assert gui._grid_thumb_size == 200
 
     def test_filter_logic_contract(self, mark_checker_gui):
         gui = mark_checker_gui

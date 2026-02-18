@@ -658,6 +658,19 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
                 results[q_no] = []
             results[q_no].append(m['choice'])
 
+    # ROI サムネイル (16×16 → base64) — レポートのホバー表示用
+    import base64 as _b64
+    roi_thumbnails = []
+    for coord in coordinates:
+        x, y, w, h = coord['x'], coord['y'], coord['width'], coord['height']
+        roi = gray[y:y+h, x:x+w]
+        if roi.size > 0:
+            roi_small = cv2.resize(roi, (16, 16))
+        else:
+            roi_small = np.full((16, 16), 200, dtype=np.uint8)
+        _, buf = cv2.imencode(".png", roi_small)
+        roi_thumbnails.append(_b64.b64encode(buf).decode("utf-8"))
+
     kmeans_info = {
         'features': features,
         'labels': labels,
@@ -669,6 +682,7 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
         'n_empty': int((labels != marked_cluster).sum()),
         'scaler_mean': scaler.mean_.tolist(),
         'scaler_scale': scaler.scale_.tolist(),
+        'roi_thumbnails': roi_thumbnails,
     }
 
     return results, kmeans_info
@@ -910,21 +924,27 @@ def generate_kmeans_report(output_path, all_kmeans_infos):
 
     全画像の特徴量を集約し、filled_ratio ヒストグラム・PCA 散布図・
     クラスタ統計をインタラクティブに表示する。
+    PCA 散布図ではマウスホバーで個別マーク領域の画像を表示する。
 
     Args:
         output_path: 出力 HTML ファイルパス
         all_kmeans_infos: list[dict] — 各要素に 'filename', 'info' キー
     """
-    # 全画像の特徴量・ラベルを集約
+    # 全画像の特徴量・ラベル・メタ・ROI を集約
     all_features = []
     all_labels = []
     all_filenames = []
+    all_meta = []
+    all_rois = []
     for entry in all_kmeans_infos:
         info = entry['info']
         n = len(info['labels'])
         all_features.append(info['features'])
         all_labels.append(info['labels'])
         all_filenames.extend([entry['filename']] * n)
+        all_meta.extend(info.get('meta', [{'question_no': 0, 'choice': 0}] * n))
+        rois = info.get('roi_thumbnails', [''] * n)
+        all_rois.extend(rois)
 
     features = np.vstack(all_features)
     labels = np.concatenate(all_labels)
@@ -956,13 +976,28 @@ def generate_kmeans_report(output_path, all_kmeans_infos):
     if total > max_points:
         rng = np.random.RandomState(42)
         idx = rng.choice(total, max_points, replace=False)
-        pca_x = X_pca[idx, 0].tolist()
-        pca_y = X_pca[idx, 1].tolist()
-        pca_labels = labels[idx].tolist()
     else:
-        pca_x = X_pca[:, 0].tolist()
-        pca_y = X_pca[:, 1].tolist()
-        pca_labels = labels.tolist()
+        idx = np.arange(total)
+
+    # 散布図データ（ホバー用メタ情報込み）
+    scatter_points = []
+    for i in idx:
+        scatter_points.append({
+            'x': round(float(X_pca[i, 0]), 4),
+            'y': round(float(X_pca[i, 1]), 4),
+            'lbl': int(labels[i]),
+            'filled': round(float(features[i, 0]), 4),
+            'img': all_filenames[i],
+            'q': int(all_meta[i]['question_no']),
+            'ch': int(all_meta[i]['choice']),
+            'roi': all_rois[i] if i < len(all_rois) else '',
+        })
+
+    # クラスタごとにデータセットを分割
+    empty_pts = [p for p in scatter_points if p['lbl'] != marked_cluster]
+    marked_pts = [p for p in scatter_points if p['lbl'] == marked_cluster]
+    # 境界クラスタ判定（3クラスタ以上の将来拡張用）
+    boundary_pts: list[dict] = []
 
     html = f"""<!DOCTYPE html>
 <html lang="ja">
@@ -974,6 +1009,7 @@ def generate_kmeans_report(output_path, all_kmeans_infos):
 body {{ font-family: 'Yu Gothic UI', sans-serif; margin: 20px; background: #f5f5f5; }}
 .container {{ max-width: 1200px; margin: auto; }}
 h1 {{ color: #1976D2; }}
+h3 {{ color: #333; }}
 .stats {{ display: flex; gap: 20px; margin: 20px 0; }}
 .stat-card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; text-align: center; }}
 .stat-card .value {{ font-size: 2em; font-weight: bold; color: #1976D2; }}
@@ -981,6 +1017,12 @@ h1 {{ color: #1976D2; }}
 .chart-row {{ display: flex; gap: 20px; margin: 20px 0; }}
 .chart-box {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }}
 canvas {{ max-width: 100%; }}
+.pca-section {{ background: white; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+.pca-desc {{ color: #666; font-size: 0.9em; margin-bottom: 10px; }}
+.pca-legend {{ display: flex; gap: 16px; justify-content: center; margin-bottom: 10px; font-size: 0.9em; }}
+.pca-legend span {{ display: inline-flex; align-items: center; gap: 4px; }}
+.pca-legend .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
+#hover-info {{ margin-top: 8px; font-size: 12px; color: #555; min-height: 24px; padding: 4px 8px; border-top: 1px solid #eee; }}
 </style>
 </head>
 <body>
@@ -1008,10 +1050,18 @@ canvas {{ max-width: 100%; }}
     <h3>filled_ratio 分布</h3>
     <canvas id="histChart"></canvas>
   </div>
-  <div class="chart-box">
-    <h3>PCA 散布図 (PC1: {variance_ratio[0]*100:.1f}%, PC2: {variance_ratio[1]*100:.1f}%)</h3>
-    <canvas id="pcaChart"></canvas>
+</div>
+
+<div class="pca-section">
+  <h3>K-means 散布図 (PCA 2次元投影)</h3>
+  <p class="pca-desc">4次元特徴空間をPCAで2次元に圧縮。各点にホバーするとマーク領域の詳細が表示されます。</p>
+  <div class="pca-legend">
+    <span><span class="dot" style="background:#FF9800"></span> クラスタ0 (境界)</span>
+    <span><span class="dot" style="background:#EF5350"></span> クラスタ1 (マーク済み)</span>
+    <span><span class="dot" style="background:#4CAF50"></span> クラスタ2 (未マーク)</span>
   </div>
+  <canvas id="pcaChart" height="400"></canvas>
+  <div id="hover-info"></div>
 </div>
 
 </div>
@@ -1074,30 +1124,50 @@ new Chart(document.getElementById('histChart'), {{
   }}]
 }});
 
-// PCA Scatter
-const pcaX = {json.dumps(pca_x)};
-const pcaY = {json.dumps(pca_y)};
-const pcaLabels = {json.dumps(pca_labels)};
+// PCA Scatter with hover
+const emptyPts = {json.dumps(empty_pts)};
+const markedPts = {json.dumps(marked_pts)};
 const markedCluster = {marked_cluster};
 
-const scatterData = pcaX.map((x, i) => ({{ x, y: pcaY[i] }}));
-const emptyPts = scatterData.filter((_, i) => pcaLabels[i] !== markedCluster);
-const markedPts = scatterData.filter((_, i) => pcaLabels[i] === markedCluster);
-
-new Chart(document.getElementById('pcaChart'), {{
+const chart = new Chart(document.getElementById('pcaChart'), {{
   type: 'scatter',
   data: {{
     datasets: [
-      {{ label: 'Empty', data: emptyPts, backgroundColor: 'rgba(66,133,244,0.3)', pointRadius: 2 }},
-      {{ label: 'Marked', data: markedPts, backgroundColor: 'rgba(244,67,54,0.3)', pointRadius: 2 }}
+      {{
+        label: '\u672a\u30de\u30fc\u30af',
+        data: emptyPts.map(p => ({{x: p.x, y: p.y}})),
+        meta_: emptyPts,
+        backgroundColor: 'rgba(76,175,80,0.3)',
+        pointRadius: 2,
+      }},
+      {{
+        label: '\u30de\u30fc\u30af\u6e08\u307f',
+        data: markedPts.map(p => ({{x: p.x, y: p.y}})),
+        meta_: markedPts,
+        backgroundColor: 'rgba(239,83,80,0.3)',
+        pointRadius: 2,
+      }}
     ]
   }},
   options: {{
+    responsive: true,
     scales: {{
-      x: {{ title: {{ display: true, text: 'PC1' }} }},
-      y: {{ title: {{ display: true, text: 'PC2' }} }}
+      x: {{ title: {{ display: true, text: 'PC1 ({variance_ratio[0]*100:.1f}%)' }} }},
+      y: {{ title: {{ display: true, text: 'PC2 ({variance_ratio[1]*100:.1f}%)' }} }}
     }},
-    plugins: {{ legend: {{ position: 'top' }} }}
+    plugins: {{ legend: {{ position: 'top' }} }},
+    onHover: (event, elements) => {{
+      if (elements.length > 0) {{
+        const el = elements[0];
+        const ds = chart.data.datasets[el.datasetIndex];
+        const pt = ds.meta_[el.index];
+        const roiHtml = pt.roi
+          ? '<img src="data:image/png;base64,' + pt.roi + '" style="width:32px;height:32px;image-rendering:pixelated;vertical-align:middle;margin-left:8px">'
+          : '';
+        document.getElementById('hover-info').innerHTML =
+          '<strong>' + pt.img + '</strong> \u8a2d\u554f' + pt.q + ' \u9078\u629e\u80a2' + (pt.ch+1) + ' | filled=' + pt.filled + ' | role=' + (pt.lbl === markedCluster ? 'marked' : 'empty') + roiHtml;
+      }}
+    }}
   }}
 }});
 </script>

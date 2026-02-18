@@ -377,6 +377,15 @@ class SaitenSamuraiGUI:
                      font=("Yu Gothic UI", 9, "bold"), fg="#7B1FA2", bg=SECTION_BG).pack(side=tk.LEFT)
         
         # OMR認識モード選択 (v4.5: 記述のみモード以外で表示)
+        # 表示ラベル ↔ 内部値のマッピング
+        self._omr_label_to_value = {
+            "（推奨）クラスタリング": OMR_MODE_KMEANS,
+            "しきい値による識別（従来式）": OMR_MODE_THRESHOLD,
+        }
+        self._omr_value_to_label = {v: k for k, v in self._omr_label_to_value.items()}
+        self._omr_display_var = tk.StringVar(
+            value=self._omr_value_to_label.get(self.omr_mode.get(), "（推奨）クラスタリング"))
+
         omr_mode_row = tk.Frame(option_group, bg=SECTION_BG)
         self._omr_mode_row = omr_mode_row
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
@@ -384,30 +393,25 @@ class SaitenSamuraiGUI:
 
         tk.Label(omr_mode_row, text="認識方式:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
         self._omr_mode_combo = ttk.Combobox(
-            omr_mode_row, textvariable=self.omr_mode, width=14,
-            values=["kmeans", "threshold"], state="readonly",
+            omr_mode_row, textvariable=self._omr_display_var, width=22,
+            values=list(self._omr_label_to_value.keys()), state="readonly",
         )
         self._omr_mode_combo.pack(side=tk.LEFT, padx=(5, 0))
         self._omr_mode_combo.bind("<<ComboboxSelected>>", self._on_omr_mode_changed)
-        _ToolTip(self._omr_mode_combo,
-                 "kmeans: K-meansクラスタリング（推奨）\n"
-                 "threshold: 従来の閾値方式（色・面積スライダーを使用）")
 
-        # OMRスライダー (記述のみモードでは非表示、K-meansモードでも非表示)
-        opt_row2 = tk.Frame(option_group, bg=SECTION_BG)
-        self._omr_slider_row = opt_row2
+        # スライダー群（同じ行の右側に配置 — 閾値モード時のみ表示）
+        self._omr_slider_row = tk.Frame(omr_mode_row, bg=SECTION_BG)
         # 初期表示: 閾値モード かつ 記述のみでない場合のみ表示
         if self.app_mode != MODE_DESCRIPTIVE_ONLY and self.omr_mode.get() == OMR_MODE_THRESHOLD:
-            opt_row2.pack(fill=tk.X, pady=(5, 0))
-        
-        tk.Label(opt_row2, text="読取感度（上級者向け）", font=("Yu Gothic UI", 8), fg="gray", bg=SECTION_BG).pack(side=tk.LEFT)
-        tk.Label(opt_row2, text="色:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
-        tk.Scale(opt_row2, variable=self.color_threshold, from_=0.03, to=0.35, resolution=0.005, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
-        
-        tk.Label(opt_row2, text="面積:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
-        tk.Scale(opt_row2, variable=self.area_threshold, from_=0.1, to=0.8, resolution=0.05, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
+            self._omr_slider_row.pack(side=tk.LEFT, padx=(10, 0))
 
-        tk.Button(opt_row2, text="\U0001f527 自動調整", command=self.open_threshold_calibrator,
+        tk.Label(self._omr_slider_row, text="色:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Scale(self._omr_slider_row, variable=self.color_threshold, from_=0.03, to=0.35, resolution=0.005, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
+
+        tk.Label(self._omr_slider_row, text="面積:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
+        tk.Scale(self._omr_slider_row, variable=self.area_threshold, from_=0.1, to=0.8, resolution=0.05, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(self._omr_slider_row, text="\U0001f527 自動調整", command=self.open_threshold_calibrator,
                   width=8, bg="#CE93D8", relief=tk.FLAT, font=("Yu Gothic UI", 8),
                   cursor="hand2").pack(side=tk.LEFT, padx=(10, 0))
 
@@ -1070,11 +1074,14 @@ class SaitenSamuraiGUI:
     def _on_omr_mode_changed(self, _event=None):
         """OMR認識モード ComboBox の選択が変わったときの処理。
         
-        K-means モードでは閾値スライダーを非表示にし、
-        閾値モードでは表示する。
+        表示ラベルから内部値へ変換し、K-means モードでは閾値スライダーを
+        非表示にし、閾値モードでは同一行の右側に表示する。
         """
-        if self.omr_mode.get() == OMR_MODE_THRESHOLD:
-            self._omr_slider_row.pack(fill=tk.X, pady=(5, 0))
+        display = self._omr_display_var.get()
+        internal = self._omr_label_to_value.get(display, OMR_MODE_KMEANS)
+        self.omr_mode.set(internal)
+        if internal == OMR_MODE_THRESHOLD:
+            self._omr_slider_row.pack(side=tk.LEFT, padx=(10, 0))
         else:
             self._omr_slider_row.pack_forget()
 

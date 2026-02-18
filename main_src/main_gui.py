@@ -31,6 +31,7 @@ from PIL import Image, ImageDraw, ImageFont
 from constants import (
     safe_print, extract_pdf_to_images, combine_images_to_pdf,
     HAS_PYMUPDF,
+    APP_VERSION,
     MARK2_WIDTH, MARK2_HEIGHT,
     RESULTS_FOLDER, BOXED_FOLDER, CLEAN_FOLDER, RESULTS_DATA_FOLDER,
     SCORED_FOLDER, FINAL_REPORT_FOLDER,
@@ -42,6 +43,7 @@ from constants import (
     get_rendering_settings, DEFAULT_RENDERING_SETTINGS,
     resource_path,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
+    OMR_MODE_THRESHOLD, OMR_MODE_KMEANS,
     atomic_json_save, load_json_safe,
 )
 
@@ -158,7 +160,7 @@ class SaitenSamuraiGUI:
             MODE_DESCRIPTIVE_ONLY: "記述採点",
         }
         mode_label = mode_labels.get(mode, "")
-        self.root.title(f"採点侍 v4.4.1 — {mode_label}")
+        self.root.title(f"採点侍 v{APP_VERSION} — {mode_label}")
         self.root.geometry("1100x600")
         
         # ウィンドウアイコン設定
@@ -178,6 +180,9 @@ class SaitenSamuraiGUI:
         # OMR閾値
         self.color_threshold = tk.DoubleVar(value=0.1)
         self.area_threshold = tk.DoubleVar(value=0.4)
+        
+        # OMR認識モード (v4.5)
+        self.omr_mode = tk.StringVar(value=OMR_MODE_KMEANS)
         
         self.last_boxed_folder = None
         self.last_scored_folder = None
@@ -286,11 +291,11 @@ class SaitenSamuraiGUI:
 
         # モード別タイトルテキスト
         mode_titles = {
-            MODE_MARK_ONLY: "採点侍 v4.4.1 — マーク採点",
-            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.4.1 — マーク＋記述採点",
-            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.4.1 — 記述採点",
+            MODE_MARK_ONLY: f"採点侍 v{APP_VERSION} — マーク採点",
+            MODE_MARK_AND_DESCRIPTIVE: f"採点侍 v{APP_VERSION} — マーク＋記述採点",
+            MODE_DESCRIPTIVE_ONLY: f"採点侍 v{APP_VERSION} — 記述採点",
         }
-        title_text = mode_titles.get(self.app_mode, "採点侍 v4.4.1")
+        title_text = mode_titles.get(self.app_mode, f"採点侍 v{APP_VERSION}")
         tk.Label(title_row, text=title_text, font=FONT_TITLE, fg="#1976D2", bg=BG_COLOR).pack(side=tk.LEFT)
         tk.Button(
             title_row, text="📂 前回の状態を復元",
@@ -371,10 +376,28 @@ class SaitenSamuraiGUI:
             tk.Label(opt_row1, text="📝 記述採点モード",
                      font=("Yu Gothic UI", 9, "bold"), fg="#7B1FA2", bg=SECTION_BG).pack(side=tk.LEFT)
         
-        # OMRスライダー (記述のみモードでは非表示)
+        # OMR認識モード選択 (v4.5: 記述のみモード以外で表示)
+        omr_mode_row = tk.Frame(option_group, bg=SECTION_BG)
+        self._omr_mode_row = omr_mode_row
+        if self.app_mode != MODE_DESCRIPTIVE_ONLY:
+            omr_mode_row.pack(fill=tk.X, pady=(5, 0))
+
+        tk.Label(omr_mode_row, text="認識方式:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
+        self._omr_mode_combo = ttk.Combobox(
+            omr_mode_row, textvariable=self.omr_mode, width=14,
+            values=["kmeans", "threshold"], state="readonly",
+        )
+        self._omr_mode_combo.pack(side=tk.LEFT, padx=(5, 0))
+        self._omr_mode_combo.bind("<<ComboboxSelected>>", self._on_omr_mode_changed)
+        _ToolTip(self._omr_mode_combo,
+                 "kmeans: K-meansクラスタリング（推奨）\n"
+                 "threshold: 従来の閾値方式（色・面積スライダーを使用）")
+
+        # OMRスライダー (記述のみモードでは非表示、K-meansモードでも非表示)
         opt_row2 = tk.Frame(option_group, bg=SECTION_BG)
         self._omr_slider_row = opt_row2
-        if self.app_mode != MODE_DESCRIPTIVE_ONLY:
+        # 初期表示: 閾値モード かつ 記述のみでない場合のみ表示
+        if self.app_mode != MODE_DESCRIPTIVE_ONLY and self.omr_mode.get() == OMR_MODE_THRESHOLD:
             opt_row2.pack(fill=tk.X, pady=(5, 0))
         
         tk.Label(opt_row2, text="読取感度（上級者向け）", font=("Yu Gothic UI", 8), fg="gray", bg=SECTION_BG).pack(side=tk.LEFT)
@@ -1039,6 +1062,21 @@ class SaitenSamuraiGUI:
         """設定ウィンドウからの適用コールバック"""
         self.rendering_settings = get_rendering_settings(new_settings)
         self.log_message("✓ 描画詳細設定を更新しました")
+
+    # ---------------------------------------------------------
+    # OMR認識モード切り替え (v4.5)
+    # ---------------------------------------------------------
+
+    def _on_omr_mode_changed(self, _event=None):
+        """OMR認識モード ComboBox の選択が変わったときの処理。
+        
+        K-means モードでは閾値スライダーを非表示にし、
+        閾値モードでは表示する。
+        """
+        if self.omr_mode.get() == OMR_MODE_THRESHOLD:
+            self._omr_slider_row.pack(fill=tk.X, pady=(5, 0))
+        else:
+            self._omr_slider_row.pack_forget()
 
     # ---------------------------------------------------------
     # 記述採点オプション関連メソッド
@@ -2429,6 +2467,7 @@ class SaitenSamuraiGUI:
             'skip_questions': int(self.skip_questions.get()),
             'color_threshold': self.color_threshold.get(),
             'area_threshold': self.area_threshold.get(),
+            'omr_mode': self.omr_mode.get(),
         }
         thread = threading.Thread(target=self._run_box_drawer_thread, args=(params,), daemon=True)
         thread.start()
@@ -2447,6 +2486,7 @@ class SaitenSamuraiGUI:
                 area_threshold=params['area_threshold'],
                 progress_callback=self._update_progress,
                 cancel_event=self._cancel_event,
+                omr_mode=params['omr_mode'],
             )
             
             # 中断された場合

@@ -42,6 +42,10 @@ from constants import (
     ANSWER_KEY_FILE,
     READING_RESULTS_FOLDER_NAME,
     MARKER_CACHE_FILE,
+    OMR_MODE_THRESHOLD,
+    OMR_MODE_KMEANS,
+    KMEANS_N_CLUSTERS,
+    KMEANS_MIN_SAMPLES,
 )
 
 logger = logging.getLogger(__name__)
@@ -534,6 +538,142 @@ def recognize_marks(image, coordinates, color_threshold=0.1, area_threshold=0.4)
     return results
 
 
+# ========================================
+# K-means クラスタリング方式 (v4.5)
+# ========================================
+
+def extract_mark_features(gray_image, coordinates):
+    """
+    マーク領域ごとに4次元特徴量を抽出する。
+
+    Args:
+        gray_image: グレースケール画像 (射影変換済み)
+        coordinates: マーク領域座標リスト
+
+    Returns:
+        features: np.ndarray (N, 4) — [filled_ratio, mean_inv_brightness, dark_pixel_ratio, std_inv_brightness]
+        meta: list[dict] — 各要素の question_no, choice 情報
+    """
+    features = []
+    meta = []
+    for coord in coordinates:
+        x, y, w, h = coord['x'], coord['y'], coord['width'], coord['height']
+        roi = gray_image[y:y+h, x:x+w]
+        total_pixels = w * h
+        if total_pixels == 0:
+            features.append([0.0, 0.0, 0.0, 0.0])
+            meta.append({'question_no': coord['question_no'], 'choice': coord['choice']})
+            continue
+
+        # 二値化 (Otsu)
+        _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        filled_ratio = cv2.countNonZero(binary) / total_pixels
+
+        # 反転輝度 (0=白, 255=黒)
+        inv = 255 - roi.astype(np.float32)
+        mean_inv = float(np.mean(inv)) / 255.0
+        std_inv = float(np.std(inv)) / 255.0
+
+        # 暗画素率 (値<=128 の画素)
+        dark_pixel_ratio = float(np.sum(roi <= 128)) / total_pixels
+
+        features.append([filled_ratio, mean_inv, dark_pixel_ratio, std_inv])
+        meta.append({'question_no': coord['question_no'], 'choice': coord['choice']})
+
+    return np.array(features, dtype=np.float64), meta
+
+
+def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
+                           min_samples=KMEANS_MIN_SAMPLES,
+                           fallback_area_threshold=0.4,
+                           fallback_color_threshold=0.1):
+    """
+    K-means クラスタリングによるマーク認識。
+
+    全領域の4次元特徴量を StandardScaler で正規化し KMeans(K=2) でクラスタリング。
+    filled_ratio の高い方を「マーク済み」クラスタとして判定する。
+
+    サンプル数が min_samples 未満の場合は、従来の閾値方式にフォールバックする。
+
+    Args:
+        image: 補正後の画像 (Gray or BGR)
+        coordinates: マーク領域のリスト
+        n_clusters: クラスタ数 (デフォルト 2)
+        min_samples: 最小サンプル数 (デフォルト 50)
+        fallback_area_threshold: フォールバック時の面積閾値
+        fallback_color_threshold: フォールバック時の色閾値
+
+    Returns:
+        results: {question_no: [choice_idx, ...]}
+        kmeans_info: dict — K-means の詳細情報 (レポート生成用)。
+                     フォールバック時は None。
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+
+    if len(coordinates) < min_samples:
+        logger.info("K-means: サンプル数 %d < %d、閾値方式にフォールバック",
+                     len(coordinates), min_samples)
+        results = recognize_marks(image, coordinates,
+                                  color_threshold=fallback_color_threshold,
+                                  area_threshold=fallback_area_threshold)
+        return results, None
+
+    features, meta = extract_mark_features(gray, coordinates)
+
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.cluster import KMeans
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(features)
+
+    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+    labels = kmeans.fit_predict(X)
+
+    # filled_ratio (index=0) のクラスタ平均が高い方を「マーク済み」と判定
+    cluster_means = []
+    for c in range(n_clusters):
+        mask = labels == c
+        if mask.sum() > 0:
+            cluster_means.append(float(features[mask, 0].mean()))
+        else:
+            cluster_means.append(0.0)
+    marked_cluster = int(np.argmax(cluster_means))
+
+    # filled_ratio の境界値（2クラスタの中間点）
+    sorted_clusters = sorted(range(n_clusters), key=lambda c: cluster_means[c])
+    if len(sorted_clusters) >= 2:
+        c_low, c_high = sorted_clusters[0], sorted_clusters[1]
+        cutoff = (cluster_means[c_low] + cluster_means[c_high]) / 2.0
+    else:
+        cutoff = 0.5
+
+    results = {}
+    for i, m in enumerate(meta):
+        if labels[i] == marked_cluster:
+            q_no = m['question_no']
+            if q_no not in results:
+                results[q_no] = []
+            results[q_no].append(m['choice'])
+
+    kmeans_info = {
+        'features': features,
+        'labels': labels,
+        'meta': meta,
+        'cluster_means': cluster_means,
+        'marked_cluster': marked_cluster,
+        'cutoff': cutoff,
+        'n_marked': int((labels == marked_cluster).sum()),
+        'n_empty': int((labels != marked_cluster).sum()),
+        'scaler_mean': scaler.mean_.tolist(),
+        'scaler_scale': scaler.scale_.tolist(),
+    }
+
+    return results, kmeans_info
+
+
 def save_recognition_results(output_path, recognition_results, all_questions, question_names=None, choice_counts=None, coordinates=None):
     """
     認識結果をExcelファイルに保存 (Mark2OSS Survey.cs準拠)
@@ -663,14 +803,20 @@ def _process_single_image(args: tuple) -> dict:
     各ワーカープロセスで独立して実行される。
 
     Args:
-        args: (image_path_str, boxed_folder_str, coordinates,
-               question_groups, color_threshold, area_threshold)
+        args: (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
+               question_groups, color_threshold, area_threshold, omr_mode)
 
     Returns:
-        dict with keys: filename, marks, marker_data, csv_data, success
+        dict with keys: filename, marks, marker_data, csv_data, success, kmeans_info
     """
-    (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
-     question_groups, color_threshold, area_threshold) = args
+    # 後方互換: 8要素なら omr_mode あり、7要素なら閾値方式
+    if len(args) == 8:
+        (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
+         question_groups, color_threshold, area_threshold, omr_mode) = args
+    else:
+        (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
+         question_groups, color_threshold, area_threshold) = args
+        omr_mode = OMR_MODE_THRESHOLD
 
     image_path = Path(image_path_str)
     boxed_folder = Path(boxed_folder_str)
@@ -690,10 +836,18 @@ def _process_single_image(args: tuple) -> dict:
     ]
 
     # OMR認識
-    marks = recognize_marks(
-        corrected_image, coordinates,
-        color_threshold=color_threshold, area_threshold=area_threshold,
-    )
+    kmeans_info = None
+    if omr_mode == OMR_MODE_KMEANS:
+        marks, kmeans_info = recognize_marks_kmeans(
+            corrected_image, coordinates,
+            fallback_area_threshold=area_threshold,
+            fallback_color_threshold=color_threshold,
+        )
+    else:
+        marks = recognize_marks(
+            corrected_image, coordinates,
+            color_threshold=color_threshold, area_threshold=area_threshold,
+        )
 
     # 枠描画
     result_image, _mark_count, _group_count = draw_all_areas(
@@ -745,17 +899,223 @@ def _process_single_image(args: tuple) -> dict:
         'marks': marks,
         'marker_data': marker_data,
         'csv_data': csv_data,
+        'kmeans_info': kmeans_info,
         'success': True,
     }
 
 
-def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_base_folder=None, debug=False, color_threshold=0.1, area_threshold=0.4, progress_callback=None, cancel_event=None):
+def generate_kmeans_report(output_path, all_kmeans_infos):
+    """
+    K-means クラスタリング結果の HTML レポートを生成する。
+
+    全画像の特徴量を集約し、filled_ratio ヒストグラム・PCA 散布図・
+    クラスタ統計をインタラクティブに表示する。
+
+    Args:
+        output_path: 出力 HTML ファイルパス
+        all_kmeans_infos: list[dict] — 各要素に 'filename', 'info' キー
+    """
+    # 全画像の特徴量・ラベルを集約
+    all_features = []
+    all_labels = []
+    all_filenames = []
+    for entry in all_kmeans_infos:
+        info = entry['info']
+        n = len(info['labels'])
+        all_features.append(info['features'])
+        all_labels.append(info['labels'])
+        all_filenames.extend([entry['filename']] * n)
+
+    features = np.vstack(all_features)
+    labels = np.concatenate(all_labels)
+    total = len(labels)
+
+    # 統計サマリー
+    first_info = all_kmeans_infos[0]['info']
+    marked_cluster = first_info['marked_cluster']
+    cutoff = first_info['cutoff']
+    n_marked = int((labels == marked_cluster).sum())
+    n_empty = total - n_marked
+
+    # filled_ratio ヒストグラムデータ
+    filled = features[:, 0]
+    hist_marked = filled[labels == marked_cluster].tolist()
+    hist_empty = filled[labels != marked_cluster].tolist()
+
+    # PCA 2D (全データ)
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(features)
+    pca = PCA(n_components=2)
+    X_pca = pca.fit_transform(X_scaled)
+    variance_ratio = pca.explained_variance_ratio_
+
+    # PCA データを JSON 用にサンプリング（最大 5000 点）
+    max_points = 5000
+    if total > max_points:
+        rng = np.random.RandomState(42)
+        idx = rng.choice(total, max_points, replace=False)
+        pca_x = X_pca[idx, 0].tolist()
+        pca_y = X_pca[idx, 1].tolist()
+        pca_labels = labels[idx].tolist()
+    else:
+        pca_x = X_pca[:, 0].tolist()
+        pca_y = X_pca[:, 1].tolist()
+        pca_labels = labels.tolist()
+
+    html = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>K-means OMR Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+body {{ font-family: 'Yu Gothic UI', sans-serif; margin: 20px; background: #f5f5f5; }}
+.container {{ max-width: 1200px; margin: auto; }}
+h1 {{ color: #1976D2; }}
+.stats {{ display: flex; gap: 20px; margin: 20px 0; }}
+.stat-card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; text-align: center; }}
+.stat-card .value {{ font-size: 2em; font-weight: bold; color: #1976D2; }}
+.stat-card .label {{ color: #666; margin-top: 5px; }}
+.chart-row {{ display: flex; gap: 20px; margin: 20px 0; }}
+.chart-box {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }}
+canvas {{ max-width: 100%; }}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>K-means OMR Report</h1>
+<p>処理画像数: {len(all_kmeans_infos)} | 総領域数: {total:,}</p>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="value">{n_marked:,}</div>
+    <div class="label">マーク済み ({n_marked/total*100:.1f}%)</div>
+  </div>
+  <div class="stat-card">
+    <div class="value">{n_empty:,}</div>
+    <div class="label">空白 ({n_empty/total*100:.1f}%)</div>
+  </div>
+  <div class="stat-card">
+    <div class="value">{cutoff:.4f}</div>
+    <div class="label">filled_ratio カットオフ</div>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>filled_ratio 分布</h3>
+    <canvas id="histChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h3>PCA 散布図 (PC1: {variance_ratio[0]*100:.1f}%, PC2: {variance_ratio[1]*100:.1f}%)</h3>
+    <canvas id="pcaChart"></canvas>
+  </div>
+</div>
+
+</div>
+
+<script>
+const histMarked = {json.dumps(hist_marked[:2000])};
+const histEmpty = {json.dumps(hist_empty[:2000])};
+const cutoff = {cutoff};
+
+// Histogram
+function buildHistogram(data, bins, min, max) {{
+  const step = (max - min) / bins;
+  const counts = new Array(bins).fill(0);
+  const labels = [];
+  for (let i = 0; i < bins; i++) {{
+    labels.push((min + step * (i + 0.5)).toFixed(3));
+    for (const v of data) {{
+      if (v >= min + step * i && v < min + step * (i + 1)) counts[i]++;
+    }}
+  }}
+  return {{ labels, counts }};
+}}
+
+const hm = buildHistogram(histMarked, 50, 0, 1);
+const he = buildHistogram(histEmpty, 50, 0, 1);
+
+new Chart(document.getElementById('histChart'), {{
+  type: 'bar',
+  data: {{
+    labels: hm.labels,
+    datasets: [
+      {{ label: 'Empty', data: he.counts, backgroundColor: 'rgba(66,133,244,0.5)' }},
+      {{ label: 'Marked', data: hm.counts, backgroundColor: 'rgba(244,67,54,0.5)' }}
+    ]
+  }},
+  options: {{
+    scales: {{ x: {{ title: {{ display: true, text: 'filled_ratio' }} }},
+               y: {{ title: {{ display: true, text: 'Count' }} }} }},
+    plugins: {{ legend: {{ position: 'top' }} }}
+  }},
+  plugins: [{{
+    afterDraw(chart) {{
+      const xAxis = chart.scales.x;
+      const yAxis = chart.scales.y;
+      const idx = Math.round(cutoff * 50);
+      if (idx >= 0 && idx < xAxis.ticks.length) {{
+        const x = xAxis.getPixelForValue(idx);
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = '#FF9800';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, yAxis.top);
+        ctx.lineTo(x, yAxis.bottom);
+        ctx.stroke();
+        ctx.restore();
+      }}
+    }}
+  }}]
+}});
+
+// PCA Scatter
+const pcaX = {json.dumps(pca_x)};
+const pcaY = {json.dumps(pca_y)};
+const pcaLabels = {json.dumps(pca_labels)};
+const markedCluster = {marked_cluster};
+
+const scatterData = pcaX.map((x, i) => ({{ x, y: pcaY[i] }}));
+const emptyPts = scatterData.filter((_, i) => pcaLabels[i] !== markedCluster);
+const markedPts = scatterData.filter((_, i) => pcaLabels[i] === markedCluster);
+
+new Chart(document.getElementById('pcaChart'), {{
+  type: 'scatter',
+  data: {{
+    datasets: [
+      {{ label: 'Empty', data: emptyPts, backgroundColor: 'rgba(66,133,244,0.3)', pointRadius: 2 }},
+      {{ label: 'Marked', data: markedPts, backgroundColor: 'rgba(244,67,54,0.3)', pointRadius: 2 }}
+    ]
+  }},
+  options: {{
+    scales: {{
+      x: {{ title: {{ display: true, text: 'PC1' }} }},
+      y: {{ title: {{ display: true, text: 'PC2' }} }}
+    }},
+    plugins: {{ legend: {{ position: 'top' }} }}
+  }}
+}});
+</script>
+</body>
+</html>"""
+
+    with open(str(output_path), 'w', encoding='utf-8') as f:
+        f.write(html)
+
+
+def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_base_folder=None, debug=False, color_threshold=0.1, area_threshold=0.4, progress_callback=None, cancel_event=None, omr_mode=OMR_MODE_THRESHOLD):
     """
     フォルダ内の画像を一括処理（枠描画 + OMR認識）
 
     Args:
         progress_callback: 進捗コールバック(current, total)（オプション、GUIプログレスバー用）
         cancel_event: threading.Event — set()されると処理を中断
+        omr_mode: OMR認識モード ('threshold' or 'kmeans')
     """
     start_time = time.time()
     
@@ -824,6 +1184,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     all_csv_data = []
     recognition_results_list = []
     marker_cache = {}  # マーカー座標キャッシュ（Step2高速化用）
+    all_kmeans_infos = []  # K-means 情報集約用
 
     # --- 並列処理 (ProcessPoolExecutor) ---
     max_workers = max(1, (os.cpu_count() or 1) - 1)
@@ -832,7 +1193,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
 
     worker_args = [
         (str(img), str(boxed_folder), str(clean_folder), coordinates, question_groups,
-         color_threshold, area_threshold)
+         color_threshold, area_threshold, omr_mode)
         for img in image_files
     ]
 
@@ -870,6 +1231,11 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
                 })
                 marker_cache[result['filename']] = result['marker_data']
                 all_csv_data.extend(result['csv_data'])
+                if result.get('kmeans_info') is not None:
+                    all_kmeans_infos.append({
+                        'filename': result['filename'],
+                        'info': result['kmeans_info'],
+                    })
                 success_count += 1
             except Exception as e:
                 logger.error("処理エラー (%s): %s", fname, e)
@@ -901,7 +1267,17 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     
     save_recognition_results(omr_result_path, recognition_results_list, all_questions, question_names, choice_counts, coordinates)
     logger.info("OMR認識結果保存: %s", omr_result_path.name)
-    
+
+    # K-means HTMLレポート生成
+    kmeans_report_path = None
+    if omr_mode == OMR_MODE_KMEANS and all_kmeans_infos:
+        try:
+            kmeans_report_path = results_data_folder / f"kmeans_report_{timestamp}.html"
+            generate_kmeans_report(kmeans_report_path, all_kmeans_infos)
+            logger.info("K-means HTMLレポート保存: %s", kmeans_report_path.name)
+        except Exception as e:
+            logger.warning("K-means レポート生成エラー: %s", e)
+
     elapsed_time = time.time() - start_time
     
     logger.info("=" * 60)
@@ -913,7 +1289,8 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
         'success_count': success_count,
         'error_count': error_count,
         'total_count': len(image_files),
-        'elapsed_time': elapsed_time
+        'elapsed_time': elapsed_time,
+        'kmeans_report_path': str(kmeans_report_path) if kmeans_report_path else None,
     }
 
 

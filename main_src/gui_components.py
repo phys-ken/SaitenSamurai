@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # サードパーティライブラリ
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import cv2
 import pandas as pd
 import numpy as np
@@ -322,9 +322,23 @@ class MarkCheckerGUI:
         status_frame.pack(fill=tk.X)
         
         self.status_label = tk.Label(status_frame, text="要チェック数○件 / チェック済み○件 / 進捗○○%", font=('Arial', 12, 'bold'), bg='lightblue')
-        self.status_label.pack()
-        
-        display_frame = tk.Frame(self.window, padx=10, pady=10)
+        self.status_label.pack(side=tk.LEFT, expand=True)
+
+        # ビュー切り替えボタン (v4.5)
+        self._view_mode = "single"   # "single" or "grid"
+        self._btn_toggle_view = tk.Button(
+            status_frame, text="グリッド表示",
+            command=self._toggle_view_mode,
+            bg='#42A5F5', fg='white', font=('Arial', 9, 'bold'),
+            relief=tk.FLAT, cursor='hand2', width=12,
+        )
+        self._btn_toggle_view.pack(side=tk.RIGHT, padx=5)
+
+        # ====== 単体表示フレーム (従来) ======
+        self._single_view_frame = tk.Frame(self.window)
+        self._single_view_frame.pack(fill=tk.BOTH, expand=True)
+
+        display_frame = tk.Frame(self._single_view_frame, padx=10, pady=10)
         display_frame.pack(fill=tk.BOTH, expand=True)
         
         info_frame = tk.Frame(display_frame)
@@ -337,7 +351,7 @@ class MarkCheckerGUI:
         self.image_label.pack(fill=tk.BOTH, expand=True)
         self.image_label.config(width=1100)
         
-        control_frame = tk.Frame(self.window, padx=10, pady=10)
+        control_frame = tk.Frame(self._single_view_frame, padx=10, pady=10)
         control_frame.pack(fill=tk.X)
         
         result_frame = tk.Frame(control_frame)
@@ -386,7 +400,244 @@ class MarkCheckerGUI:
         
         self.apply_button = tk.Button(apply_frame, text="チェック結果をxlsxに反映", command=self.apply_to_xlsx, bg='darkgreen', fg='white', font=('Arial', 11, 'bold'), width=30, height=2)
         self.apply_button.pack()
+
+        # ====== グリッド表示フレーム (v4.5) ======
+        self._grid_view_frame = tk.Frame(self.window)
+        # 最初は pack しない (単体表示が初期状態)
+        self._grid_photo_refs = []
+        self._grid_thumb_size = 160
+        self._grid_cols = 6
+        self._grid_filter_var = tk.StringVar(value="全て")
+        self._build_grid_view()
     
+    def _build_grid_view(self):
+        """グリッド表示フレームの内部ウィジェットを構築する (v4.5)"""
+        # ツールバー
+        toolbar = tk.Frame(self._grid_view_frame, bg='#37474F', padx=10, pady=6)
+        toolbar.pack(fill=tk.X)
+
+        tk.Label(toolbar, text="フィルタ:", font=('Yu Gothic UI', 9), bg='#37474F', fg='white').pack(side=tk.LEFT)
+        self._grid_filter_combo = ttk.Combobox(
+            toolbar, textvariable=self._grid_filter_var, width=12,
+            values=["全て", "無マーク", "ダブルマーク", "チェック済み", "未チェック"],
+            state="readonly",
+        )
+        self._grid_filter_combo.pack(side=tk.LEFT, padx=5)
+        self._grid_filter_combo.bind("<<ComboboxSelected>>", lambda e: self._refresh_grid_view())
+
+        # 一括 -1 ボタン
+        self._btn_batch_minus1 = tk.Button(
+            toolbar, text="無マーク全件 → -1", command=self._batch_set_minus1,
+            bg='#FFCDD2', fg='#333', font=('Yu Gothic UI', 9, 'bold'),
+            relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_batch_minus1.pack(side=tk.LEFT, padx=(15, 5))
+
+        # 反映ボタン (グリッド用)
+        self._btn_grid_apply = tk.Button(
+            toolbar, text="xlsxに反映", command=self.apply_to_xlsx,
+            bg='#2E7D32', fg='white', font=('Yu Gothic UI', 9, 'bold'),
+            relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_grid_apply.pack(side=tk.RIGHT, padx=5)
+
+        # グリッドの件数ラベル
+        self._grid_count_label = tk.Label(
+            toolbar, text="", font=('Yu Gothic UI', 9), bg='#37474F', fg='#FFD54F',
+        )
+        self._grid_count_label.pack(side=tk.RIGHT, padx=10)
+
+        # スクロール可能キャンバス
+        canvas_frame = tk.Frame(self._grid_view_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+        self._grid_canvas = tk.Canvas(canvas_frame, bg='#FAFAFA', highlightthickness=0)
+        self._grid_scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self._grid_canvas.yview)
+        self._grid_inner_frame = tk.Frame(self._grid_canvas, bg='#FAFAFA')
+
+        self._grid_inner_frame.bind(
+            "<Configure>",
+            lambda e: self._grid_canvas.configure(scrollregion=self._grid_canvas.bbox("all"))
+        )
+        self._grid_canvas_window = self._grid_canvas.create_window((0, 0), window=self._grid_inner_frame, anchor="nw")
+        self._grid_canvas.configure(yscrollcommand=self._grid_scrollbar.set)
+
+        self._grid_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._grid_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # マウスホイール
+        self._grid_canvas.bind("<Enter>", lambda e: self._grid_canvas.bind_all("<MouseWheel>", self._grid_on_mousewheel))
+        self._grid_canvas.bind("<Leave>", lambda e: self._grid_canvas.unbind_all("<MouseWheel>"))
+
+        # キャンバスリサイズ
+        self._grid_canvas.bind("<Configure>", self._grid_on_canvas_resize)
+
+    def _grid_on_mousewheel(self, event):
+        self._grid_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _grid_on_canvas_resize(self, event):
+        self._grid_canvas.itemconfig(self._grid_canvas_window, width=event.width)
+        new_cols = max(1, event.width // (self._grid_thumb_size + 20))
+        if new_cols != self._grid_cols:
+            self._grid_cols = new_cols
+            if hasattr(self, '_grid_resize_after') and self._grid_resize_after:
+                self.window.after_cancel(self._grid_resize_after)
+            self._grid_resize_after = self.window.after(150, self._refresh_grid_view)
+
+    def _toggle_view_mode(self):
+        """単体表示 ↔ グリッド表示を切り替える (v4.5)"""
+        if self._view_mode == "single":
+            self._view_mode = "grid"
+            self._btn_toggle_view.config(text="単体表示")
+            self._single_view_frame.pack_forget()
+            self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
+            self._refresh_grid_view()
+        else:
+            self._view_mode = "single"
+            self._btn_toggle_view.config(text="グリッド表示")
+            self._grid_view_frame.pack_forget()
+            self._single_view_frame.pack(fill=tk.BOTH, expand=True)
+            if self.error_df is not None and len(self.error_df) > 0:
+                self.show_current()
+
+    def _get_filtered_error_indices(self):
+        """フィルタ条件に合致するerror_dfのインデックスリストを返す"""
+        if self.error_df is None or len(self.error_df) == 0:
+            return []
+        filt = self._grid_filter_var.get()
+        if filt == "無マーク":
+            mask = self.error_df['error_type'] == ERROR_TYPE_NO_MARK
+        elif filt == "ダブルマーク":
+            mask = self.error_df['error_type'] == ERROR_TYPE_DOUBLE_MARK
+        elif filt == "チェック済み":
+            mask = self.error_df['after'].notna() & (self.error_df['after'] != '') & (self.error_df['after'] != 'skip')
+        elif filt == "未チェック":
+            mask = self.error_df['after'].isna() | (self.error_df['after'] == '')
+        else:
+            mask = pd.Series(True, index=self.error_df.index)
+        return list(self.error_df[mask].index)
+
+    def _refresh_grid_view(self):
+        """グリッド表示を再描画する (v4.5)"""
+        for w in self._grid_inner_frame.winfo_children():
+            w.destroy()
+        self._grid_photo_refs.clear()
+
+        indices = self._get_filtered_error_indices()
+        self._grid_count_label.config(text=f"表示: {len(indices)}件")
+
+        if not indices:
+            tk.Label(self._grid_inner_frame, text="該当するエラーはありません",
+                     font=('Arial', 14), fg='gray', bg='#FAFAFA').grid(row=0, column=0, pady=40)
+            return
+
+        for pos, idx in enumerate(indices):
+            row_i = pos // self._grid_cols
+            col_i = pos % self._grid_cols
+            self._create_grid_card(self._grid_inner_frame, idx, row_i, col_i)
+
+    def _create_grid_card(self, parent, df_idx, row, col):
+        """グリッド内の1枚のカードを作成する (v4.5)"""
+        error_row = self.error_df.iloc[df_idx]
+        filename = error_row['filename']
+        question_no = int(error_row['question_no'])
+        error_type = error_row['error_type']
+        after_val = error_row['after']
+
+        # カードのフレーム色 (エラータイプで色分け)
+        is_checked = pd.notna(after_val) and after_val != '' and after_val != 'skip'
+        if is_checked:
+            border_color = '#81C784'  # 緑 (チェック済み)
+        elif error_type == ERROR_TYPE_NO_MARK:
+            border_color = '#FFB74D'  # オレンジ (無マーク)
+        elif error_type == ERROR_TYPE_DOUBLE_MARK:
+            border_color = '#EF5350'  # 赤 (ダブルマーク)
+        else:
+            border_color = '#90A4AE'  # グレー
+
+        card = tk.Frame(parent, bg=border_color, padx=2, pady=2)
+        card.grid(row=row, column=col, padx=4, pady=4, sticky='nsew')
+        parent.columnconfigure(col, weight=1)
+
+        inner = tk.Frame(card, bg='white')
+        inner.pack(fill=tk.BOTH, expand=True)
+
+        # サムネイル画像の読み込み
+        try:
+            original_q_no = question_no + self.skip_questions
+            pil_img = get_display_image_checker(
+                self.coords_df, self.image_folder, filename, original_q_no,
+                scale_factor=1.0, expand_factor=DEFAULT_EXPAND_FACTOR,
+                cache=self._image_cache,
+            )
+            if pil_img:
+                # サムネイルリサイズ
+                pil_img.thumbnail((self._grid_thumb_size, self._grid_thumb_size), Image.LANCZOS)
+                photo = ImageTk.PhotoImage(pil_img)
+                self._grid_photo_refs.append(photo)
+                img_label = tk.Label(inner, image=photo, bg='white', cursor='hand2')
+            else:
+                img_label = tk.Label(inner, text="(画像なし)", bg='white', fg='gray',
+                                     width=self._grid_thumb_size // 8,
+                                     height=self._grid_thumb_size // 16)
+        except Exception:
+            img_label = tk.Label(inner, text="(読込失敗)", bg='white', fg='gray',
+                                 width=self._grid_thumb_size // 8,
+                                 height=self._grid_thumb_size // 16)
+
+        img_label.pack(padx=2, pady=2)
+
+        # 情報ラベル
+        et_jp = {'NoMark': '無マ', 'DoubleMark': 'Wマ', 'Invalid': '不正'}.get(error_type, error_type)
+        status_text = f"→{after_val}" if is_checked else "未"
+        info_text = f"{Path(filename).stem}\nQ{question_no} [{et_jp}] {status_text}"
+        info_label = tk.Label(inner, text=info_text, font=('Yu Gothic UI', 7),
+                              bg='white', fg='#333', justify=tk.CENTER, wraplength=self._grid_thumb_size)
+        info_label.pack(padx=2, pady=(0, 2))
+
+        # クリックイベント: 単体表示に切り替えて該当インデックスに移動
+        def on_card_click(event, target_idx=df_idx):
+            self.current_index = target_idx
+            self._view_mode = "grid"  # toggle will switch to single
+            self._toggle_view_mode()
+        img_label.bind("<Button-1>", on_card_click)
+        info_label.bind("<Button-1>", on_card_click)
+
+    def _batch_set_minus1(self):
+        """無マーク全件を -1 に一括設定する (v4.5)"""
+        if self.error_df is None:
+            return
+        mask = (self.error_df['error_type'] == ERROR_TYPE_NO_MARK) & \
+               (self.error_df['after'].isna() | (self.error_df['after'] == ''))
+        count = mask.sum()
+        if count == 0:
+            messagebox.showinfo("情報", "未チェックの無マーク項目はありません", parent=self.window)
+            return
+        ans = messagebox.askyesno(
+            "一括設定の確認",
+            f"未チェックの無マーク {count}件 を全て\n「-1」に設定します。\n\nよろしいですか?",
+            parent=self.window,
+        )
+        if not ans:
+            return
+        self.error_df.loc[mask, 'after'] = '-1'
+        self._csv_dirty = True
+        self._flush_csv()
+        self._refresh_grid_view()
+        # ステータス更新
+        self._update_status_label()
+
+    def _update_status_label(self):
+        """ステータスラベルを最新状態に更新する"""
+        if self.error_df is None or len(self.error_df) == 0:
+            return
+        total = len(self.error_df)
+        checked = len(self.error_df[self.error_df['after'].notna() & (self.error_df['after'] != '') & (self.error_df['after'] != 'skip')])
+        skipped = len(self.error_df[self.error_df['after'] == 'skip'])
+        unchecked = total - checked - skipped
+        progress = int(checked / total * 100) if total > 0 else 0
+        self.status_label.config(text=f"全{total}件 / 完了{checked}件 / SKIP{skipped}件 / 未{unchecked}件 / 進捗{progress}%")
+
     def _build_choice_buttons(self, num_choices):
         """選択肢ボタン行を（再）構築する"""
         for w in self._choice_btn_frame.winfo_children():
@@ -2306,7 +2557,8 @@ class StartupModeDialog:
     def _build_dialog(self):
         """ダイアログUIを構築"""
         self.dialog = tk.Toplevel(self.root)
-        self.dialog.title("採点侍 v4.4.1")
+        from constants import APP_VERSION
+        self.dialog.title(f"採点侍 v{APP_VERSION}")
         # transient(root) は使わない: root.withdraw() 中に呼ぶと
         # ダイアログも非表示になりフリーズするため
         self.dialog.grab_set()

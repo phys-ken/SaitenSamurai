@@ -63,6 +63,7 @@ R_EXPORT_FOLDER = "006_R_analysis_kit"   # R連携エクスポート（exametrik
 READING_RESULTS_FOLDER_NAME = "reading_results"  # 01_Results内のOMR結果サブフォルダ
 SESSION_STATE_FILE = "session_state.json"         # セッション状態保存ファイル
 MARKER_CACHE_FILE = "marker_cache.json"           # マーカー座標キャッシュ（Step2高速化用）
+WHITENESS_CACHE_FILE = "whiteness_cache.json"     # 白さキャッシュ（MarkChecker高速化用）
 
 # エラーチェック用定数
 ERROR_TYPE_NO_MARK = 'NoMark'

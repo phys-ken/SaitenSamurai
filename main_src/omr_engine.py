@@ -42,6 +42,7 @@ from constants import (
     ANSWER_KEY_FILE,
     READING_RESULTS_FOLDER_NAME,
     MARKER_CACHE_FILE,
+    WHITENESS_CACHE_FILE,
     OMR_MODE_THRESHOLD,
     OMR_MODE_KMEANS,
     KMEANS_N_CLUSTERS,
@@ -931,6 +932,33 @@ def _process_single_image(args: tuple) -> dict:
             color_threshold=color_threshold, area_threshold=area_threshold,
         )
 
+    # --- 白さキャッシュ用: 設問ごとの平均輝度を計算 ---
+    whiteness = {}
+    try:
+        _gray_for_wh = cv2.cvtColor(corrected_image, cv2.COLOR_BGR2GRAY) if len(corrected_image.shape) == 3 else corrected_image
+        if kmeans_info is not None:
+            _wh_features = kmeans_info['features']   # (N, 7)
+            _wh_meta = kmeans_info['meta']
+        else:
+            _wh_features, _wh_meta = extract_mark_features(_gray_for_wh, coordinates)  # (N, 5)
+        # 設問ごとに mean_inv (index=1) の平均から輝度を算出
+        _q_brightness = {}
+        _q_counts = {}
+        for i, m in enumerate(_wh_meta):
+            q_no = m['question_no']
+            brightness = (1.0 - float(_wh_features[i, 1])) * 255.0
+            if q_no not in _q_brightness:
+                _q_brightness[q_no] = 0.0
+                _q_counts[q_no] = 0
+            _q_brightness[q_no] += brightness
+            _q_counts[q_no] += 1
+        whiteness = {
+            str(int(q)): round(_q_brightness[q] / _q_counts[q], 2)
+            for q in _q_brightness if _q_counts[q] > 0
+        }
+    except Exception:
+        pass  # 白さ計算失敗は許容（MarkCheckerでフォールバック計算される）
+
     # 枠描画
     result_image, _mark_count, _group_count = draw_all_areas(
         corrected_image, coordinates, question_groups,
@@ -982,6 +1010,7 @@ def _process_single_image(args: tuple) -> dict:
         'marker_data': marker_data,
         'csv_data': csv_data,
         'kmeans_info': kmeans_info,
+        'whiteness': whiteness,
         'success': True,
     }
 
@@ -999,6 +1028,9 @@ def generate_kmeans_report(output_path, all_kmeans_infos):
         all_kmeans_infos: list[dict] — 各要素に 'filename', 'info' キー
     """
     # 全画像の特徴量・ラベル・メタ・ROI を集約
+    # 重要: 各画像の K-means は独立して実行されるため、クラスタラベル（0/1）の
+    # 割り当ては画像ごとに異なる。レポートではラベルを統一して
+    # 「1 = マーク済み, 0 = 空白」に正規化する。
     all_features = []
     all_labels = []
     all_filenames = []
@@ -1008,7 +1040,17 @@ def generate_kmeans_report(output_path, all_kmeans_infos):
         info = entry['info']
         n = len(info['labels'])
         all_features.append(info['features'])
-        all_labels.append(info['labels'])
+
+        # ラベル正規化: marked_cluster → 常に 1, empty → 常に 0
+        raw_labels = info['labels'].copy()
+        mc = info['marked_cluster']
+        if mc == 0:
+            # この画像ではクラスタ0がマーク済み → 反転 (0→1, 1→0)
+            aligned_labels = 1 - raw_labels
+        else:
+            aligned_labels = raw_labels
+        all_labels.append(aligned_labels)
+
         all_filenames.extend([entry['filename']] * n)
         all_meta.extend(info.get('meta', [{'question_no': 0, 'choice': 0}] * n))
         rois = info.get('roi_thumbnails', [''] * n)
@@ -1018,10 +1060,10 @@ def generate_kmeans_report(output_path, all_kmeans_infos):
     labels = np.concatenate(all_labels)
     total = len(labels)
 
-    # 統計サマリー
-    first_info = all_kmeans_infos[0]['info']
-    marked_cluster = first_info['marked_cluster']
-    cutoff = first_info['cutoff']
+    # 統計サマリー（正規化後は marked_cluster = 1 で統一）
+    marked_cluster = 1
+    # カットオフは全画像の平均を使用
+    cutoff = float(np.mean([e['info']['cutoff'] for e in all_kmeans_infos]))
     n_marked = int((labels == marked_cluster).sum())
     n_empty = total - n_marked
 
@@ -1124,9 +1166,8 @@ canvas {{ max-width: 100%; }}
   <h3>K-means 散布図 (PCA 2次元投影)</h3>
   <p class="pca-desc">7次元特徴空間をPCAで2次元に圧縮。各点にホバーするとマーク領域の詳細が表示されます。</p>
   <div class="pca-legend">
-    <span><span class="dot" style="background:#FF9800"></span> クラスタ0 (境界)</span>
-    <span><span class="dot" style="background:#EF5350"></span> クラスタ1 (マーク済み)</span>
-    <span><span class="dot" style="background:#4CAF50"></span> クラスタ2 (未マーク)</span>
+    <span><span class="dot" style="background:#4CAF50"></span> 未マーク (Empty)</span>
+    <span><span class="dot" style="background:#EF5350"></span> マーク済み (Marked)</span>
   </div>
   <canvas id="pcaChart" height="400"></canvas>
   <div id="hover-info"></div>
@@ -1323,6 +1364,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     recognition_results_list = []
     marker_cache = {}  # マーカー座標キャッシュ（Step2高速化用）
     all_kmeans_infos = []  # K-means 情報集約用
+    whiteness_all = {}  # 白さキャッシュ（MarkChecker高速化用）
 
     # --- 並列処理 (ProcessPoolExecutor) ---
     max_workers = max(1, (os.cpu_count() or 1) - 1)
@@ -1374,6 +1416,8 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
                         'filename': result['filename'],
                         'info': result['kmeans_info'],
                     })
+                if result.get('whiteness'):
+                    whiteness_all[result['filename']] = result['whiteness']
                 success_count += 1
             except Exception as e:
                 logger.error("処理エラー (%s): %s", fname, e)
@@ -1391,6 +1435,15 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
         logger.info("マーカーキャッシュ保存: %d件", len(marker_cache))
     except Exception:
         pass  # キャッシュ保存失敗は許容（Step2は再検出にフォールバック）
+
+    # 白さキャッシュをJSON保存（MarkCheckerでの白さ順ソート高速化用）
+    try:
+        whiteness_path = results_data_folder / WHITENESS_CACHE_FILE
+        with open(str(whiteness_path), 'w', encoding='utf-8') as f:
+            json.dump(whiteness_all, f, ensure_ascii=False)
+        logger.info("白さキャッシュ保存: %d件", len(whiteness_all))
+    except Exception:
+        pass  # 白さキャッシュ保存失敗は許容（MarkCheckerでフォールバック計算される）
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     area_str = f"{int(area_threshold * 100):03d}"

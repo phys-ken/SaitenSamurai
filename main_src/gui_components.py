@@ -14,6 +14,7 @@ saitensamurai.py から抽出された以下のクラスを含む:
 """
 
 # 標準ライブラリ
+import json
 import logging
 import sys
 import shutil
@@ -39,6 +40,7 @@ from constants import (
     DEFAULT_EXPAND_FACTOR, DEFAULT_EXPAND_FACTOR_Y,
     DEFAULT_BACKUP_FOLDER,
     MARK2_BASE_WIDTH, MARK2_BASE_HEIGHT,
+    WHITENESS_CACHE_FILE,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
 )
 
@@ -113,6 +115,10 @@ class MarkCheckerGUI:
         self._grid_render_job = None
         self._grid_resize_after = None
         self._grid_size_after = None
+
+        # v4.5 選択肢カテゴリ用タブ: 薄い解答 / 濃い解答
+        self._choice_tab_active = False  # タブモードが有効か
+        self._choice_tab_current = "薄い"  # 現在のタブ: "薄い" or "濃い"
 
         # v4.5 安定化: サムネイル画像キャッシュ（PIL）
         self._thumb_cache = OrderedDict()
@@ -398,7 +404,7 @@ class MarkCheckerGUI:
 
         # xlsx 反映ボタン
         self._btn_apply = tk.Button(
-            self._side_panel, text="xlsxに反映",
+            self._side_panel, text="データの更新(再読み込み)",
             command=self.apply_to_xlsx,
             bg='#2E7D32', fg='white', font=('Yu Gothic UI', 10, 'bold'),
             relief=tk.FLAT, cursor='hand2',
@@ -501,20 +507,39 @@ class MarkCheckerGUI:
         self._grid_count_label.pack(side=tk.LEFT, padx=10)
 
         # ページング
+        self._pager_frame = tk.Frame(toolbar, bg='#37474F')
+        self._pager_frame.pack(side=tk.LEFT)
         self._btn_prev_page = tk.Button(
-            toolbar, text="◀", width=3, command=self._prev_grid_page,
+            self._pager_frame, text="◀", width=3, command=self._prev_grid_page,
             bg='#546E7A', fg='white', relief=tk.FLAT, cursor='hand2',
         )
         self._btn_prev_page.pack(side=tk.LEFT, padx=(8, 2))
         self._page_label = tk.Label(
-            toolbar, text="1/1", font=('Yu Gothic UI', 9), bg='#37474F', fg='white',
+            self._pager_frame, text="1/1", font=('Yu Gothic UI', 9), bg='#37474F', fg='white',
         )
         self._page_label.pack(side=tk.LEFT, padx=2)
         self._btn_next_page = tk.Button(
-            toolbar, text="▶", width=3, command=self._next_grid_page,
+            self._pager_frame, text="▶", width=3, command=self._next_grid_page,
             bg='#546E7A', fg='white', relief=tk.FLAT, cursor='hand2',
         )
         self._btn_next_page.pack(side=tk.LEFT, padx=(2, 8))
+
+        # 選択肢カテゴリ用タブ（初期状態では非表示）
+        self._tab_frame = tk.Frame(toolbar, bg='#37474F')
+        self._btn_tab_light = tk.Button(
+            self._tab_frame, text="薄い解答(ノーマーク疑惑)",
+            command=lambda: self._switch_choice_tab("薄い"),
+            bg='#42A5F5', fg='white', font=('Yu Gothic UI', 9, 'bold'),
+            relief=tk.FLAT, cursor='hand2', padx=8,
+        )
+        self._btn_tab_light.pack(side=tk.LEFT, padx=(8, 2))
+        self._btn_tab_dark = tk.Button(
+            self._tab_frame, text="濃い解答(複数マーク疑惑)",
+            command=lambda: self._switch_choice_tab("濃い"),
+            bg='#546E7A', fg='white', font=('Yu Gothic UI', 9),
+            relief=tk.FLAT, cursor='hand2', padx=8,
+        )
+        self._btn_tab_dark.pack(side=tk.LEFT, padx=(2, 8))
 
         # カードサイズスライダー
         self._grid_size_var = tk.IntVar(value=self._grid_thumb_size)
@@ -660,6 +685,42 @@ class MarkCheckerGUI:
             self._grid_render_job = None
 
     # --------------------------------------------------
+    # 選択肢カテゴリ タブ切替
+    # --------------------------------------------------
+
+    def _is_choice_category(self, cat):
+        """カテゴリが選択肢カテゴリかどうかを判定"""
+        return cat.startswith('選択肢 ')
+
+    def _switch_choice_tab(self, tab):
+        """選択肢カテゴリのタブを切り替える（"薄い" or "濃い"）"""
+        if self._choice_tab_current == tab:
+            return
+        self._choice_tab_current = tab
+        self._update_tab_button_styles()
+        self._refresh_grid_view()
+
+    def _update_tab_button_styles(self):
+        """タブボタンのアクティブ/非アクティブスタイルを更新"""
+        if self._choice_tab_current == "薄い":
+            self._btn_tab_light.config(bg='#42A5F5', font=('Yu Gothic UI', 9, 'bold'))
+            self._btn_tab_dark.config(bg='#546E7A', font=('Yu Gothic UI', 9))
+        else:
+            self._btn_tab_light.config(bg='#546E7A', font=('Yu Gothic UI', 9))
+            self._btn_tab_dark.config(bg='#42A5F5', font=('Yu Gothic UI', 9, 'bold'))
+
+    def _show_tab_mode(self, show):
+        """タブモードの表示/非表示を切り替える"""
+        if show:
+            self._pager_frame.pack_forget()
+            self._tab_frame.pack(side=tk.LEFT)
+            self._choice_tab_active = True
+        else:
+            self._tab_frame.pack_forget()
+            self._pager_frame.pack(side=tk.LEFT)
+            self._choice_tab_active = False
+
+    # --------------------------------------------------
     # カテゴリサイドパネル
     # --------------------------------------------------
 
@@ -673,6 +734,15 @@ class MarkCheckerGUI:
                                            before=self._btn_apply)
         else:
             self._btn_batch_minus1.pack_forget()
+
+        # 選択肢カテゴリの場合はタブモードに切替
+        if self._is_choice_category(cat):
+            self._choice_tab_current = "薄い"
+            self._update_tab_button_styles()
+            self._show_tab_mode(True)
+        else:
+            self._show_tab_mode(False)
+
         self._refresh_grid_view(reset_page=True)
 
     def _get_selected_category(self):
@@ -809,14 +879,18 @@ class MarkCheckerGUI:
 
         indices = list(df[mask].index)
 
-        # ソート
-        sort_mode = self._sort_var.get()
-        if sort_mode == "白さ順（白い順）":
+        # ソート: 選択肢カテゴリは常に白さ順
+        if self._is_choice_category(cat):
             self._build_whiteness_cache_for_indices(indices)
             indices.sort(key=lambda i: -self._whiteness_cache.get(i, 0.0))
         else:
-            # 画像名順: filename → question_no
-            indices.sort(key=lambda i: (df.at[i, 'filename'], df.at[i, 'question_no']))
+            sort_mode = self._sort_var.get()
+            if sort_mode == "白さ順（白い順）":
+                self._build_whiteness_cache_for_indices(indices)
+                indices.sort(key=lambda i: -self._whiteness_cache.get(i, 0.0))
+            else:
+                # 画像名順: filename → question_no
+                indices.sort(key=lambda i: (df.at[i, 'filename'], df.at[i, 'question_no']))
 
         return indices
 
@@ -836,14 +910,35 @@ class MarkCheckerGUI:
 
         indices = self._get_filtered_indices()
         self._grid_filtered_indices = indices
-        if reset_page:
-            self._grid_current_page = 0
-        self._update_grid_pager(len(indices))
 
-        start = self._grid_current_page * self._grid_page_size
-        end = min(start + self._grid_page_size, len(indices))
-        page_indices = indices[start:end]
-        self._grid_count_label.config(text=f"表示: {start + 1 if page_indices else 0}-{end} / {len(indices)}件")
+        cat = self._get_selected_category()
+        is_choice = self._is_choice_category(cat)
+
+        if is_choice and self._choice_tab_active:
+            # --- タブモード: 選択肢カテゴリ ---
+            total = len(indices)
+            if total <= 200:
+                half = max(1, total // 2) if total > 0 else 0
+            else:
+                half = 100
+
+            if self._choice_tab_current == "濃い":
+                page_indices = indices[total - half:] if total > 0 else []
+                display_label = f"濃い解答: {len(page_indices)}件 / 全{total}件"
+            else:
+                page_indices = indices[:half] if total > 0 else []
+                display_label = f"薄い解答: {len(page_indices)}件 / 全{total}件"
+            self._grid_count_label.config(text=display_label)
+        else:
+            # --- 通常ページモード ---
+            if reset_page:
+                self._grid_current_page = 0
+            self._update_grid_pager(len(indices))
+
+            start = self._grid_current_page * self._grid_page_size
+            end = min(start + self._grid_page_size, len(indices))
+            page_indices = indices[start:end]
+            self._grid_count_label.config(text=f"表示: {start + 1 if page_indices else 0}-{end} / {len(indices)}件")
 
         # 統計更新
         self._update_stats_label()
@@ -1010,6 +1105,39 @@ class MarkCheckerGUI:
         self._stats_label.config(
             text=f"全エントリ: {total}\nエラー: {errors}\n修正済: {corrected}"
         )
+
+    def _load_whiteness_from_json(self):
+        """OMR処理時に保存された白さキャッシュJSONを読み込む。
+
+        Returns:
+            True: JSONから全エントリ分の白さを読み込めた
+            False: JSONが無いか不完全（フォールバック計算が必要）
+        """
+        whiteness_json_path = self.coords_csv_path.parent / WHITENESS_CACHE_FILE
+        if not whiteness_json_path.exists():
+            return False
+
+        try:
+            with open(whiteness_json_path, 'r', encoding='utf-8') as f:
+                whiteness_data = json.load(f)
+        except Exception as e:
+            logger.warning("白さキャッシュJSON読み込みエラー: %s", e)
+            return False
+
+        loaded = 0
+        for idx in self._all_entries_df.index:
+            entry = self._all_entries_df.iloc[idx]
+            filename = entry['filename']
+            q_no = str(int(entry['question_no']))
+            if filename in whiteness_data and q_no in whiteness_data[filename]:
+                self._whiteness_cache[idx] = whiteness_data[filename][q_no]
+                loaded += 1
+            else:
+                self._whiteness_cache[idx] = 0.0
+
+        total = len(self._all_entries_df)
+        logger.info("白さキャッシュJSONから読み込み: %d/%d件", loaded, total)
+        return loaded > 0
 
     def _compute_whiteness(self, df_idx):
         """指定インデックスのマーク領域の白さ（平均輝度）を計算してキャッシュ"""
@@ -1302,10 +1430,12 @@ class MarkCheckerGUI:
             # 後方互換: error_df を _all_entries_df の参照にする
             self.error_df = self._all_entries_df
 
-            # 白さ指標を全エントリ分事前計算（デフォルトソートが白さ順のため）
+            # 白さ指標: JSONキャッシュがあれば即座にロード、なければ画像から計算
             if len(self._all_entries_df) > 0:
-                all_indices = list(self._all_entries_df.index)
-                self._build_whiteness_cache_for_indices(all_indices)
+                whiteness_loaded = self._load_whiteness_from_json()
+                if not whiteness_loaded:
+                    all_indices = list(self._all_entries_df.index)
+                    self._build_whiteness_cache_for_indices(all_indices)
 
             # グリッド表示（デフォルト）
             if len(self._all_entries_df) > 0:

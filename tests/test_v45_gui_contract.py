@@ -254,3 +254,103 @@ class TestV45MarkCheckerGridContract:
         # prev は最初のページでは無効
         gui._prev_grid_page()
         assert gui._grid_current_page == 0
+
+    def test_choice_tab_buttons_exist(self, mark_checker_gui):
+        """選択肢カテゴリ用のタブボタンが存在すること"""
+        gui = mark_checker_gui
+        assert hasattr(gui, '_btn_tab_light')
+        assert hasattr(gui, '_btn_tab_dark')
+        assert hasattr(gui, '_tab_frame')
+        assert hasattr(gui, '_pager_frame')
+        # 初期状態ではタブは非表示、ページャーが表示
+        assert gui._tab_frame.winfo_manager() == ""
+        assert gui._pager_frame.winfo_manager() == "pack"
+
+    def test_choice_tab_toggle_on_category_selection(self, mark_checker_gui):
+        """選択肢カテゴリ選択時にタブモードに切り替わること"""
+        gui = mark_checker_gui
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+            {"filename": "b.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+        ])
+        gui._whiteness_cache = {0: 200.0, 1: 150.0}
+        gui._rebuild_category_list()
+
+        # 選択肢カテゴリを選択
+        for i in range(gui._category_listbox.size()):
+            text = gui._category_listbox.get(i)
+            if '選択肢 1' in text:
+                gui._category_listbox.selection_clear(0, tk.END)
+                gui._category_listbox.selection_set(i)
+                gui._on_category_selected()
+                break
+
+        gui.window.update_idletasks()
+        assert gui._choice_tab_active is True
+        assert gui._tab_frame.winfo_manager() == "pack"
+        assert gui._pager_frame.winfo_manager() == ""
+
+        # 非選択肢カテゴリに切替 → ページャーに戻る
+        gui._category_listbox.selection_clear(0, tk.END)
+        gui._category_listbox.selection_set(0)  # 要チェック
+        gui._on_category_selected()
+        gui.window.update_idletasks()
+        assert gui._choice_tab_active is False
+        assert gui._pager_frame.winfo_manager() == "pack"
+        assert gui._tab_frame.winfo_manager() == ""
+
+    def test_choice_tab_default_is_light(self, mark_checker_gui):
+        """選択肢カテゴリ選択時のデフォルトタブが「薄い」であること"""
+        gui = mark_checker_gui
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+        ])
+        gui._whiteness_cache = {0: 200.0}
+        gui._rebuild_category_list()
+
+        for i in range(gui._category_listbox.size()):
+            text = gui._category_listbox.get(i)
+            if '選択肢 1' in text:
+                gui._category_listbox.selection_clear(0, tk.END)
+                gui._category_listbox.selection_set(i)
+                gui._on_category_selected()
+                break
+
+        assert gui._choice_tab_current == "薄い"
+
+    def test_apply_button_label(self, mark_checker_gui):
+        """反映ボタンのラベルが変更されていること"""
+        gui = mark_checker_gui
+        assert gui._btn_apply.cget("text") == "データの更新(再読み込み)"
+
+    def test_whiteness_json_loader(self, mark_checker_gui, tmp_path):
+        """白さキャッシュJSONから正しく読み込めること"""
+        import json
+        gui = mark_checker_gui
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+            {"filename": "a.jpg", "question_no": 2, "before": "2",
+             "after": "", "error_type": "", "category": "2"},
+            {"filename": "b.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+        ])
+
+        # JSONファイルを作成
+        whiteness_data = {
+            "a.jpg": {"1": 200.5, "2": 180.3},
+            "b.jpg": {"1": 195.0},
+        }
+        json_path = tmp_path / "whiteness_cache.json"
+        json_path.write_text(json.dumps(whiteness_data), encoding="utf-8")
+
+        gui.coords_csv_path = tmp_path / "coords.csv"
+        result = gui._load_whiteness_from_json()
+
+        assert result is True
+        assert gui._whiteness_cache[0] == 200.5
+        assert gui._whiteness_cache[1] == 180.3
+        assert gui._whiteness_cache[2] == 195.0

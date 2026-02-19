@@ -1,7 +1,7 @@
 """
 mark_checker.py - エラー検出・修正補助モジュール
 
-マークシート読み取り結果のエラー検出（未マーク・ダブルマーク・不正値）と、
+マークシート読み取り結果のエラー検出（未マーク・複数マーク・不正値）と、
 エラー修正CSV⇔Excel間のデータ連携、画像トリミング表示機能を提供する。
 
 v3.9 高速化:
@@ -432,6 +432,112 @@ def detect_errors_checker(xlsx_path, output_csv_path, registered_questions=None)
         logger.info("%s", error_df['error_type'].value_counts())
     
     return len(errors)
+
+
+def detect_all_entries_checker(xlsx_path, registered_questions=None):
+    """Excelファイルから全エントリ（正常＋エラー）を読み込む。
+
+    エラーだけでなく正常に認識されたマーク（選択肢1,2,3,...）も含めて
+    全ての (filename, question_no) ペアを返す。
+    各エントリには分類カテゴリ（選択肢番号 / ノーマーク / 複数マーク等）も付与する。
+
+    Args:
+        xlsx_path: Mark2結果Excelのパス
+        registered_questions: 採点対象の問題番号セット（Noneなら全問）
+
+    Returns:
+        pd.DataFrame: columns = [filename, question_no, before, after, error_type, category]
+    """
+    xlsx_path = Path(xlsx_path)
+    if not xlsx_path.exists():
+        raise FileNotFoundError(f"ファイルが見つかりません: {xlsx_path}")
+
+    wb = openpyxl.load_workbook(xlsx_path)
+    ws = wb['Sheet1']
+
+    headers = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
+    labels = [ws.cell(2, i).value for i in range(1, ws.max_column + 1)]
+
+    column_names = []
+    for header, label in zip(headers, labels):
+        column_names.append(label if label is not None else header)
+
+    data_rows = []
+    for row_idx in range(3, ws.max_row + 1):
+        data_rows.append([ws.cell(row_idx, i).value for i in range(1, ws.max_column + 1)])
+    wb.close()
+
+    df = pd.DataFrame(data_rows, columns=column_names)
+
+    available_questions = []
+    for col_name in df.columns:
+        col_str = str(col_name).strip()
+        try:
+            f_val = float(col_str)
+            if f_val == int(f_val):
+                q_num = int(f_val)
+                if q_num >= 1:
+                    available_questions.append(col_name)
+        except ValueError:
+            pass
+    available_questions.sort(key=lambda x: int(x))
+
+    if registered_questions is not None:
+        reg_set = set(int(q) for q in registered_questions)
+        available_questions = [q for q in available_questions if int(q) in reg_set]
+
+    entries = []
+    for _idx, row in df.iterrows():
+        filename = row['File']
+        for q_num in available_questions:
+            value = row[q_num]
+            before_value = ""
+            error_type = ""
+            category = ""
+
+            if pd.isna(value):  # type: ignore[arg-type]
+                error_type = ERROR_TYPE_NO_MARK
+                category = "ノーマーク"
+                before_value = ""
+            else:
+                value_str = str(value).strip()
+                before_value = value_str
+
+                if value_str in ('-1', '-1.0'):
+                    category = "無効回答(-1)"
+                elif ';' in value_str or '|' in value_str:
+                    error_type = ERROR_TYPE_DOUBLE_MARK
+                    category = "複数マーク"
+                else:
+                    # 正規化: "3.0" → "3"
+                    norm = value_str
+                    if '.' in norm:
+                        try:
+                            fv = float(norm)
+                            if fv == int(fv):
+                                norm = str(int(fv))
+                        except ValueError:
+                            pass
+                    if re.match(r'^\d+$', norm):
+                        category = norm
+                        before_value = norm
+                    else:
+                        error_type = ERROR_TYPE_INVALID
+                        category = "不正な値"
+
+            entries.append({
+                'filename': filename,
+                'question_no': int(q_num),
+                'before': before_value,
+                'after': '',
+                'error_type': error_type,
+                'category': category,
+            })
+
+    if entries:
+        return pd.DataFrame(entries)
+    return pd.DataFrame(columns=['filename', 'question_no', 'before', 'after',
+                                  'error_type', 'category'])
 
 
 def load_errors_checker(error_csv_path):

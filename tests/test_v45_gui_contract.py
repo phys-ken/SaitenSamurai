@@ -143,63 +143,79 @@ def mark_checker_gui(monkeypatch):
 
 
 class TestV45MarkCheckerGridContract:
-    def test_grid_controls_exist_and_initial_mode(self, mark_checker_gui):
+    def test_grid_default_view_and_side_panel(self, mark_checker_gui):
+        """デフォルトがグリッド表示で、サイドパネルが存在すること"""
         gui = mark_checker_gui
+        assert gui._view_mode == "grid"
+        assert gui._grid_view_frame.winfo_manager() == "pack"
+        assert gui._single_view_frame.winfo_manager() == ""
+        # サイドパネル
+        assert hasattr(gui, '_category_listbox')
+        assert hasattr(gui, '_sort_combo')
+        assert hasattr(gui, '_side_panel')
+
+    def test_switch_to_single_and_back(self, mark_checker_gui):
+        """単体表示への切り替えとグリッドへの復帰"""
+        gui = mark_checker_gui
+        # all_entries_df を設定して単体表示に切り替え
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "test.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+        ])
+        gui.coords_df = pd.DataFrame(columns=['image_path', 'question_no', 'choices_bbox', 'mark_coords'])
+
+        gui._switch_to_single(0)
+        gui.window.update_idletasks()
         assert gui._view_mode == "single"
-        assert gui._btn_toggle_view["text"] == "グリッド表示"
         assert gui._single_view_frame.winfo_manager() == "pack"
-        assert gui._grid_view_frame.winfo_manager() == ""
 
-    def test_toggle_to_grid_and_back(self, mark_checker_gui):
-        gui = mark_checker_gui
-
-        gui._toggle_view_mode()
+        gui._switch_to_grid()
         gui.window.update_idletasks()
         assert gui._view_mode == "grid"
-        assert gui._btn_toggle_view["text"] == "単体表示"
         assert gui._grid_view_frame.winfo_manager() == "pack"
-
-        gui._toggle_view_mode()
-        gui.window.update_idletasks()
-        assert gui._view_mode == "single"
-        assert gui._btn_toggle_view["text"] == "グリッド表示"
-        assert gui._single_view_frame.winfo_manager() == "pack"
 
     def test_grid_card_size_slider(self, mark_checker_gui):
         gui = mark_checker_gui
-        # 初期サイズ 160
         assert gui._grid_thumb_size == 160
         assert gui._grid_size_var.get() == 160
-        # スライダーが存在すること
         assert hasattr(gui, '_grid_size_slider')
-        # サイズ変更が反映されること
         gui._grid_size_var.set(200)
         gui._on_grid_size_changed()
         gui.window.update_idletasks()
         assert gui._grid_thumb_size == 200
 
-    def test_filter_logic_contract(self, mark_checker_gui):
+    def test_category_filter_logic(self, mark_checker_gui):
+        """カテゴリフィルタが正しく動作すること"""
         gui = mark_checker_gui
-        gui.error_df = pd.DataFrame(
-            [
-                {"error_type": ERROR_TYPE_NO_MARK, "after": ""},
-                {"error_type": ERROR_TYPE_DOUBLE_MARK, "after": "2"},
-                {"error_type": ERROR_TYPE_NO_MARK, "after": "-1"},
-                {"error_type": ERROR_TYPE_DOUBLE_MARK, "after": ""},
-            ]
-        )
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1",
+             "after": "", "error_type": "", "category": "1"},
+            {"filename": "a.jpg", "question_no": 2, "before": "",
+             "after": "", "error_type": ERROR_TYPE_NO_MARK, "category": "ノーマーク"},
+            {"filename": "b.jpg", "question_no": 1, "before": "2",
+             "after": "", "error_type": "", "category": "2"},
+            {"filename": "b.jpg", "question_no": 2, "before": "1;3",
+             "after": "-1", "error_type": ERROR_TYPE_DOUBLE_MARK, "category": "複数マーク"},
+        ])
 
-        gui._grid_filter_var.set("全て")
-        assert len(gui._get_filtered_error_indices()) == 4
+        # カテゴリリスト構築
+        gui._rebuild_category_list()
 
-        gui._grid_filter_var.set("無マーク")
-        assert len(gui._get_filtered_error_indices()) == 2
+        # 全て
+        gui._category_listbox.selection_clear(0, tk.END)
+        gui._category_listbox.selection_set(0)  # "全て"
+        assert len(gui._get_filtered_indices()) == 4
 
-        gui._grid_filter_var.set("ダブルマーク")
-        assert len(gui._get_filtered_error_indices()) == 2
+        # 要チェック: error_type ありかつ after != -1
+        gui._category_listbox.selection_clear(0, tk.END)
+        gui._category_listbox.selection_set(1)  # "要チェック"
+        filtered = gui._get_filtered_indices()
+        # ノーマーク(after='')のみが要チェック。複数マーク(after='-1')は修正済み
+        assert len(filtered) == 1
 
-        gui._grid_filter_var.set("チェック済み")
-        assert len(gui._get_filtered_error_indices()) == 2
-
-        gui._grid_filter_var.set("未チェック")
-        assert len(gui._get_filtered_error_indices()) == 2
+    def test_sort_options(self, mark_checker_gui):
+        """ソートプルダウンの選択肢が正しいこと"""
+        gui = mark_checker_gui
+        sort_values = list(gui._sort_combo['values'])
+        assert "画像名順" in sort_values
+        assert "白さ順（白い順）" in sort_values

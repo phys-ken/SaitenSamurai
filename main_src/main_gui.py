@@ -3010,6 +3010,7 @@ class SaitenSamuraiGUI:
         """MarkCheckerGUIを起動（メインスレッド）
 
         sys.stdout は try/finally で確実に復元する。
+        ロガー出力も GUI ログに転送する。
         """
         import sys
         
@@ -3017,7 +3018,10 @@ class SaitenSamuraiGUI:
         original_stdout = getattr(self, 'original_stdout', sys.stdout)
         if not hasattr(self, 'original_stdout'):
             self.original_stdout = sys.stdout
-        
+
+        # ロガー出力をGUIログに転送するハンドラを追加
+        gui_handler, suppressed = self._attach_gui_log_handler()
+
         try:
             class LogRedirector:
                 def __init__(self, log_func):
@@ -3049,6 +3053,8 @@ class SaitenSamuraiGUI:
         except Exception as e:
             self.log_message(f"起動エラー: {e}")
         finally:
+            # ロガーハンドラを復元
+            self._detach_gui_log_handler(gui_handler, suppressed)
             # チェッカーが正常起動した場合はチェッカー側で復帰するが、
             # エラー時は必ずここで復元する
             if not hasattr(self, '_checker_active'):

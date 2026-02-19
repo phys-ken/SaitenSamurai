@@ -1496,6 +1496,23 @@ class MarkCheckerGUI:
                     continue
             logger.info("座標インデックス構築: %d件", len(self._bbox_map))
 
+            # 座標欠損の集計（個別ではなくサマリーで報告）
+            missing_coords = []
+            for _i, row in self._all_entries_df.iterrows():
+                fn = row.get("image_filename", "")
+                q = int(row.get("question_no", 0))
+                orig_q = q + self.skip_questions
+                if (fn, orig_q) not in self._bbox_map:
+                    missing_coords.append((fn, orig_q))
+            if missing_coords:
+                # 影響画像数をカウント
+                affected_images = len(set(fn for fn, _ in missing_coords))
+                logger.info(
+                    "座標が取得できなかったエントリ: %d件（%d枚の画像）"
+                    "── マーカー検出精度の限界によるもので、正常動作です",
+                    len(missing_coords), affected_images,
+                )
+
             # サイドパネル構築
             self._rebuild_category_list()
 

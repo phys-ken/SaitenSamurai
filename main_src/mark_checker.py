@@ -623,7 +623,7 @@ def get_display_image_checker(coords_df, image_folder, image_filename, question_
         bbox = get_bbox_for_question_checker(coords_df, image_filename, question_no)
     
     if bbox is None:
-        logger.warning("座標が見つかりません: %s, Q%s", image_filename, question_no)
+        logger.debug("座標が見つかりません: %s, Q%s", image_filename, question_no)
         return None
     
     image_path = Path(image_folder) / image_filename

@@ -3412,4 +3412,9 @@ class DescriptiveReviewGUI:
                 # 「はい」→ 保存試行、失敗なら閉じない
                 if not self._save():
                     return
+        # スクロールバインドの解除（残留するとTclError）
+        try:
+            self._canvas.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
         self.win.destroy()

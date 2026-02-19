@@ -16,6 +16,7 @@ saitensamurai.py から抽出された以下のクラスを含む:
 # 標準ライブラリ
 import json
 import logging
+import re
 import sys
 import shutil
 import threading
@@ -253,6 +254,8 @@ class MarkCheckerGUI:
         
         crop_x = max(0, min(int(crop_x), img_w - 1))
         crop_y = max(0, min(int(crop_y), img_h - 1))
+        expanded_w = min(int(expanded_w), img_w - crop_x)
+        expanded_h = min(int(expanded_h), img_h - crop_y)
         
         # マーク座標をクロップ＋拡大後の画像座標に変換
         smx = mx * res_scale_x
@@ -1137,7 +1140,7 @@ class MarkCheckerGUI:
         selected = set()
 
         error_mask = (
-            (df['category'].isin(['ノーマーク', '複数マーク', '不正な値'])) |
+            (df['category'].isin(['ノーマーク', '複数マーク', '不正な値', '無効回答(-1)'])) |
             (df['error_type'] != '')
         )
         selected.update(df[error_mask].index.tolist())
@@ -1499,7 +1502,7 @@ class MarkCheckerGUI:
             # 座標欠損の集計（個別ではなくサマリーで報告）
             missing_coords = []
             for _i, row in self._all_entries_df.iterrows():
-                fn = row.get("image_filename", "")
+                fn = row.get("filename", "")
                 q = int(row.get("question_no", 0))
                 orig_q = q + self.skip_questions
                 if (fn, orig_q) not in self._bbox_map:
@@ -1666,7 +1669,7 @@ class MarkCheckerGUI:
             self._all_entries_df['after'] = self._all_entries_df['after'].astype(object)
             if correction == '-1':
                 self._all_entries_df.at[self.current_index, 'after'] = '-1'
-            elif correction.lstrip('-').isdigit():
+            elif re.match(r'^-?\d+$', correction):
                 self._all_entries_df.at[self.current_index, 'after'] = correction
             else:
                 messagebox.showwarning("入力エラー",

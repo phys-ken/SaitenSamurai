@@ -3055,10 +3055,7 @@ class SaitenSamuraiGUI:
         finally:
             # ロガーハンドラを復元
             self._detach_gui_log_handler(gui_handler, suppressed)
-            # チェッカーが正常起動した場合はチェッカー側で復帰するが、
-            # エラー時は必ずここで復元する
-            if not hasattr(self, '_checker_active'):
-                sys.stdout = original_stdout
+            sys.stdout = original_stdout
     
     def run_summary_generation(self):
         """サマリー生成処理を実行"""

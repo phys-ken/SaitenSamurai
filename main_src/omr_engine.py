@@ -544,14 +544,15 @@ def recognize_marks(image, coordinates, color_threshold=0.1, area_threshold=0.4)
 
 def extract_mark_features(gray_image, coordinates):
     """
-    マーク領域ごとに4次元特徴量を抽出する。
+    マーク領域ごとに5次元ローカル特徴量を抽出する。
 
     Args:
         gray_image: グレースケール画像 (射影変換済み)
         coordinates: マーク領域座標リスト
 
     Returns:
-        features: np.ndarray (N, 4) — [filled_ratio, mean_inv_brightness, dark_pixel_ratio, std_inv_brightness]
+        features: np.ndarray (N, 5) — [filled_ratio, mean_inv_brightness,
+                  dark_pixel_ratio, std_inv_brightness, center_edge_ratio]
         meta: list[dict] — 各要素の question_no, choice 情報
     """
     features = []
@@ -561,7 +562,7 @@ def extract_mark_features(gray_image, coordinates):
         roi = gray_image[y:y+h, x:x+w]
         total_pixels = w * h
         if total_pixels == 0:
-            features.append([0.0, 0.0, 0.0, 0.0])
+            features.append([0.0, 0.0, 0.0, 0.0, 0.0])
             meta.append({'question_no': coord['question_no'], 'choice': coord['choice']})
             continue
 
@@ -577,7 +578,23 @@ def extract_mark_features(gray_image, coordinates):
         # 暗画素率 (値<=128 の画素)
         dark_pixel_ratio = float(np.sum(roi <= 128)) / total_pixels
 
-        features.append([filled_ratio, mean_inv, dark_pixel_ratio, std_inv])
+        # 中心/辺縁濃度比 — マークの塗り方パターンを捉える
+        rh, rw = roi.shape
+        if rh >= 4 and rw >= 4:
+            mh, mw = max(1, rh // 4), max(1, rw // 4)
+            center = roi[mh:rh - mh, mw:rw - mw]
+            top = roi[:mh, :]
+            bot = roi[rh - mh:, :]
+            left = roi[:, :mw]
+            right = roi[:, rw - mw:]
+            edge = np.concatenate([top.ravel(), bot.ravel(), left.ravel(), right.ravel()])
+            center_dark = float(255 - np.mean(center)) / 255.0
+            edge_dark = float(255 - np.mean(edge)) / 255.0
+            center_edge_ratio = center_dark / max(edge_dark, 0.001)
+        else:
+            center_edge_ratio = 1.0
+
+        features.append([filled_ratio, mean_inv, dark_pixel_ratio, std_inv, center_edge_ratio])
         meta.append({'question_no': coord['question_no'], 'choice': coord['choice']})
 
     return np.array(features, dtype=np.float64), meta
@@ -588,12 +605,16 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
                            fallback_area_threshold=0.4,
                            fallback_color_threshold=0.1):
     """
-    K-means クラスタリングによるマーク認識。
+    K-means クラスタリングによるマーク認識 (v4.5 enriched)。
 
-    全領域の4次元特徴量を StandardScaler で正規化し KMeans(K=2) でクラスタリング。
-    filled_ratio の高い方を「マーク済み」クラスタとして判定する。
+    5次元ローカル特徴量に加え、シート内正規化・設問内コントラストの
+    コンテキスト特徴量を追加した7次元空間で K-means(K=2) を実行する。
 
-    サンプル数が min_samples 未満の場合は、従来の閾値方式にフォールバックする。
+    特徴量 (7次元):
+      - filled_ratio, mean_inv, dark_pixel_ratio, std_inv: ローカル特徴量
+      - center_edge_ratio: 中心/辺縁の濃度比 (塗り方パターン)
+      - normalized_filled: シート内最大 filled_ratio で正規化 (生徒の癖を吸収)
+      - question_contrast: 設問内での相対的な濃さ差分 (消しゴム痕を識別)
 
     Args:
         image: 補正後の画像 (Gray or BGR)
@@ -621,7 +642,41 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
                                   area_threshold=fallback_area_threshold)
         return results, None
 
-    features, meta = extract_mark_features(gray, coordinates)
+    # --- ローカル特徴量抽出 (N, 5) ---
+    local_features, meta = extract_mark_features(gray, coordinates)
+
+    # --- コンテキスト特徴量の計算 ---
+    filled_col = local_features[:, 0]  # filled_ratio
+    student_max_filled = float(filled_col.max()) if len(filled_col) > 0 else 0.001
+
+    # normalized_filled: シート内の最大 filled_ratio で正規化
+    normalized_filled = filled_col / max(student_max_filled, 0.001)
+
+    # question_contrast: 設問内での相対的な差分
+    from collections import defaultdict
+    q_groups = defaultdict(list)
+    for i, m in enumerate(meta):
+        q_groups[m['question_no']].append((i, filled_col[i]))
+
+    question_contrast = np.zeros(len(meta), dtype=np.float64)
+    for q_no, members in q_groups.items():
+        sorted_members = sorted(members, key=lambda x: x[1], reverse=True)
+        for rank, (idx, val) in enumerate(sorted_members):
+            if rank == 0 and len(sorted_members) >= 2:
+                # 最も濃い → 2番目との差
+                question_contrast[idx] = val - sorted_members[1][1]
+            elif rank == 0:
+                question_contrast[idx] = 0.0
+            else:
+                # 2番目以降 → 最大との差 (負の値)
+                question_contrast[idx] = val - sorted_members[0][1]
+
+    # --- 7次元特徴量行列 ---
+    features = np.column_stack([
+        local_features,           # (N, 5): filled, mean_inv, dark_pixel, std_inv, center_edge
+        normalized_filled,        # (N,)
+        question_contrast,        # (N,)
+    ])  # → (N, 7)
 
     from sklearn.preprocessing import StandardScaler
     from sklearn.cluster import KMeans
@@ -658,6 +713,17 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
                 results[q_no] = []
             results[q_no].append(m['choice'])
 
+    # --- 信頼度スコア (設問単位) ---
+    # cutoff からの距離が小さい設問 = 判定に不確実性がある
+    question_confidences = {}
+    for q_no, members in q_groups.items():
+        min_margin = float('inf')
+        for idx, val in members:
+            margin = abs(val - cutoff)
+            if margin < min_margin:
+                min_margin = margin
+        question_confidences[q_no] = round(min_margin, 4)
+
     # ROI サムネイル (16×16 → base64) — レポートのホバー表示用
     import base64 as _b64
     roi_thumbnails = []
@@ -683,6 +749,8 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
         'scaler_mean': scaler.mean_.tolist(),
         'scaler_scale': scaler.scale_.tolist(),
         'roi_thumbnails': roi_thumbnails,
+        'question_confidences': question_confidences,
+        'student_max_filled': student_max_filled,
     }
 
     return results, kmeans_info
@@ -1054,7 +1122,7 @@ canvas {{ max-width: 100%; }}
 
 <div class="pca-section">
   <h3>K-means 散布図 (PCA 2次元投影)</h3>
-  <p class="pca-desc">4次元特徴空間をPCAで2次元に圧縮。各点にホバーするとマーク領域の詳細が表示されます。</p>
+  <p class="pca-desc">7次元特徴空間をPCAで2次元に圧縮。各点にホバーするとマーク領域の詳細が表示されます。</p>
   <div class="pca-legend">
     <span><span class="dot" style="background:#FF9800"></span> クラスタ0 (境界)</span>
     <span><span class="dot" style="background:#EF5350"></span> クラスタ1 (マーク済み)</span>

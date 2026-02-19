@@ -140,11 +140,14 @@ OMR_MODE_KMEANS = "kmeans"         # K-means クラスタリング方式（v4.5 
 # K-means パラメータ
 KMEANS_N_CLUSTERS = 2              # クラスタ数 (マーク済み / 空白)
 KMEANS_MIN_SAMPLES = 50            # 最小サンプル数（未満は閾値方式にフォールバック）
-KMEANS_FEATURES = [                # 特徴量名リスト
+KMEANS_FEATURES = [                # 特徴量名リスト (v4.5.0: 7次元)
     'filled_ratio',
     'mean_inv_brightness',
     'dark_pixel_ratio',
     'std_inv_brightness',
+    'center_edge_ratio',               # v4.5 追加: 中心/辺縁の濃度比
+    'normalized_filled',               # v4.5 追加: シート内正規化塗りつぶし比
+    'question_contrast',               # v4.5 追加: 設問内コントラスト
 ]
 
 

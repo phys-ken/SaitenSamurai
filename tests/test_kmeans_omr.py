@@ -95,8 +95,11 @@ class TestConstants:
     def test_kmeans_params(self):
         assert KMEANS_N_CLUSTERS == 2
         assert KMEANS_MIN_SAMPLES == 50
-        assert len(KMEANS_FEATURES) == 4
+        assert len(KMEANS_FEATURES) == 7
         assert 'filled_ratio' in KMEANS_FEATURES
+        assert 'center_edge_ratio' in KMEANS_FEATURES
+        assert 'normalized_filled' in KMEANS_FEATURES
+        assert 'question_contrast' in KMEANS_FEATURES
 
 
 # ============================================================
@@ -110,7 +113,7 @@ class TestExtractMarkFeatures:
         coords = _make_coordinates(n_questions=2, n_choices=3)
         features, meta = extract_mark_features(gray, coords)
 
-        assert features.shape == (6, 4)  # 2問 × 3選択肢 = 6
+        assert features.shape == (6, 5)  # 2問 × 3選択肢 = 6, 5ローカル特徴量
         assert len(meta) == 6
         # 白画像なので filled_ratio は 0 に近い
         assert np.all(features[:, 0] < 0.1)
@@ -145,7 +148,19 @@ class TestExtractMarkFeatures:
         gray = _make_gray_image()
         coords = [{'question_no': 1, 'choice': 0, 'x': 10, 'y': 10, 'width': 0, 'height': 10}]
         features, _ = extract_mark_features(gray, coords)
+        assert features.shape == (1, 5)
         assert np.all(features[0] == 0.0)
+
+    def test_center_edge_ratio_extraction(self):
+        """中心/辺縁濃度比が5番目の特徴量として抽出される"""
+        gray = _make_gray_image()
+        coords = _make_coordinates(n_questions=1, n_choices=3)
+        _fill_mark(gray, coords[0])
+        features, _ = extract_mark_features(gray, coords)
+        # 塗りつぶした領域は center_edge_ratio が高い (中心が辺縁より濃い)
+        assert features[0, 4] > 0.5
+        # 白い領域は center_dark ≈ 0, edge_dark ≈ 0 → CER ≈ 0
+        assert features[1, 4] < 1.5
 
 
 # ============================================================
@@ -225,6 +240,12 @@ class TestRecognizeMarksKmeans:
         assert 'cluster_means' in info
         assert 'marked_cluster' in info
         assert info['n_marked'] + info['n_empty'] == len(coords)
+        # v4.5: 7次元特徴量 (ローカル5 + コンテキスト2)
+        assert info['features'].shape[1] == 7
+        # v4.5: 信頼度スコア・学生最大 filled
+        assert 'question_confidences' in info
+        assert 'student_max_filled' in info
+        assert isinstance(info['question_confidences'], dict)
 
     def test_fallback_to_threshold(self):
         """サンプル数 < min_samples → 閾値方式にフォールバック"""
@@ -273,7 +294,7 @@ class TestGenerateKmeansReport:
     def test_report_creation(self, tmp_path):
         """HTMLレポートファイルが正しく生成される"""
         # テストデータ作成
-        features = np.random.rand(100, 4).astype(np.float64)
+        features = np.random.rand(100, 7).astype(np.float64)
         labels = np.array([0] * 90 + [1] * 10)
         meta = [{'question_no': i // 5 + 1, 'choice': i % 5} for i in range(100)]
 
@@ -288,8 +309,8 @@ class TestGenerateKmeansReport:
                 'cutoff': 0.45,
                 'n_marked': 10,
                 'n_empty': 90,
-                'scaler_mean': [0.5, 0.5, 0.5, 0.5],
-                'scaler_scale': [0.1, 0.1, 0.1, 0.1],
+                'scaler_mean': [0.5] * 7,
+                'scaler_scale': [0.1] * 7,
             },
         }]
 
@@ -306,7 +327,7 @@ class TestGenerateKmeansReport:
         """複数画像のレポートが正しく集約される"""
         infos = []
         for i in range(3):
-            features = np.random.rand(50, 4).astype(np.float64)
+            features = np.random.rand(50, 7).astype(np.float64)
             labels = np.array([0] * 45 + [1] * 5)
             meta = [{'question_no': j // 5 + 1, 'choice': j % 5} for j in range(50)]
             infos.append({
@@ -320,8 +341,8 @@ class TestGenerateKmeansReport:
                     'cutoff': 0.45,
                     'n_marked': 5,
                     'n_empty': 45,
-                    'scaler_mean': [0.5] * 4,
-                    'scaler_scale': [0.1] * 4,
+                    'scaler_mean': [0.5] * 7,
+                    'scaler_scale': [0.1] * 7,
                 },
             })
 

@@ -387,9 +387,9 @@ class MarkCheckerGUI:
                                       fg='#555', justify=tk.LEFT)
         self._stats_label.pack(fill=tk.X, pady=(5, 0))
 
-        # 一括 -1 ボタン
+        # 一括無効回答ボタン
         self._btn_batch_minus1 = tk.Button(
-            self._side_panel, text="ノーマーク全件 → -1",
+            self._side_panel, text="ノーマーク全件 → 無効回答(-1)",
             command=self._batch_set_minus1,
             bg='#FFCDD2', fg='#333', font=('Yu Gothic UI', 9, 'bold'),
             relief=tk.FLAT, cursor='hand2',
@@ -765,12 +765,13 @@ class MarkCheckerGUI:
         self._view_mode = "grid"
         self.window.unbind('<Key>')
         self._single_view_frame.pack_forget()
-        # サイドパネル→グリッドの順でpackして位置を保つ
-        if self._side_panel.winfo_manager() == "":
-            self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
-            self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
-        else:
-            self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
+        # _main_content の子を正しい順序で再配置（サイドパネル → コンテンツ）
+        # packは追加順で配置されるため、両方を外してから再 pack する
+        self._side_panel.pack_forget()
+        self._content_area.pack_forget()
+        self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
+        self._content_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
         self._refresh_grid_view()
 
     def _switch_to_single(self, df_idx):
@@ -952,11 +953,12 @@ class MarkCheckerGUI:
                               wraplength=thumb_size)
         info_label.pack(padx=2, pady=(0, 2))
 
-        # クリック → 単体表示に切り替え
+        # クリック → 単体表示に切り替え（カード全体が対象）
         def on_card_click(event, target_idx=df_idx):
             self._switch_to_single(target_idx)
-        img_label.bind("<Button-1>", on_card_click)
-        info_label.bind("<Button-1>", on_card_click)
+        for widget in (card, inner, img_label, info_label):
+            widget.bind("<Button-1>", on_card_click)
+            widget.configure(cursor='hand2')
 
     def _batch_set_minus1(self):
         """ノーマーク全件を -1 に一括設定する (v4.5)"""
@@ -970,7 +972,7 @@ class MarkCheckerGUI:
             return
         ans = messagebox.askyesno(
             "一括設定の確認",
-            f"未修正のノーマーク {count}件 を全て\n「-1」に設定します。\n\nよろしいですか?",
+            f"未修正のノーマーク {count}件 を全て\n「無効回答(-1)」に設定します。\n\nよろしいですか?",
             parent=self.window,
         )
         if not ans:

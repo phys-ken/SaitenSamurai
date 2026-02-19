@@ -681,7 +681,10 @@ class MarkCheckerGUI:
         return text
 
     def _rebuild_category_list(self):
-        """全エントリDFからサイドパネルのカテゴリリストを再構築する"""
+        """全エントリDFからサイドパネルのカテゴリリストを再構築する（選択保持）"""
+        # 現在のカテゴリ選択を記憶
+        prev_category = self._get_selected_category()
+
         self._category_listbox.delete(0, tk.END)
         if self._all_entries_df is None or len(self._all_entries_df) == 0:
             return
@@ -734,11 +737,24 @@ class MarkCheckerGUI:
                 self._category_listbox.insert(tk.END, f"{label}  ({cnt})")
                 self._category_listbox.itemconfig(idx, fg=color)
 
-        # デフォルトで「要チェック」を選択（件数があれば）
-        if needs_check_count > 0:
-            self._category_listbox.selection_set(1)
-        else:
-            self._category_listbox.selection_set(0)
+        # 前回のカテゴリ選択を復元（見つからなければ「要チェック」へフォールバック）
+        restored = False
+        if prev_category:
+            for i in range(self._category_listbox.size()):
+                item_text = self._category_listbox.get(i)
+                # 「選択肢 3  (45)」などからカテゴリ名を抽出して比較
+                clean = item_text.lstrip('─ ')
+                if '(' in clean:
+                    clean = clean[:clean.rfind('(')].strip()
+                if clean == prev_category:
+                    self._category_listbox.selection_set(i)
+                    restored = True
+                    break
+        if not restored:
+            if needs_check_count > 0:
+                self._category_listbox.selection_set(1)
+            else:
+                self._category_listbox.selection_set(0)
 
     # --------------------------------------------------
     # ビュー切り替え
@@ -749,9 +765,12 @@ class MarkCheckerGUI:
         self._view_mode = "grid"
         self.window.unbind('<Key>')
         self._single_view_frame.pack_forget()
+        # サイドパネル→グリッドの順でpackして位置を保つ
         if self._side_panel.winfo_manager() == "":
             self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
-        self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
+            self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
+        else:
+            self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
         self._refresh_grid_view()
 
     def _switch_to_single(self, df_idx):

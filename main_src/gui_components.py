@@ -18,6 +18,7 @@ import logging
 import sys
 import shutil
 import threading
+from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime
 
@@ -89,6 +90,7 @@ class MarkCheckerGUI:
         self._all_entries_df = None
         self.current_index = 0
         self.photo_image = None
+        self._bbox_map = {}
         
         # v3.9 高速化: 補正済み画像キャッシュ
         self._image_cache = CorrectedImageCache(max_size=2)
@@ -103,6 +105,19 @@ class MarkCheckerGUI:
         self.skip_questions = skip_questions
         self.template_path = template_path
         self.error_csv_path = self.xlsx_path.parent / "tmp_checking_dm_nm.csv"
+
+        # v4.5 安定化: グリッド描画のページング/分割描画
+        self._grid_page_size = 240
+        self._grid_single_page_limit = 2000  # この件数以下は1ページ表示を優先
+        self._grid_current_page = 0
+        self._grid_filtered_indices = []
+        self._grid_render_job = None
+        self._grid_resize_after = None
+        self._grid_size_after = None
+
+        # v4.5 安定化: サムネイル画像キャッシュ（PIL）
+        self._thumb_cache = OrderedDict()
+        self._thumb_cache_max = 800
         
         # 正答データ（マークチェック時の正答枠表示用）
         self._answer_key = self._load_answer_key()
@@ -285,6 +300,19 @@ class MarkCheckerGUI:
 
     def on_close(self):
         """ウィンドウが閉じられるときの処理"""
+        self._cancel_grid_render()
+        if self._grid_resize_after is not None:
+            try:
+                self.window.after_cancel(self._grid_resize_after)
+            except Exception:
+                pass
+            self._grid_resize_after = None
+        if self._grid_size_after is not None:
+            try:
+                self.window.after_cancel(self._grid_size_after)
+            except Exception:
+                pass
+            self._grid_size_after = None
         # v3.9 高速化: 未保存のCSV変更をフラッシュ
         try:
             self._flush_csv()
@@ -292,6 +320,7 @@ class MarkCheckerGUI:
             pass
         # v3.9 高速化: キャッシュ解放
         self._image_cache.clear()
+        self._thumb_cache.clear()
         # sys.stdoutが差し替えられていた場合、元に戻す
         try:
             if self._original_stdout_ref is not None:
@@ -350,7 +379,7 @@ class MarkCheckerGUI:
             state='readonly', width=15,
         )
         self._sort_combo.pack(side=tk.LEFT, padx=3)
-        self._sort_combo.bind('<<ComboboxSelected>>', lambda e: self._refresh_grid_view())
+        self._sort_combo.bind('<<ComboboxSelected>>', lambda e: self._refresh_grid_view(reset_page=True))
 
         # 統計ラベル
         self._stats_label = tk.Label(self._side_panel, text="",
@@ -471,6 +500,22 @@ class MarkCheckerGUI:
         )
         self._grid_count_label.pack(side=tk.LEFT, padx=10)
 
+        # ページング
+        self._btn_prev_page = tk.Button(
+            toolbar, text="◀", width=3, command=self._prev_grid_page,
+            bg='#546E7A', fg='white', relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_prev_page.pack(side=tk.LEFT, padx=(8, 2))
+        self._page_label = tk.Label(
+            toolbar, text="1/1", font=('Yu Gothic UI', 9), bg='#37474F', fg='white',
+        )
+        self._page_label.pack(side=tk.LEFT, padx=2)
+        self._btn_next_page = tk.Button(
+            toolbar, text="▶", width=3, command=self._next_grid_page,
+            bg='#546E7A', fg='white', relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_next_page.pack(side=tk.LEFT, padx=(2, 8))
+
         # カードサイズスライダー
         self._grid_size_var = tk.IntVar(value=self._grid_thumb_size)
         tk.Label(toolbar, text="サイズ:", font=('Yu Gothic UI', 9),
@@ -537,13 +582,97 @@ class MarkCheckerGUI:
             self.window.after_cancel(self._grid_size_after)
         self._grid_size_after = self.window.after(200, self._refresh_grid_view)
 
+    def _thumb_cache_get(self, key):
+        """サムネイルキャッシュ取得（LRU更新）"""
+        if key in self._thumb_cache:
+            img = self._thumb_cache.pop(key)
+            self._thumb_cache[key] = img
+            return img
+        return None
+
+    def _thumb_cache_put(self, key, pil_img):
+        """サムネイルキャッシュ格納（LRU）"""
+        if key in self._thumb_cache:
+            self._thumb_cache.pop(key)
+        self._thumb_cache[key] = pil_img
+        while len(self._thumb_cache) > self._thumb_cache_max:
+            self._thumb_cache.popitem(last=False)
+
+    def _get_grid_thumbnail(self, filename, original_q_no, thumb_size):
+        """グリッドカード用サムネイルを取得（キャッシュ優先）"""
+        key = (filename, int(original_q_no), int(thumb_size))
+        cached = self._thumb_cache_get(key)
+        if cached is not None:
+            return cached
+
+        pil_img = get_display_image_checker(
+            self.coords_df, self.image_folder, filename, original_q_no,
+            scale_factor=1.0, expand_factor=DEFAULT_EXPAND_FACTOR,
+            cache=self._image_cache, bbox_map=self._bbox_map,
+        )
+        if pil_img is None:
+            return None
+
+        pil_img.thumbnail((thumb_size, thumb_size), Image.LANCZOS)
+        self._thumb_cache_put(key, pil_img)
+        return pil_img
+
+    def _prev_grid_page(self):
+        """グリッド前ページへ移動"""
+        if self._grid_current_page <= 0:
+            return
+        self._grid_current_page -= 1
+        self._refresh_grid_view(reset_page=False)
+
+    def _next_grid_page(self):
+        """グリッド次ページへ移動"""
+        if not self._grid_filtered_indices:
+            return
+        total_items = len(self._grid_filtered_indices)
+        effective_page_size = self._get_effective_page_size(total_items)
+        total_pages = max(1, (total_items + effective_page_size - 1) // effective_page_size)
+        if self._grid_current_page >= total_pages - 1:
+            return
+        self._grid_current_page += 1
+        self._refresh_grid_view(reset_page=False)
+
+    def _get_effective_page_size(self, total_items):
+        """現在の件数に対する実効ページサイズを返す"""
+        if total_items <= self._grid_single_page_limit:
+            return max(1, total_items)
+        return self._grid_page_size
+
+    def _update_grid_pager(self, total_items):
+        """ページングラベル・ボタン状態を更新（少件数は1ページ優先）"""
+        effective_page_size = self._get_effective_page_size(total_items)
+
+        total_pages = max(1, (total_items + effective_page_size - 1) // effective_page_size)
+        if self._grid_current_page >= total_pages:
+            self._grid_current_page = total_pages - 1
+        self._page_label.config(text=f"{self._grid_current_page + 1}/{total_pages}")
+        self._btn_prev_page.config(state=(tk.NORMAL if self._grid_current_page > 0 else tk.DISABLED))
+        self._btn_next_page.config(state=(tk.NORMAL if self._grid_current_page < total_pages - 1 else tk.DISABLED))
+
+        # 1ページ表示時はページングUIを目立たせない
+        pager_fg = '#90A4AE' if total_pages == 1 else 'white'
+        self._page_label.config(fg=pager_fg)
+
+    def _cancel_grid_render(self):
+        """進行中の分割描画ジョブをキャンセル"""
+        if self._grid_render_job is not None:
+            try:
+                self.window.after_cancel(self._grid_render_job)
+            except Exception:
+                pass
+            self._grid_render_job = None
+
     # --------------------------------------------------
     # カテゴリサイドパネル
     # --------------------------------------------------
 
     def _on_category_selected(self, event=None):
         """サイドパネルでカテゴリが選択されたときにグリッドを更新"""
-        self._refresh_grid_view()
+        self._refresh_grid_view(reset_page=True)
 
     def _get_selected_category(self):
         """サイドパネルで現在選択中のカテゴリ名を返す"""
@@ -627,6 +756,8 @@ class MarkCheckerGUI:
         self._view_mode = "grid"
         self.window.unbind('<Key>')
         self._single_view_frame.pack_forget()
+        if self._side_panel.winfo_manager() == "":
+            self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
         self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
         self._refresh_grid_view()
 
@@ -635,6 +766,8 @@ class MarkCheckerGUI:
         self._view_mode = "single"
         self.current_index = df_idx
         self._grid_view_frame.pack_forget()
+        if self._side_panel.winfo_manager() != "":
+            self._side_panel.pack_forget()
         self._single_view_frame.pack(fill=tk.BOTH, expand=True)
         self.window.bind('<Key>', self._on_key_press)
         self.show_current()
@@ -665,37 +798,76 @@ class MarkCheckerGUI:
         # ソート
         sort_mode = self._sort_var.get()
         if sort_mode == "白さ順（白い順）":
-            indices.sort(key=lambda i: -self._compute_whiteness(i))
+            self._build_whiteness_cache_for_indices(indices)
+            indices.sort(key=lambda i: -self._whiteness_cache.get(i, 0.0))
         else:
             # 画像名順: filename → question_no
             indices.sort(key=lambda i: (df.at[i, 'filename'], df.at[i, 'question_no']))
 
         return indices
 
-    def _refresh_grid_view(self):
+    def _refresh_grid_view(self, reset_page=False):
         """グリッド表示を再描画する (v4.5)"""
+        self._cancel_grid_render()
         for w in self._grid_inner_frame.winfo_children():
             w.destroy()
         self._grid_photo_refs.clear()
 
         indices = self._get_filtered_indices()
-        self._grid_count_label.config(text=f"表示: {len(indices)}件")
+        self._grid_filtered_indices = indices
+        if reset_page:
+            self._grid_current_page = 0
+        self._update_grid_pager(len(indices))
+
+        effective_page_size = self._get_effective_page_size(len(indices))
+
+        start = self._grid_current_page * effective_page_size
+        end = min(start + effective_page_size, len(indices))
+        page_indices = indices[start:end]
+        self._grid_count_label.config(text=f"表示: {start + 1 if page_indices else 0}-{end} / {len(indices)}件")
 
         # 統計更新
         self._update_stats_label()
 
-        if not indices:
+        if not page_indices:
             tk.Label(self._grid_inner_frame, text="該当する項目はありません",
                      font=('Arial', 14), fg='gray', bg='#FAFAFA').grid(row=0, column=0, pady=40)
             return
 
-        for pos, idx in enumerate(indices):
+        # 大量表示時は自動でサムネイルサイズを抑えて安定化
+        render_thumb_size = self._grid_thumb_size
+        if len(page_indices) > 1200 and render_thumb_size > 110:
+            render_thumb_size = 110
+        elif len(page_indices) > 800 and render_thumb_size > 130:
+            render_thumb_size = 130
+
+        self._render_grid_batch(page_indices, start_pos=0, render_thumb_size=render_thumb_size)
+
+    def _render_grid_batch(self, page_indices, start_pos=0, render_thumb_size=None):
+        """グリッドカードを分割描画してUIフリーズを防ぐ"""
+        chunk_size = 24
+        end_pos = min(start_pos + chunk_size, len(page_indices))
+        if render_thumb_size is None:
+            render_thumb_size = self._grid_thumb_size
+
+        for pos in range(start_pos, end_pos):
+            idx = page_indices[pos]
             row_i = pos // self._grid_cols
             col_i = pos % self._grid_cols
-            self._create_grid_card(self._grid_inner_frame, idx, row_i, col_i)
+            self._create_grid_card(self._grid_inner_frame, idx, row_i, col_i, render_thumb_size)
 
-    def _create_grid_card(self, parent, df_idx, row, col):
+        if end_pos < len(page_indices):
+            self._grid_render_job = self.window.after(
+                1, lambda: self._render_grid_batch(page_indices, start_pos=end_pos, render_thumb_size=render_thumb_size)
+            )
+        else:
+            self._grid_render_job = None
+
+    def _create_grid_card(self, parent, df_idx, row, col, render_thumb_size=None):
         """グリッド内の1枚のカードを作成する (v4.5)"""
+        if render_thumb_size is None:
+            render_thumb_size = self._grid_thumb_size
+
         entry = self._all_entries_df.iloc[df_idx]
         filename = entry['filename']
         question_no = int(entry['question_no'])
@@ -726,24 +898,23 @@ class MarkCheckerGUI:
         # サムネイル画像
         try:
             original_q_no = question_no + self.skip_questions
-            pil_img = get_display_image_checker(
-                self.coords_df, self.image_folder, filename, original_q_no,
-                scale_factor=1.0, expand_factor=DEFAULT_EXPAND_FACTOR,
-                cache=self._image_cache,
-            )
+            pil_img = self._get_grid_thumbnail(filename, original_q_no, render_thumb_size)
             if pil_img:
-                pil_img.thumbnail((self._grid_thumb_size, self._grid_thumb_size), Image.LANCZOS)
                 photo = ImageTk.PhotoImage(pil_img)
                 self._grid_photo_refs.append(photo)
                 img_label = tk.Label(inner, image=photo, bg='white', cursor='hand2')
             else:
                 img_label = tk.Label(inner, text="(画像なし)", bg='white', fg='gray',
-                                     width=self._grid_thumb_size // 8,
-                                     height=self._grid_thumb_size // 16)
+                                     width=render_thumb_size // 8,
+                                     height=render_thumb_size // 16)
+        except MemoryError:
+            img_label = tk.Label(inner, text="(軽量表示)", bg='white', fg='gray',
+                                 width=render_thumb_size // 8,
+                                 height=render_thumb_size // 16)
         except Exception:
             img_label = tk.Label(inner, text="(読込失敗)", bg='white', fg='gray',
-                                 width=self._grid_thumb_size // 8,
-                                 height=self._grid_thumb_size // 16)
+                                 width=render_thumb_size // 8,
+                                 height=render_thumb_size // 16)
         img_label.pack(padx=2, pady=2)
 
         # 情報ラベル
@@ -755,7 +926,7 @@ class MarkCheckerGUI:
         info_text = f"{Path(filename).stem}\nQ{question_no} [{cat_short}] {status_text}"
         info_label = tk.Label(inner, text=info_text, font=('Yu Gothic UI', 7),
                               bg='white', fg='#333', justify=tk.CENTER,
-                              wraplength=self._grid_thumb_size)
+                              wraplength=render_thumb_size)
         info_label.pack(padx=2, pady=(0, 2))
 
         # クリック → 単体表示に切り替え
@@ -850,6 +1021,72 @@ class MarkCheckerGUI:
         except Exception:
             self._whiteness_cache[df_idx] = 0.0
             return 0.0
+
+    def _build_whiteness_cache_for_indices(self, indices):
+        """白さキャッシュ未計算分をまとめて計算（画像単位で1回読込）"""
+        if not indices or self._all_entries_df is None or self.coords_df is None:
+            return
+
+        uncached = [i for i in indices if i not in self._whiteness_cache]
+        if not uncached:
+            return
+
+        self.status_label.config(text=f"白さ指標を計算中... {len(uncached)}件")
+        self.window.update_idletasks()
+
+        grouped = {}
+        for idx in uncached:
+            entry = self._all_entries_df.iloc[idx]
+            grouped.setdefault(entry['filename'], []).append(idx)
+
+        processed = 0
+        total = len(uncached)
+        for filename, idx_list in grouped.items():
+            corrected_img = self._image_cache.get(filename)
+            if corrected_img is None:
+                img_path = self.image_folder / filename
+                if img_path.exists():
+                    try:
+                        corrected_img = _load_and_correct_image(img_path)
+                        self._image_cache.put(filename, corrected_img)
+                    except Exception:
+                        corrected_img = None
+
+            for idx in idx_list:
+                try:
+                    entry = self._all_entries_df.iloc[idx]
+                    question_no = int(entry['question_no']) + self.skip_questions
+                    bbox = self._bbox_map.get((filename, int(question_no)))
+                    if corrected_img is None or bbox is None:
+                        self._whiteness_cache[idx] = 0.0
+                    else:
+                        x, y, w, h = bbox
+                        img_h, img_w = corrected_img.shape[:2]
+                        sx = img_w / MARK2_BASE_WIDTH
+                        sy = img_h / MARK2_BASE_HEIGHT
+                        rx = int(x * sx)
+                        ry = int(y * sy)
+                        rw = max(1, int(w * sx))
+                        rh = max(1, int(h * sy))
+                        rx = max(0, min(rx, img_w - 1))
+                        ry = max(0, min(ry, img_h - 1))
+                        rw = min(rw, img_w - rx)
+                        rh = min(rh, img_h - ry)
+                        roi = corrected_img[ry:ry + rh, rx:rx + rw]
+                        if roi.size == 0:
+                            self._whiteness_cache[idx] = 0.0
+                        else:
+                            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                            self._whiteness_cache[idx] = float(np.mean(gray))
+                except Exception:
+                    self._whiteness_cache[idx] = 0.0
+
+                processed += 1
+                if processed % 100 == 0:
+                    self.status_label.config(text=f"白さ指標を計算中... {processed}/{total}件")
+                    self.window.update_idletasks()
+
+        self._update_status_label()
 
     def _save_single_and_back(self):
         """単体表示で修正を保存してグリッドに戻る"""
@@ -991,6 +1228,19 @@ class MarkCheckerGUI:
             # 座標CSVから選択肢数を算出してボタン行を更新
             self._update_max_choices_from_coords()
 
+            # 高速参照用のbboxインデックスを構築
+            self._bbox_map = {}
+            for _i, c_row in self.coords_df.iterrows():
+                try:
+                    image_name = str(c_row['image_path'])
+                    q_no = int(c_row['question_no'])
+                    bbox_parts = str(c_row['choices_bbox']).split(';')
+                    if len(bbox_parts) == 4:
+                        self._bbox_map[(image_name, q_no)] = tuple(map(int, bbox_parts))
+                except Exception:
+                    continue
+            logger.info("座標インデックス構築: %d件", len(self._bbox_map))
+
             # サイドパネル構築
             self._rebuild_category_list()
 
@@ -1002,7 +1252,8 @@ class MarkCheckerGUI:
 
             # グリッド表示（デフォルト）
             if len(self._all_entries_df) > 0:
-                self._refresh_grid_view()
+                self._grid_current_page = 0
+                self._refresh_grid_view(reset_page=True)
             else:
                 self.status_label.config(text="✓ データがありません")
 
@@ -1106,7 +1357,7 @@ class MarkCheckerGUI:
             pil_img = get_display_image_checker(
                 self.coords_df, self.image_folder, filename, original_q_no,
                 scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
-                cache=self._image_cache,
+                cache=self._image_cache, bbox_map=self._bbox_map,
             )
             if pil_img:
                 pil_img = self._draw_answer_overlay(pil_img, filename, question_no)
@@ -1220,8 +1471,12 @@ class MarkCheckerGUI:
 
             self.current_index = 0
             self._whiteness_cache.clear()
+            self._thumb_cache.clear()
+            self._grid_current_page = 0
             self._view_mode = "grid"
             self._single_view_frame.pack_forget()
+            if self._side_panel.winfo_manager() == "":
+                self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
             self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
             self.load_data()
         except Exception as e:

@@ -168,11 +168,13 @@ class TestV45MarkCheckerGridContract:
         gui.window.update_idletasks()
         assert gui._view_mode == "single"
         assert gui._single_view_frame.winfo_manager() == "pack"
+        assert gui._side_panel.winfo_manager() == ""
 
         gui._switch_to_grid()
         gui.window.update_idletasks()
         assert gui._view_mode == "grid"
         assert gui._grid_view_frame.winfo_manager() == "pack"
+        assert gui._side_panel.winfo_manager() == "pack"
 
     def test_grid_card_size_slider(self, mark_checker_gui):
         gui = mark_checker_gui
@@ -219,3 +221,34 @@ class TestV45MarkCheckerGridContract:
         sort_values = list(gui._sort_combo['values'])
         assert "画像名順" in sort_values
         assert "白さ順（白い順）" in sort_values
+
+    def test_pager_prefers_single_page_under_limit(self, mark_checker_gui):
+        """件数がしきい値以下では1ページ優先になること"""
+        gui = mark_checker_gui
+        gui._grid_page_size = 240
+        gui._grid_single_page_limit = 2000
+
+        gui._update_grid_pager(1200)
+        gui.window.update_idletasks()
+
+        assert gui._page_label.cget("text") == "1/1"
+        assert str(gui._btn_prev_page.cget("state")) == "disabled"
+        assert str(gui._btn_next_page.cget("state")) == "disabled"
+
+        # 1ページ時に next を呼んでもページは進まない
+        gui._grid_filtered_indices = list(range(1200))
+        gui._grid_current_page = 0
+        gui._next_grid_page()
+        assert gui._grid_current_page == 0
+
+    def test_pager_splits_over_limit(self, mark_checker_gui):
+        """件数がしきい値を超える場合はページ分割されること"""
+        gui = mark_checker_gui
+        gui._grid_page_size = 240
+        gui._grid_single_page_limit = 2000
+
+        gui._update_grid_pager(2101)
+        gui.window.update_idletasks()
+
+        assert gui._page_label.cget("text") == "1/9"
+        assert str(gui._btn_next_page.cget("state")) == "normal"

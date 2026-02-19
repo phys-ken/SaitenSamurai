@@ -606,16 +606,21 @@ def crop_and_scale_image_checker(image_path, bbox, scale_factor=3.0, expand_fact
     return crop_from_corrected_image(corrected_img, bbox, scale_factor, expand_factor, expand_factor_y)
 
 
-def get_display_image_checker(coords_df, image_folder, image_filename, question_no, 
+def get_display_image_checker(coords_df, image_folder, image_filename, question_no,
                       scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
-                      expand_factor_y=DEFAULT_EXPAND_FACTOR_Y, cache=None):
+                      expand_factor_y=DEFAULT_EXPAND_FACTOR_Y, cache=None, bbox_map=None):
     """表示用の画像を取得
     
     Args:
         cache: CorrectedImageCache インスタンス。指定時はキャッシュを利用して
                ディスクI/O・マーカー検出・射影変換をスキップする。
+        bbox_map: {(image_filename, question_no): (x, y, w, h)} の辞書。
+                  指定時は DataFrame 検索をスキップして高速化する。
     """
-    bbox = get_bbox_for_question_checker(coords_df, image_filename, question_no)
+    if bbox_map is not None:
+        bbox = bbox_map.get((image_filename, int(question_no)))
+    else:
+        bbox = get_bbox_for_question_checker(coords_df, image_filename, question_no)
     
     if bbox is None:
         logger.warning("座標が見つかりません: %s, Q%s", image_filename, question_no)

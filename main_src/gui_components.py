@@ -1168,7 +1168,7 @@ class MarkCheckerGUI:
         if not selected:
             return df
 
-        reduced_df = df.loc[sorted(selected)].copy()
+        reduced_df = df.loc[sorted(selected)].copy().reset_index(drop=True)
         logger.info("高速レビュー用に縮約: %d件 -> %d件", len(df), len(reduced_df))
         return reduced_df
 

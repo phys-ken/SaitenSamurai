@@ -354,3 +354,80 @@ class TestV45MarkCheckerGridContract:
         assert gui._whiteness_cache[0] == 200.5
         assert gui._whiteness_cache[1] == 180.3
         assert gui._whiteness_cache[2] == 195.0
+
+    def test_fast_review_subset_keeps_errors_and_choice_edges(self, mark_checker_gui):
+        """高速レビュー縮約: エラー全件 + 各選択肢の上下端サンプルを保持すること"""
+        gui = mark_checker_gui
+
+        rows = []
+        whiteness = {}
+
+        # choice=1 を 250件（→ 100 + 100 を想定）
+        for i in range(250):
+            filename = f"c1_{i:03d}.jpg"
+            q_no = i + 1
+            rows.append({
+                "filename": filename,
+                "question_no": q_no,
+                "before": "1",
+                "after": "",
+                "error_type": "",
+                "category": "1",
+            })
+            whiteness[filename] = {str(q_no): float(i)}
+
+        # choice=2 を 50件（→ 全件保持を想定）
+        for i in range(50):
+            filename = f"c2_{i:03d}.jpg"
+            q_no = i + 1000
+            rows.append({
+                "filename": filename,
+                "question_no": q_no,
+                "before": "2",
+                "after": "",
+                "error_type": "",
+                "category": "2",
+            })
+            whiteness[filename] = {str(q_no): float(100 + i)}
+
+        # エラー行（必ず保持されるべき）
+        rows.append({
+            "filename": "err_nm.jpg",
+            "question_no": 9991,
+            "before": "",
+            "after": "",
+            "error_type": ERROR_TYPE_NO_MARK,
+            "category": "ノーマーク",
+        })
+        rows.append({
+            "filename": "err_dm.jpg",
+            "question_no": 9992,
+            "before": "1;2",
+            "after": "",
+            "error_type": ERROR_TYPE_DOUBLE_MARK,
+            "category": "複数マーク",
+        })
+
+        full_df = pd.DataFrame(rows)
+        reduced = gui._build_fast_review_subset(full_df, whiteness_map=whiteness, top_n=100)
+
+        # エラー2件は必ず含まれる
+        assert len(reduced[reduced["category"] == "ノーマーク"]) == 1
+        assert len(reduced[reduced["category"] == "複数マーク"]) == 1
+
+        # choice=1 は上下100ずつ（重複なしで200）
+        assert len(reduced[reduced["category"] == "1"]) == 200
+        # choice=2 は50件なので全件保持
+        assert len(reduced[reduced["category"] == "2"]) == 50
+
+    def test_fast_review_subset_without_whiteness_keeps_all(self, mark_checker_gui):
+        """白さキャッシュがない場合は従来互換で全件保持すること"""
+        gui = mark_checker_gui
+        full_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1", "after": "", "error_type": "", "category": "1"},
+            {"filename": "b.jpg", "question_no": 2, "before": "", "after": "", "error_type": ERROR_TYPE_NO_MARK, "category": "ノーマーク"},
+            {"filename": "c.jpg", "question_no": 3, "before": "2", "after": "", "error_type": "", "category": "2"},
+        ])
+
+        reduced = gui._build_fast_review_subset(full_df, whiteness_map={}, top_n=100)
+        assert len(reduced) == len(full_df)

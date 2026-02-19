@@ -94,8 +94,8 @@ class MarkCheckerGUI:
         self.photo_image = None
         self._bbox_map = {}
         
-        # v3.9 高速化: 補正済み画像キャッシュ
-        self._image_cache = CorrectedImageCache(max_size=2)
+        # v4.5 高速化: 補正済み画像キャッシュ
+        self._image_cache = CorrectedImageCache(max_size=32)
         # v3.9 高速化: 遅延CSV保存（ダーティフラグ）
         self._csv_dirty = False
         self._save_interval = 5  # N件ごとに保存
@@ -1106,22 +1106,82 @@ class MarkCheckerGUI:
             text=f"全エントリ: {total}\nエラー: {errors}\n修正済: {corrected}"
         )
 
-    def _load_whiteness_from_json(self):
+    def _read_whiteness_json_map(self):
+        """白さキャッシュJSONを辞書として読み込む（失敗時は空辞書）。"""
+        whiteness_json_path = self.coords_csv_path.parent / WHITENESS_CACHE_FILE
+        if not whiteness_json_path.exists():
+            return {}
+        try:
+            with open(whiteness_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logger.warning("白さキャッシュJSON読み込みエラー: %s", e)
+            return {}
+
+    def _build_fast_review_subset(self, all_entries_df, whiteness_map, top_n=100):
+        """高速レビュー用途向けにエントリを縮約する。
+
+        - エラー（ノーマーク/複数マーク/不正値）は全件保持
+        - 各選択肢カテゴリ（数字）は、白さ上位 top_n + 下位 top_n を保持
+        - 白さキャッシュが無い場合は従来互換で全件保持
+        """
+        if all_entries_df is None or len(all_entries_df) == 0:
+            return all_entries_df
+
+        # 白さキャッシュがない環境では従来挙動を維持
+        if not whiteness_map:
+            return all_entries_df
+
+        df = all_entries_df
+        selected = set()
+
+        error_mask = (
+            (df['category'].isin(['ノーマーク', '複数マーク', '不正な値'])) |
+            (df['error_type'] != '')
+        )
+        selected.update(df[error_mask].index.tolist())
+
+        choice_df = df[df['category'].astype(str).str.fullmatch(r'\d+')]
+        for _choice, group in choice_df.groupby('category', sort=False):
+            scored = []
+            for idx, row in group.iterrows():
+                filename = row['filename']
+                q_no = str(int(row['question_no']))
+                score = 0.0
+                try:
+                    score = float(whiteness_map.get(filename, {}).get(q_no, 0.0))
+                except Exception:
+                    score = 0.0
+                scored.append((idx, score))
+
+            scored.sort(key=lambda x: x[1], reverse=True)
+            top_indices = [idx for idx, _ in scored[:top_n]]
+            if len(scored) <= top_n:
+                bottom_indices = [idx for idx, _ in scored]
+            else:
+                bottom_indices = [idx for idx, _ in scored[-top_n:]]
+
+            selected.update(top_indices)
+            selected.update(bottom_indices)
+
+        if not selected:
+            return df
+
+        reduced_df = df.loc[sorted(selected)].copy()
+        logger.info("高速レビュー用に縮約: %d件 -> %d件", len(df), len(reduced_df))
+        return reduced_df
+
+    def _load_whiteness_from_json(self, whiteness_data=None):
         """OMR処理時に保存された白さキャッシュJSONを読み込む。
 
         Returns:
             True: JSONから全エントリ分の白さを読み込めた
             False: JSONが無いか不完全（フォールバック計算が必要）
         """
-        whiteness_json_path = self.coords_csv_path.parent / WHITENESS_CACHE_FILE
-        if not whiteness_json_path.exists():
-            return False
-
-        try:
-            with open(whiteness_json_path, 'r', encoding='utf-8') as f:
-                whiteness_data = json.load(f)
-        except Exception as e:
-            logger.warning("白さキャッシュJSON読み込みエラー: %s", e)
+        if whiteness_data is None:
+            whiteness_data = self._read_whiteness_json_map()
+        if not whiteness_data:
             return False
 
         loaded = 0
@@ -1401,6 +1461,16 @@ class MarkCheckerGUI:
                             self.error_csv_path.unlink()
                             logger.info("既存の修正CSVをバックアップして削除しました")
 
+            # 白さキャッシュJSON（高速レビュー抽出・白さキャッシュ投入の両方で使用）
+            whiteness_map = self._read_whiteness_json_map()
+
+            # 表示対象を縮約: エラー全件 + 各選択肢の薄い/濃い top100
+            self._all_entries_df = self._build_fast_review_subset(
+                self._all_entries_df,
+                whiteness_map=whiteness_map,
+                top_n=100,
+            )
+
             # 座標CSV読み込み
             self.coords_df = load_coordinates_csv_checker(self.coords_csv_path)
             logger.info("座標CSV読み込み: %d行", len(self.coords_df))
@@ -1432,7 +1502,7 @@ class MarkCheckerGUI:
 
             # 白さ指標: JSONキャッシュがあれば即座にロード、なければ画像から計算
             if len(self._all_entries_df) > 0:
-                whiteness_loaded = self._load_whiteness_from_json()
+                whiteness_loaded = self._load_whiteness_from_json(whiteness_map)
                 if not whiteness_loaded:
                     all_indices = list(self._all_entries_df.index)
                     self._build_whiteness_cache_for_indices(all_indices)

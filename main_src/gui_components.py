@@ -1054,8 +1054,21 @@ class MarkCheckerGUI:
         if not uncached:
             return
 
-        self.status_label.config(text=f"白さ指標を計算中... {len(uncached)}件")
-        self.window.update_idletasks()
+        # グリッド領域にローディング表示
+        self._cancel_grid_render()
+        for w in self._grid_inner_frame.winfo_children():
+            w.destroy()
+        self._grid_photo_refs.clear()
+        self._grid_canvas.delete(self._grid_canvas_window)
+
+        canvas_w = max(200, self._grid_canvas.winfo_width())
+        canvas_h = max(100, self._grid_canvas.winfo_height())
+        loading_id = self._grid_canvas.create_text(
+            canvas_w // 2, canvas_h // 3,
+            text=f"白さ指標を計算中... 0/{len(uncached)}件",
+            font=('Yu Gothic UI', 14), fill='gray',
+        )
+        self._grid_canvas.update_idletasks()
 
         grouped = {}
         for idx in uncached:
@@ -1106,8 +1119,21 @@ class MarkCheckerGUI:
 
                 processed += 1
                 if processed % 100 == 0:
-                    self.status_label.config(text=f"白さ指標を計算中... {processed}/{total}件")
-                    self.window.update_idletasks()
+                    self._grid_canvas.itemconfig(
+                        loading_id, text=f"白さ指標を計算中... {processed}/{total}件"
+                    )
+                    self._grid_canvas.update_idletasks()
+
+        # ローディング表示を削除し inner_frame を再配置
+        self._grid_canvas.delete(loading_id)
+        self._grid_canvas_window = self._grid_canvas.create_window(
+            (0, 0), window=self._grid_inner_frame, anchor="nw"
+        )
+        try:
+            if canvas_w > 1:
+                self._grid_canvas.itemconfig(self._grid_canvas_window, width=canvas_w)
+        except Exception:
+            pass
 
         self._update_status_label()
 

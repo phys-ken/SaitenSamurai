@@ -203,24 +203,21 @@ class TestV45MarkCheckerGridContract:
         # カテゴリリスト構築
         gui._rebuild_category_list()
 
-        # 全て
+        # 要チェック（インデックス0）: error_type ありかつ after != -1
         gui._category_listbox.selection_clear(0, tk.END)
-        gui._category_listbox.selection_set(0)  # "全て"
-        assert len(gui._get_filtered_indices()) == 4
-
-        # 要チェック: error_type ありかつ after != -1
-        gui._category_listbox.selection_clear(0, tk.END)
-        gui._category_listbox.selection_set(1)  # "要チェック"
+        gui._category_listbox.selection_set(0)  # "要チェック"
         filtered = gui._get_filtered_indices()
         # ノーマーク(after='')のみが要チェック。複数マーク(after='-1')は修正済み
         assert len(filtered) == 1
 
     def test_sort_options(self, mark_checker_gui):
-        """ソートプルダウンの選択肢が正しいこと"""
+        """ソートプルダウンの選択肢とデフォルト値が正しいこと"""
         gui = mark_checker_gui
         sort_values = list(gui._sort_combo['values'])
         assert "画像名順" in sort_values
         assert "白さ順（白い順）" in sort_values
+        # デフォルトは白さ順
+        assert gui._sort_var.get() == "白さ順（白い順）"
 
     def test_pager_always_pages_at_100(self, mark_checker_gui):
         """100件上限で常にページ分割されること"""

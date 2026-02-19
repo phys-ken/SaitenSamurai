@@ -372,7 +372,7 @@ class MarkCheckerGUI:
         sort_frame.pack(fill=tk.X, pady=(5, 0))
         tk.Label(sort_frame, text="並び順:", bg='#F5F7FA',
                  font=('Yu Gothic UI', 9)).pack(side=tk.LEFT)
-        self._sort_var = tk.StringVar(value="画像名順")
+        self._sort_var = tk.StringVar(value="白さ順（白い順）")
         self._sort_combo = ttk.Combobox(
             sort_frame, textvariable=self._sort_var,
             values=["画像名順", "白さ順（白い順）"],
@@ -394,7 +394,7 @@ class MarkCheckerGUI:
             bg='#FFCDD2', fg='#333', font=('Yu Gothic UI', 9, 'bold'),
             relief=tk.FLAT, cursor='hand2',
         )
-        self._btn_batch_minus1.pack(fill=tk.X, pady=(8, 3))
+        # 初期状態では非表示（ノーマークカテゴリ選択時のみ表示）
 
         # xlsx 反映ボタン
         self._btn_apply = tk.Button(
@@ -665,13 +665,21 @@ class MarkCheckerGUI:
 
     def _on_category_selected(self, event=None):
         """サイドパネルでカテゴリが選択されたときにグリッドを更新"""
+        cat = self._get_selected_category()
+        # ノーマークカテゴリ時のみ一括ボタンを表示
+        if cat == 'ノーマーク':
+            if self._btn_batch_minus1.winfo_manager() == '':
+                self._btn_batch_minus1.pack(fill=tk.X, pady=(8, 3),
+                                           before=self._btn_apply)
+        else:
+            self._btn_batch_minus1.pack_forget()
         self._refresh_grid_view(reset_page=True)
 
     def _get_selected_category(self):
         """サイドパネルで現在選択中のカテゴリ名を返す"""
         sel = self._category_listbox.curselection()
         if not sel:
-            return "全て"
+            return "要チェック"
         text = self._category_listbox.get(sel[0])
         # "選択肢 3  (45)" → "3" のようにカウント部分を除去
         # フォーマット: "カテゴリ名  (N)" or "─── カテゴリ名  (N)"
@@ -698,13 +706,10 @@ class MarkCheckerGUI:
         ]
         needs_check_count = len(needs_check)
 
-        total = len(df)
-        self._category_listbox.insert(tk.END, f"全て  ({total})")
-
         # 要チェック
         self._category_listbox.insert(tk.END, f"要チェック  ({needs_check_count})")
         if needs_check_count > 0:
-            self._category_listbox.itemconfig(1, fg='#D32F2F')
+            self._category_listbox.itemconfig(0, fg='#D32F2F')
 
         # 区切り + 選択肢
         choice_cats = sorted(
@@ -751,10 +756,8 @@ class MarkCheckerGUI:
                     restored = True
                     break
         if not restored:
-            if needs_check_count > 0:
-                self._category_listbox.selection_set(1)
-            else:
-                self._category_listbox.selection_set(0)
+            # デフォルト: 「要チェック」(インデックス0)
+            self._category_listbox.selection_set(0)
 
     # --------------------------------------------------
     # ビュー切り替え
@@ -793,9 +796,7 @@ class MarkCheckerGUI:
         df = self._all_entries_df
         cat = self._get_selected_category()
 
-        if cat == '全て':
-            mask = pd.Series(True, index=df.index)
-        elif cat == '要チェック':
+        if cat == '要チェック':
             mask = (df['error_type'] != '') & \
                    ~((df['after'] == '-1') | (df['after'] == '-1.0'))
         elif cat.startswith('選択肢 '):
@@ -1300,6 +1301,11 @@ class MarkCheckerGUI:
 
             # 後方互換: error_df を _all_entries_df の参照にする
             self.error_df = self._all_entries_df
+
+            # 白さ指標を全エントリ分事前計算（デフォルトソートが白さ順のため）
+            if len(self._all_entries_df) > 0:
+                all_indices = list(self._all_entries_df.index)
+                self._build_whiteness_cache_for_indices(all_indices)
 
             # グリッド表示（デフォルト）
             if len(self._all_entries_df) > 0:

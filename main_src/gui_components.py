@@ -106,9 +106,8 @@ class MarkCheckerGUI:
         self.template_path = template_path
         self.error_csv_path = self.xlsx_path.parent / "tmp_checking_dm_nm.csv"
 
-        # v4.5 安定化: グリッド描画のページング/分割描画
-        self._grid_page_size = 240
-        self._grid_single_page_limit = 2000  # この件数以下は1ページ表示を優先
+        # v4.5 安定化: グリッド描画のページング
+        self._grid_page_size = 100  # 1ページ上限（安定性重視）
         self._grid_current_page = 0
         self._grid_filtered_indices = []
         self._grid_render_job = None
@@ -117,7 +116,7 @@ class MarkCheckerGUI:
 
         # v4.5 安定化: サムネイル画像キャッシュ（PIL）
         self._thumb_cache = OrderedDict()
-        self._thumb_cache_max = 800
+        self._thumb_cache_max = 200
         
         # 正答データ（マークチェック時の正答枠表示用）
         self._answer_key = self._load_answer_key()
@@ -321,6 +320,7 @@ class MarkCheckerGUI:
         # v3.9 高速化: キャッシュ解放
         self._image_cache.clear()
         self._thumb_cache.clear()
+        self._grid_photo_refs.clear()
         # sys.stdoutが差し替えられていた場合、元に戻す
         try:
             if self._original_stdout_ref is not None:
@@ -555,10 +555,16 @@ class MarkCheckerGUI:
         self._grid_canvas.bind("<Configure>", self._grid_on_canvas_resize)
 
     def _grid_on_mousewheel(self, event):
-        self._grid_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        try:
+            self._grid_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except Exception:
+            pass
 
     def _grid_on_canvas_resize(self, event):
-        self._grid_canvas.itemconfig(self._grid_canvas_window, width=event.width)
+        try:
+            self._grid_canvas.itemconfig(self._grid_canvas_window, width=event.width)
+        except Exception:
+            pass
         new_cols = max(1, event.width // (self._grid_thumb_size + 20))
         if new_cols != self._grid_cols:
             self._grid_cols = new_cols
@@ -629,33 +635,20 @@ class MarkCheckerGUI:
         if not self._grid_filtered_indices:
             return
         total_items = len(self._grid_filtered_indices)
-        effective_page_size = self._get_effective_page_size(total_items)
-        total_pages = max(1, (total_items + effective_page_size - 1) // effective_page_size)
+        total_pages = max(1, (total_items + self._grid_page_size - 1) // self._grid_page_size)
         if self._grid_current_page >= total_pages - 1:
             return
         self._grid_current_page += 1
         self._refresh_grid_view(reset_page=False)
 
-    def _get_effective_page_size(self, total_items):
-        """現在の件数に対する実効ページサイズを返す"""
-        if total_items <= self._grid_single_page_limit:
-            return max(1, total_items)
-        return self._grid_page_size
-
     def _update_grid_pager(self, total_items):
-        """ページングラベル・ボタン状態を更新（少件数は1ページ優先）"""
-        effective_page_size = self._get_effective_page_size(total_items)
-
-        total_pages = max(1, (total_items + effective_page_size - 1) // effective_page_size)
+        """ページングラベル・ボタン状態を更新"""
+        total_pages = max(1, (total_items + self._grid_page_size - 1) // self._grid_page_size)
         if self._grid_current_page >= total_pages:
             self._grid_current_page = total_pages - 1
         self._page_label.config(text=f"{self._grid_current_page + 1}/{total_pages}")
         self._btn_prev_page.config(state=(tk.NORMAL if self._grid_current_page > 0 else tk.DISABLED))
         self._btn_next_page.config(state=(tk.NORMAL if self._grid_current_page < total_pages - 1 else tk.DISABLED))
-
-        # 1ページ表示時はページングUIを目立たせない
-        pager_fg = '#90A4AE' if total_pages == 1 else 'white'
-        self._page_label.config(fg=pager_fg)
 
     def _cancel_grid_render(self):
         """進行中の分割描画ジョブをキャンセル"""
@@ -807,7 +800,14 @@ class MarkCheckerGUI:
         return indices
 
     def _refresh_grid_view(self, reset_page=False):
-        """グリッド表示を再描画する (v4.5)"""
+        """グリッド表示を再描画する (v4.5 安定版)
+        
+        「準備→一括表示」方式:
+        1. Canvas から inner_frame を切り離す
+        2. ローディング表示を出す
+        3. 全カード (最大100件) を同期的に生成
+        4. inner_frame を Canvas に再配置し一括で表示
+        """
         self._cancel_grid_render()
         for w in self._grid_inner_frame.winfo_children():
             w.destroy()
@@ -819,10 +819,8 @@ class MarkCheckerGUI:
             self._grid_current_page = 0
         self._update_grid_pager(len(indices))
 
-        effective_page_size = self._get_effective_page_size(len(indices))
-
-        start = self._grid_current_page * effective_page_size
-        end = min(start + effective_page_size, len(indices))
+        start = self._grid_current_page * self._grid_page_size
+        end = min(start + self._grid_page_size, len(indices))
         page_indices = indices[start:end]
         self._grid_count_label.config(text=f"表示: {start + 1 if page_indices else 0}-{end} / {len(indices)}件")
 
@@ -834,39 +832,45 @@ class MarkCheckerGUI:
                      font=('Arial', 14), fg='gray', bg='#FAFAFA').grid(row=0, column=0, pady=40)
             return
 
-        # 大量表示時は自動でサムネイルサイズを抑えて安定化
-        render_thumb_size = self._grid_thumb_size
-        if len(page_indices) > 1200 and render_thumb_size > 110:
-            render_thumb_size = 110
-        elif len(page_indices) > 800 and render_thumb_size > 130:
-            render_thumb_size = 130
+        # --- 一括準備モード ---
+        # Canvas から inner_frame を切り離して非表示にする
+        self._grid_canvas.delete(self._grid_canvas_window)
 
-        self._render_grid_batch(page_indices, start_pos=0, render_thumb_size=render_thumb_size)
+        # ローディング表示
+        canvas_w = max(200, self._grid_canvas.winfo_width())
+        canvas_h = max(100, self._grid_canvas.winfo_height())
+        loading_id = self._grid_canvas.create_text(
+            canvas_w // 2, canvas_h // 3,
+            text=f"読み込み中... ({len(page_indices)}件)",
+            font=('Yu Gothic UI', 14), fill='gray',
+        )
+        self._grid_canvas.update_idletasks()
 
-    def _render_grid_batch(self, page_indices, start_pos=0, render_thumb_size=None):
-        """グリッドカードを分割描画してUIフリーズを防ぐ"""
-        chunk_size = 24
-        end_pos = min(start_pos + chunk_size, len(page_indices))
-        if render_thumb_size is None:
-            render_thumb_size = self._grid_thumb_size
+        # 全カードを同期的に作成（inner_frame は Canvas 非接続のため画面に出ない）
+        try:
+            for pos, idx in enumerate(page_indices):
+                row_i = pos // self._grid_cols
+                col_i = pos % self._grid_cols
+                self._create_grid_card(self._grid_inner_frame, idx, row_i, col_i)
+        except Exception as e:
+            logger.warning("グリッドカード生成中にエラー: %s", e)
 
-        for pos in range(start_pos, end_pos):
-            idx = page_indices[pos]
-            row_i = pos // self._grid_cols
-            col_i = pos % self._grid_cols
-            self._create_grid_card(self._grid_inner_frame, idx, row_i, col_i, render_thumb_size)
+        # ローディング表示を削除して inner_frame を再配置 → 一気に表示
+        self._grid_canvas.delete(loading_id)
+        self._grid_canvas_window = self._grid_canvas.create_window(
+            (0, 0), window=self._grid_inner_frame, anchor="nw"
+        )
+        try:
+            if canvas_w > 1:
+                self._grid_canvas.itemconfig(self._grid_canvas_window, width=canvas_w)
+        except Exception:
+            pass
+        self._grid_canvas.configure(scrollregion=self._grid_canvas.bbox("all"))
+        self._grid_canvas.yview_moveto(0)
 
-        if end_pos < len(page_indices):
-            self._grid_render_job = self.window.after(
-                1, lambda: self._render_grid_batch(page_indices, start_pos=end_pos, render_thumb_size=render_thumb_size)
-            )
-        else:
-            self._grid_render_job = None
-
-    def _create_grid_card(self, parent, df_idx, row, col, render_thumb_size=None):
+    def _create_grid_card(self, parent, df_idx, row, col):
         """グリッド内の1枚のカードを作成する (v4.5)"""
-        if render_thumb_size is None:
-            render_thumb_size = self._grid_thumb_size
+        thumb_size = self._grid_thumb_size
 
         entry = self._all_entries_df.iloc[df_idx]
         filename = entry['filename']
@@ -898,23 +902,23 @@ class MarkCheckerGUI:
         # サムネイル画像
         try:
             original_q_no = question_no + self.skip_questions
-            pil_img = self._get_grid_thumbnail(filename, original_q_no, render_thumb_size)
+            pil_img = self._get_grid_thumbnail(filename, original_q_no, thumb_size)
             if pil_img:
                 photo = ImageTk.PhotoImage(pil_img)
                 self._grid_photo_refs.append(photo)
                 img_label = tk.Label(inner, image=photo, bg='white', cursor='hand2')
             else:
                 img_label = tk.Label(inner, text="(画像なし)", bg='white', fg='gray',
-                                     width=render_thumb_size // 8,
-                                     height=render_thumb_size // 16)
+                                     width=thumb_size // 8,
+                                     height=thumb_size // 16)
         except MemoryError:
             img_label = tk.Label(inner, text="(軽量表示)", bg='white', fg='gray',
-                                 width=render_thumb_size // 8,
-                                 height=render_thumb_size // 16)
+                                 width=thumb_size // 8,
+                                 height=thumb_size // 16)
         except Exception:
             img_label = tk.Label(inner, text="(読込失敗)", bg='white', fg='gray',
-                                 width=render_thumb_size // 8,
-                                 height=render_thumb_size // 16)
+                                 width=thumb_size // 8,
+                                 height=thumb_size // 16)
         img_label.pack(padx=2, pady=2)
 
         # 情報ラベル
@@ -926,7 +930,7 @@ class MarkCheckerGUI:
         info_text = f"{Path(filename).stem}\nQ{question_no} [{cat_short}] {status_text}"
         info_label = tk.Label(inner, text=info_text, font=('Yu Gothic UI', 7),
                               bg='white', fg='#333', justify=tk.CENTER,
-                              wraplength=render_thumb_size)
+                              wraplength=thumb_size)
         info_label.pack(padx=2, pady=(0, 2))
 
         # クリック → 単体表示に切り替え

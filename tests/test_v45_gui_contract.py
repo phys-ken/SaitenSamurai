@@ -222,33 +222,38 @@ class TestV45MarkCheckerGridContract:
         assert "画像名順" in sort_values
         assert "白さ順（白い順）" in sort_values
 
-    def test_pager_prefers_single_page_under_limit(self, mark_checker_gui):
-        """件数がしきい値以下では1ページ優先になること"""
+    def test_pager_always_pages_at_100(self, mark_checker_gui):
+        """100件上限で常にページ分割されること"""
         gui = mark_checker_gui
-        gui._grid_page_size = 240
-        gui._grid_single_page_limit = 2000
+        assert gui._grid_page_size == 100
 
-        gui._update_grid_pager(1200)
+        # 50件 → 1ページ
+        gui._update_grid_pager(50)
         gui.window.update_idletasks()
-
         assert gui._page_label.cget("text") == "1/1"
         assert str(gui._btn_prev_page.cget("state")) == "disabled"
         assert str(gui._btn_next_page.cget("state")) == "disabled"
 
-        # 1ページ時に next を呼んでもページは進まない
-        gui._grid_filtered_indices = list(range(1200))
-        gui._grid_current_page = 0
-        gui._next_grid_page()
-        assert gui._grid_current_page == 0
-
-    def test_pager_splits_over_limit(self, mark_checker_gui):
-        """件数がしきい値を超える場合はページ分割されること"""
-        gui = mark_checker_gui
-        gui._grid_page_size = 240
-        gui._grid_single_page_limit = 2000
-
-        gui._update_grid_pager(2101)
+        # 250件 → 3ページ
+        gui._update_grid_pager(250)
         gui.window.update_idletasks()
-
-        assert gui._page_label.cget("text") == "1/9"
+        assert gui._page_label.cget("text") == "1/3"
         assert str(gui._btn_next_page.cget("state")) == "normal"
+
+    def test_pager_navigation(self, mark_checker_gui):
+        """ページ移動が正しく動作すること"""
+        gui = mark_checker_gui
+        gui._grid_filtered_indices = list(range(250))
+        gui._grid_current_page = 0
+        gui._update_grid_pager(250)
+
+        # 50件 → next は無効（1ページしかない）
+        gui._grid_filtered_indices = list(range(50))
+        gui._grid_current_page = 0
+        gui._update_grid_pager(50)
+        gui._next_grid_page()
+        assert gui._grid_current_page == 0  # 進めない
+
+        # prev は最初のページでは無効
+        gui._prev_grid_page()
+        assert gui._grid_current_page == 0

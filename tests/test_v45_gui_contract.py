@@ -431,3 +431,38 @@ class TestV45MarkCheckerGridContract:
 
         reduced = gui._build_fast_review_subset(full_df, whiteness_map={}, top_n=100)
         assert len(reduced) == len(full_df)
+
+    def test_whiteness_json_loader_respects_skip_offset(self, mark_checker_gui, tmp_path):
+        """白さJSON読み込み時に skip_questions オフセットを考慮すること"""
+        import json
+        gui = mark_checker_gui
+        gui.skip_questions = 4
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1", "after": "", "error_type": "", "category": "1"},
+        ])
+
+        # JSON 側は元問題番号（1 + skip=4 -> 5）で保存されている想定
+        whiteness_data = {"a.jpg": {"5": 210.0}}
+        json_path = tmp_path / "whiteness_cache.json"
+        json_path.write_text(json.dumps(whiteness_data), encoding="utf-8")
+
+        gui.coords_csv_path = tmp_path / "coords.csv"
+        result = gui._load_whiteness_from_json()
+
+        assert result is True
+        assert gui._whiteness_cache[0] == 210.0
+
+    def test_whiteness_json_loader_does_not_zero_fill_misses(self, mark_checker_gui):
+        """白さJSON未ヒット時に0埋めせず、後段計算フォールバック可能な状態を保つこと"""
+        gui = mark_checker_gui
+        gui.skip_questions = 0
+        gui._all_entries_df = pd.DataFrame([
+            {"filename": "a.jpg", "question_no": 1, "before": "1", "after": "", "error_type": "", "category": "1"},
+            {"filename": "b.jpg", "question_no": 2, "before": "2", "after": "", "error_type": "", "category": "2"},
+        ])
+
+        result = gui._load_whiteness_from_json({"a.jpg": {"1": 200.0}})
+
+        assert result is True
+        assert gui._whiteness_cache[0] == 200.0
+        assert 1 not in gui._whiteness_cache

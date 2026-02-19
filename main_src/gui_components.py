@@ -1147,10 +1147,13 @@ class MarkCheckerGUI:
             scored = []
             for idx, row in group.iterrows():
                 filename = row['filename']
-                q_no = str(int(row['question_no']))
+                q_no_base = str(int(row['question_no']))
+                q_no_orig = str(int(row['question_no']) + self.skip_questions)
                 score = 0.0
                 try:
-                    score = float(whiteness_map.get(filename, {}).get(q_no, 0.0))
+                    by_file = whiteness_map.get(filename, {})
+                    # 互換: 旧データ/環境差異に備えて base/orig の両方を参照
+                    score = float(by_file.get(q_no_orig, by_file.get(q_no_base, 0.0)))
                 except Exception:
                     score = 0.0
                 scored.append((idx, score))
@@ -1188,12 +1191,14 @@ class MarkCheckerGUI:
         for idx in self._all_entries_df.index:
             entry = self._all_entries_df.iloc[idx]
             filename = entry['filename']
-            q_no = str(int(entry['question_no']))
-            if filename in whiteness_data and q_no in whiteness_data[filename]:
-                self._whiteness_cache[idx] = whiteness_data[filename][q_no]
+            q_no_base = str(int(entry['question_no']))
+            q_no_orig = str(int(entry['question_no']) + self.skip_questions)
+
+            by_file = whiteness_data.get(filename, {}) if isinstance(whiteness_data, dict) else {}
+            value = by_file.get(q_no_orig, by_file.get(q_no_base, None))
+            if value is not None:
+                self._whiteness_cache[idx] = float(value)
                 loaded += 1
-            else:
-                self._whiteness_cache[idx] = 0.0
 
         total = len(self._all_entries_df)
         logger.info("白さキャッシュJSONから読み込み: %d/%d件", loaded, total)

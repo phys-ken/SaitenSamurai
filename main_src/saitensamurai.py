@@ -23,18 +23,29 @@
 """
 
 # ========================================
-# PyInstaller frozen EXE 対策: stdio リダイレクト
+# PyInstaller frozen EXE 対策 (全インポートより前に実行)
 # ========================================
-# console=False の frozen EXE では sys.stdout/stderr が None になる。
-# モジュールインポート中に print/logging が呼ばれると AttributeError になるため、
-# 全インポートより前に os.devnull へリダイレクトする。
 import sys as _sys
 import os as _os
+import multiprocessing as _mp
+
+# 1) freeze_support: multiprocessing/loky が子プロセスを生成した際に
+#    EXE が再実行されるのを検出して即座に終了する。
+#    全インポートより前に呼ぶことで GUI 多重起動を防止する。
+_mp.freeze_support()
+
 if getattr(_sys, 'frozen', False):
+    # 2) stdio リダイレクト: console=False EXE では sys.stdout/stderr が None
     if _sys.stdout is None:
         _sys.stdout = open(_os.devnull, 'w', encoding='utf-8')
     if _sys.stderr is None:
         _sys.stderr = open(_os.devnull, 'w', encoding='utf-8')
+
+    # 3) joblib/loky の子プロセス生成を抑止
+    #    sklearn 内部の KMeans 等が joblib で並列処理を行う際に
+    #    loky が EXE を再実行してウィンドウが大量に開くのを防止する。
+    _os.environ['LOKY_MAX_CPU_COUNT'] = '1'
+    _os.environ['JOBLIB_START_METHOD'] = 'loky'
 
 # ========================================
 # 後方互換 re-export
@@ -225,8 +236,7 @@ def main():
 
 
 if __name__ == '__main__':
-    import multiprocessing
-    multiprocessing.freeze_support()
+    # freeze_support はファイル冒頭で既に呼び出し済み
     try:
         main()
     except Exception as e:

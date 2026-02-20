@@ -2032,7 +2032,10 @@ class _SingleQuestionScorer:
         self._grid_inner.bind("<Configure>",
                               lambda e: self._grid_canvas.configure(scrollregion=self._grid_canvas.bbox("all")))
         self._grid_canvas.bind("<Configure>", self._on_grid_canvas_resize)
-        self._grid_canvas.bind_all("<MouseWheel>", self._on_grid_mousewheel)
+        self._grid_canvas.bind("<Enter>",
+                               lambda e: self._grid_canvas.bind_all("<MouseWheel>", self._on_grid_mousewheel))
+        self._grid_canvas.bind("<Leave>",
+                               lambda e: self._grid_canvas.unbind_all("<MouseWheel>"))
 
         # 下部: 得点ボタン行（連続クリック用）
         score_bar = tk.Frame(gf, bg="#ECEFF1", padx=8, pady=8)
@@ -2094,6 +2097,25 @@ class _SingleQuestionScorer:
         """マウスホイールでスクロール"""
         if self._mode_var.get() == "一覧":
             self._grid_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _ensure_scroll_binding(self):
+        """マウスが既にCanvas内にある場合、スクロールバインドを有効にする。
+
+        グリッド描画完了後に呼び出す。マウスがウィンドウ外から入った場合は
+        <Enter> イベントで自動バインドされるが、描画開始前にカーソルが
+        既にCanvas内にあると <Enter> が発火しないため、ここで補完する。
+        """
+        try:
+            mx = self._win.winfo_pointerx()
+            my = self._win.winfo_pointery()
+            cx = self._grid_canvas.winfo_rootx()
+            cy = self._grid_canvas.winfo_rooty()
+            cw = self._grid_canvas.winfo_width()
+            ch = self._grid_canvas.winfo_height()
+            if cx <= mx <= cx + cw and cy <= my <= cy + ch:
+                self._grid_canvas.bind_all("<MouseWheel>", self._on_grid_mousewheel)
+        except Exception:
+            pass
 
     # ─── グリッド得点操作 ───
 
@@ -2164,7 +2186,7 @@ class _SingleQuestionScorer:
             return
         if self._grid_active_score is not None:
             self.local_scores[fn] = self._grid_active_score
-            self._refresh_grid()
+            self._update_single_card(fn)
         else:
             # アクティブ得点がなければ何もしない
             pass
@@ -2191,10 +2213,22 @@ class _SingleQuestionScorer:
 
     # ─── グリッド表示更新 ───
 
+    @staticmethod
+    def _score_to_card_style(score, max_score):
+        """スコアからカード背景色・マーク記号・色を返す"""
+        if score is None:
+            return "#F5F5F5", "─", "#999"
+        if score >= max_score:
+            return "#E3F2FD", "○", "#1565C0"
+        if score == 0:
+            return "#FFEBEE", "×", "#C62828"
+        return "#FFF3E0", "△", "#E65100"
+
     def _refresh_grid(self):
         """グリッドの内容を再描画"""
         for widget in self._grid_inner.winfo_children():
             widget.destroy()
+        self._grid_card_refs: Dict[str, dict] = {}
 
         BG = "#F5F7FA"
 
@@ -2218,13 +2252,7 @@ class _SingleQuestionScorer:
         self._grid_cols = cols
 
         # 進捗更新
-        scored = len(self.local_scores)
-        total = len(self.filenames)
-        unscored = total - scored
-        prog_text = f"採点済み: {scored}/{total}"
-        if unscored > 0:
-            prog_text += f"  (未採点: {unscored})"
-        self._grid_progress_var.set(prog_text)
+        self._update_grid_progress()
 
         # カード配置
         cols = self._grid_cols
@@ -2234,24 +2262,7 @@ class _SingleQuestionScorer:
             row, col = divmod(i, cols)
 
             score = self.local_scores.get(fn)
-
-            # カード背景色
-            if score is None:
-                card_bg = "#F5F5F5"
-                mark_text = "─"
-                mark_fg = "#999"
-            elif score >= self.max_score:
-                card_bg = "#E3F2FD"
-                mark_text = "○"
-                mark_fg = "#1565C0"
-            elif score == 0:
-                card_bg = "#FFEBEE"
-                mark_text = "×"
-                mark_fg = "#C62828"
-            else:
-                card_bg = "#FFF3E0"
-                mark_text = "△"
-                mark_fg = "#E65100"
+            card_bg, mark_text, mark_fg = self._score_to_card_style(score, self.max_score)
 
             card = tk.Frame(self._grid_inner, bg=card_bg, bd=1, relief=tk.RAISED,
                             padx=3, pady=3, cursor="hand2")
@@ -2270,21 +2281,71 @@ class _SingleQuestionScorer:
             score_frame.pack(fill=tk.X)
             score_frame.bind("<Button-1>", lambda e, f=fn: self._on_grid_card_click(f, e))
 
-            tk.Label(score_frame, text=mark_text, font=("Yu Gothic UI", 12, "bold"),
-                     fg=mark_fg, bg=card_bg).pack(side=tk.LEFT)
+            mark_label = tk.Label(score_frame, text=mark_text,
+                                  font=("Yu Gothic UI", 12, "bold"),
+                                  fg=mark_fg, bg=card_bg)
+            mark_label.pack(side=tk.LEFT)
 
             score_text = f"{score}点" if score is not None else "未採点"
-            tk.Label(score_frame, text=score_text, font=("Yu Gothic UI", 8),
-                     fg="#555", bg=card_bg).pack(side=tk.LEFT, padx=3)
+            score_label = tk.Label(score_frame, text=score_text,
+                                   font=("Yu Gothic UI", 8),
+                                   fg="#555", bg=card_bg)
+            score_label.pack(side=tk.LEFT, padx=3)
 
             # ファイル名ラベル
             short_fn = fn[:20] + "…" if len(fn) > 20 else fn
-            tk.Label(card, text=short_fn, font=("Yu Gothic UI", 7),
-                     fg="#777", bg=card_bg, wraplength=thumb_size).pack()
+            fn_label = tk.Label(card, text=short_fn, font=("Yu Gothic UI", 7),
+                                fg="#777", bg=card_bg, wraplength=thumb_size)
+            fn_label.pack()
+
+            # 差分更新用にウィジェット参照を保持
+            self._grid_card_refs[fn] = {
+                "card": card, "thumb": thumb_label,
+                "score_frame": score_frame, "mark": mark_label,
+                "score": score_label, "fn_label": fn_label,
+            }
 
         # 列 weight 設定
         for c in range(cols):
             self._grid_inner.columnconfigure(c, weight=1)
+
+        # マウスが既にCanvas内にいればスクロールを有効化
+        self._win.after_idle(self._ensure_scroll_binding)
+
+    def _update_grid_progress(self):
+        """進捗ラベルだけ更新する"""
+        scored = len(self.local_scores)
+        total = len(self.filenames)
+        unscored = total - scored
+        prog_text = f"採点済み: {scored}/{total}"
+        if unscored > 0:
+            prog_text += f"  (未採点: {unscored})"
+        self._grid_progress_var.set(prog_text)
+
+    def _update_single_card(self, fn: str):
+        """1枚のカードだけスコア表示を差分更新する（全体再描画を回避）"""
+        refs = self._grid_card_refs.get(fn)
+        if refs is None:
+            # カード参照がない場合はフォールバック
+            self._refresh_grid()
+            return
+
+        score = self.local_scores.get(fn)
+        card_bg, mark_text, mark_fg = self._score_to_card_style(score, self.max_score)
+
+        # 背景色を一括変更
+        for key in ("card", "thumb", "score_frame", "fn_label"):
+            refs[key].config(bg=card_bg)
+
+        # マーク記号
+        refs["mark"].config(text=mark_text, fg=mark_fg, bg=card_bg)
+
+        # スコアテキスト
+        score_text = f"{score}点" if score is not None else "未採点"
+        refs["score"].config(text=score_text, bg=card_bg)
+
+        # 進捗更新
+        self._update_grid_progress()
 
     def _load_grid_thumb(self, fn: str, label: tk.Label, size: int):
         """サムネイルを読み込んでラベルに表示"""
@@ -2742,6 +2803,13 @@ class _SingleQuestionScorer:
         dlg.focus_force()
         dlg.wait_window()
 
+    def _cleanup_bindings(self):
+        """ウィンドウ破棄前にグローバルバインドを解除する"""
+        try:
+            self._grid_canvas.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
+
     def _finish(self):
         """この問題の採点完了"""
         scored = len(self.local_scores)
@@ -2760,6 +2828,7 @@ class _SingleQuestionScorer:
         for fn, score in self.local_scores.items():
             self._result[fn] = {self.q_id: score}
 
+        self._cleanup_bindings()
         self._win.destroy()
 
     def _cancel(self):
@@ -2781,10 +2850,12 @@ class _SingleQuestionScorer:
                 self._result = {}
                 for fn, score in self.local_scores.items():
                     self._result[fn] = {self.q_id: score}
+                self._cleanup_bindings()
                 self._win.destroy()
                 return
             # いいえ → 破棄
         self._result = None
+        self._cleanup_bindings()
         self._win.destroy()
 
 
@@ -3341,4 +3412,9 @@ class DescriptiveReviewGUI:
                 # 「はい」→ 保存試行、失敗なら閉じない
                 if not self._save():
                     return
+        # スクロールバインドの解除（残留するとTclError）
+        try:
+            self._canvas.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
         self.win.destroy()

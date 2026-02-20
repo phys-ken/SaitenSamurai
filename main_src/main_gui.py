@@ -31,6 +31,7 @@ from PIL import Image, ImageDraw, ImageFont
 from constants import (
     safe_print, extract_pdf_to_images, combine_images_to_pdf,
     HAS_PYMUPDF,
+    APP_VERSION,
     MARK2_WIDTH, MARK2_HEIGHT,
     RESULTS_FOLDER, BOXED_FOLDER, CLEAN_FOLDER, RESULTS_DATA_FOLDER,
     SCORED_FOLDER, FINAL_REPORT_FOLDER,
@@ -42,6 +43,7 @@ from constants import (
     get_rendering_settings, DEFAULT_RENDERING_SETTINGS,
     resource_path,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
+    OMR_MODE_THRESHOLD, OMR_MODE_KMEANS,
     atomic_json_save, load_json_safe,
 )
 
@@ -158,7 +160,7 @@ class SaitenSamuraiGUI:
             MODE_DESCRIPTIVE_ONLY: "記述採点",
         }
         mode_label = mode_labels.get(mode, "")
-        self.root.title(f"採点侍 v4.4.1 — {mode_label}")
+        self.root.title(f"採点侍 v{APP_VERSION} — {mode_label}")
         self.root.geometry("1100x600")
         
         # ウィンドウアイコン設定
@@ -178,6 +180,9 @@ class SaitenSamuraiGUI:
         # OMR閾値
         self.color_threshold = tk.DoubleVar(value=0.1)
         self.area_threshold = tk.DoubleVar(value=0.4)
+        
+        # OMR認識モード (v4.5)
+        self.omr_mode = tk.StringVar(value=OMR_MODE_KMEANS)
         
         self.last_boxed_folder = None
         self.last_scored_folder = None
@@ -286,11 +291,11 @@ class SaitenSamuraiGUI:
 
         # モード別タイトルテキスト
         mode_titles = {
-            MODE_MARK_ONLY: "採点侍 v4.4.1 — マーク採点",
-            MODE_MARK_AND_DESCRIPTIVE: "採点侍 v4.4.1 — マーク＋記述採点",
-            MODE_DESCRIPTIVE_ONLY: "採点侍 v4.4.1 — 記述採点",
+            MODE_MARK_ONLY: f"採点侍 v{APP_VERSION} — マーク採点",
+            MODE_MARK_AND_DESCRIPTIVE: f"採点侍 v{APP_VERSION} — マーク＋記述採点",
+            MODE_DESCRIPTIVE_ONLY: f"採点侍 v{APP_VERSION} — 記述採点",
         }
-        title_text = mode_titles.get(self.app_mode, "採点侍 v4.4.1")
+        title_text = mode_titles.get(self.app_mode, f"採点侍 v{APP_VERSION}")
         tk.Label(title_row, text=title_text, font=FONT_TITLE, fg="#1976D2", bg=BG_COLOR).pack(side=tk.LEFT)
         tk.Button(
             title_row, text="📂 前回の状態を復元",
@@ -371,20 +376,42 @@ class SaitenSamuraiGUI:
             tk.Label(opt_row1, text="📝 記述採点モード",
                      font=("Yu Gothic UI", 9, "bold"), fg="#7B1FA2", bg=SECTION_BG).pack(side=tk.LEFT)
         
-        # OMRスライダー (記述のみモードでは非表示)
-        opt_row2 = tk.Frame(option_group, bg=SECTION_BG)
-        self._omr_slider_row = opt_row2
-        if self.app_mode != MODE_DESCRIPTIVE_ONLY:
-            opt_row2.pack(fill=tk.X, pady=(5, 0))
-        
-        tk.Label(opt_row2, text="読取感度（上級者向け）", font=("Yu Gothic UI", 8), fg="gray", bg=SECTION_BG).pack(side=tk.LEFT)
-        tk.Label(opt_row2, text="色:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
-        tk.Scale(opt_row2, variable=self.color_threshold, from_=0.03, to=0.35, resolution=0.005, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
-        
-        tk.Label(opt_row2, text="面積:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
-        tk.Scale(opt_row2, variable=self.area_threshold, from_=0.1, to=0.8, resolution=0.05, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
+        # OMR認識モード選択 (v4.5: 記述のみモード以外で表示)
+        # 表示ラベル ↔ 内部値のマッピング
+        self._omr_label_to_value = {
+            "（推奨）クラスタリング": OMR_MODE_KMEANS,
+            "しきい値による識別（従来式）": OMR_MODE_THRESHOLD,
+        }
+        self._omr_value_to_label = {v: k for k, v in self._omr_label_to_value.items()}
+        self._omr_display_var = tk.StringVar(
+            value=self._omr_value_to_label.get(self.omr_mode.get(), "（推奨）クラスタリング"))
 
-        tk.Button(opt_row2, text="\U0001f527 自動調整", command=self.open_threshold_calibrator,
+        omr_mode_row = tk.Frame(option_group, bg=SECTION_BG)
+        self._omr_mode_row = omr_mode_row
+        if self.app_mode != MODE_DESCRIPTIVE_ONLY:
+            omr_mode_row.pack(fill=tk.X, pady=(5, 0))
+
+        tk.Label(omr_mode_row, text="認識方式:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
+        self._omr_mode_combo = ttk.Combobox(
+            omr_mode_row, textvariable=self._omr_display_var, width=22,
+            values=list(self._omr_label_to_value.keys()), state="readonly",
+        )
+        self._omr_mode_combo.pack(side=tk.LEFT, padx=(5, 0))
+        self._omr_mode_combo.bind("<<ComboboxSelected>>", self._on_omr_mode_changed)
+
+        # スライダー群（同じ行の右側に配置 — 閾値モード時のみ表示）
+        self._omr_slider_row = tk.Frame(omr_mode_row, bg=SECTION_BG)
+        # 初期表示: 閾値モード かつ 記述のみでない場合のみ表示
+        if self.app_mode != MODE_DESCRIPTIVE_ONLY and self.omr_mode.get() == OMR_MODE_THRESHOLD:
+            self._omr_slider_row.pack(side=tk.LEFT, padx=(10, 0))
+
+        tk.Label(self._omr_slider_row, text="色:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Scale(self._omr_slider_row, variable=self.color_threshold, from_=0.03, to=0.35, resolution=0.005, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
+
+        tk.Label(self._omr_slider_row, text="面積:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
+        tk.Scale(self._omr_slider_row, variable=self.area_threshold, from_=0.1, to=0.8, resolution=0.05, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(self._omr_slider_row, text="\U0001f527 自動調整", command=self.open_threshold_calibrator,
                   width=8, bg="#CE93D8", relief=tk.FLAT, font=("Yu Gothic UI", 8),
                   cursor="hand2").pack(side=tk.LEFT, padx=(10, 0))
 
@@ -1039,6 +1066,24 @@ class SaitenSamuraiGUI:
         """設定ウィンドウからの適用コールバック"""
         self.rendering_settings = get_rendering_settings(new_settings)
         self.log_message("✓ 描画詳細設定を更新しました")
+
+    # ---------------------------------------------------------
+    # OMR認識モード切り替え (v4.5)
+    # ---------------------------------------------------------
+
+    def _on_omr_mode_changed(self, _event=None):
+        """OMR認識モード ComboBox の選択が変わったときの処理。
+        
+        表示ラベルから内部値へ変換し、K-means モードでは閾値スライダーを
+        非表示にし、閾値モードでは同一行の右側に表示する。
+        """
+        display = self._omr_display_var.get()
+        internal = self._omr_label_to_value.get(display, OMR_MODE_KMEANS)
+        self.omr_mode.set(internal)
+        if internal == OMR_MODE_THRESHOLD:
+            self._omr_slider_row.pack(side=tk.LEFT, padx=(10, 0))
+        else:
+            self._omr_slider_row.pack_forget()
 
     # ---------------------------------------------------------
     # 記述採点オプション関連メソッド
@@ -2429,6 +2474,7 @@ class SaitenSamuraiGUI:
             'skip_questions': int(self.skip_questions.get()),
             'color_threshold': self.color_threshold.get(),
             'area_threshold': self.area_threshold.get(),
+            'omr_mode': self.omr_mode.get(),
         }
         thread = threading.Thread(target=self._run_box_drawer_thread, args=(params,), daemon=True)
         thread.start()
@@ -2447,6 +2493,7 @@ class SaitenSamuraiGUI:
                 area_threshold=params['area_threshold'],
                 progress_callback=self._update_progress,
                 cancel_event=self._cancel_event,
+                omr_mode=params['omr_mode'],
             )
             
             # 中断された場合
@@ -2963,6 +3010,7 @@ class SaitenSamuraiGUI:
         """MarkCheckerGUIを起動（メインスレッド）
 
         sys.stdout は try/finally で確実に復元する。
+        ロガー出力も GUI ログに転送する。
         """
         import sys
         
@@ -2970,7 +3018,10 @@ class SaitenSamuraiGUI:
         original_stdout = getattr(self, 'original_stdout', sys.stdout)
         if not hasattr(self, 'original_stdout'):
             self.original_stdout = sys.stdout
-        
+
+        # ロガー出力をGUIログに転送するハンドラを追加
+        gui_handler, suppressed = self._attach_gui_log_handler()
+
         try:
             class LogRedirector:
                 def __init__(self, log_func):
@@ -3002,10 +3053,9 @@ class SaitenSamuraiGUI:
         except Exception as e:
             self.log_message(f"起動エラー: {e}")
         finally:
-            # チェッカーが正常起動した場合はチェッカー側で復帰するが、
-            # エラー時は必ずここで復元する
-            if not hasattr(self, '_checker_active'):
-                sys.stdout = original_stdout
+            # ロガーハンドラを復元
+            self._detach_gui_log_handler(gui_handler, suppressed)
+            sys.stdout = original_stdout
     
     def run_summary_generation(self):
         """サマリー生成処理を実行"""

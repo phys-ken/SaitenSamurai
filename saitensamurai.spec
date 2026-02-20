@@ -59,6 +59,18 @@ a = Analysis(
         'reportlab.lib',
         'reportlab.platypus',
         'reportlab.graphics',
+        # scikit-learn (KMeans, StandardScaler, PCA のみ使用)
+        'sklearn',
+        'sklearn.cluster',
+        'sklearn.cluster._kmeans',
+        'sklearn.preprocessing',
+        'sklearn.preprocessing._data',
+        'sklearn.decomposition',
+        'sklearn.decomposition._pca',
+        'sklearn.utils',
+        'sklearn.utils._param_validation',
+        'sklearn.metrics',
+        'sklearn.metrics.pairwise',
     ],
     hookspath=[],
     hooksconfig={},
@@ -139,6 +151,54 @@ a = Analysis(
         'PySide6',
         'wx',
         'gi',
+
+        # --- sklearn 不要サブモジュール (KMeans/StandardScaler/PCA 以外) ---
+        'sklearn.linear_model',
+        'sklearn.ensemble',
+        'sklearn.tree',
+        'sklearn.svm',
+        'sklearn.neighbors',
+        'sklearn.model_selection',
+        'sklearn.datasets',
+        'sklearn.feature_selection',
+        'sklearn.feature_extraction',
+        'sklearn.manifold',
+        'sklearn.inspection',
+        'sklearn.impute',
+        'sklearn.gaussian_process',
+        'sklearn.compose',
+        'sklearn.covariance',
+        'sklearn.neural_network',
+        'sklearn.mixture',
+        'sklearn.cross_decomposition',
+        'sklearn.semi_supervised',
+        'sklearn.frozen',
+        'sklearn.tests',
+        'sklearn.experimental',
+        'sklearn._loss',
+        # sklearn 不要内部モジュール (KMeans Lloyd/Elkan 以外)
+        'sklearn.cluster._hdbscan',
+        'sklearn.cluster._dbscan_inner',
+        'sklearn.cluster._hierarchical_fast',
+        'sklearn.cluster._spectral',
+        'sklearn.cluster._agglomerative',
+        'sklearn.cluster._bisect_k_means',
+        'sklearn.cluster._optics',
+        'sklearn.cluster._meanshift',
+        'sklearn.cluster._affinity_propagation',
+        'sklearn.cluster._birch',
+        'sklearn.cluster._feature_agglomeration',
+        'sklearn.cluster._k_means_minibatch',
+        'sklearn.decomposition._cdnmf_fast',
+        'sklearn.decomposition._online_lda_fast',
+        'sklearn.preprocessing._target_encoder_fast',
+        'sklearn.preprocessing._csr_polynomial_expansion',
+        'sklearn.preprocessing._polynomial',
+
+        # --- scipy/joblib 全体を除外 (KMeans/StandardScaler/PCA は不要) ---
+        'scipy',
+        'joblib',
+        'threadpoolctl',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -151,6 +211,7 @@ a = Analysis(
 # matplotlib サンプルデータ: ~0.5MB
 # matplotlib 不要フォント: ~6MB（DejaVuSans のみ残す）
 # matplotlib images/plot_directive: ~0.15MB
+# sklearn/scipy テストデータ・不要データ
 a.datas = [
     d for d in a.datas
     if not d[0].startswith('cv2/data/haarcascade')
@@ -163,16 +224,23 @@ a.datas = [
         d[0].startswith('matplotlib/mpl-data/fonts/ttf')
         and not d[0].split('/')[-1].startswith('DejaVuSans')
     )
+    and not d[0].startswith('sklearn/datasets/')
+    and not d[0].startswith('scipy/')
+    and 'tests' not in d[0].split('/')
 ]
 
 # --- 不要バイナリの除外 ---
 # Pillow AVIF/WebP プラグイン DLL（マークシート処理で不使用）
 # opencv ffmpeg DLL（headless版では不要）
+# scipy 全体（KMeans/StandardScaler/PCA は scipy 不要）
+_excluded_binary_prefixes = (
+    '_avif', '_webp', 'opencv_videoio_ffmpeg',
+    'scipy/', 'scipy\\',
+    'scipy.libs/', 'scipy.libs\\',
+)
 a.binaries = [
     b for b in a.binaries
-    if not b[0].startswith('_avif')
-    and not b[0].startswith('_webp')
-    and not b[0].startswith('opencv_videoio_ffmpeg')
+    if not any(b[0].startswith(p) for p in _excluded_binary_prefixes)
 ]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)

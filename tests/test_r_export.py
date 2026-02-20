@@ -335,7 +335,7 @@ class TestGenerateRmdTemplate:
         assert "library(exametrika)" in content
         assert "tidyverse" not in content
         assert "psych" not in content
-        assert "biclust" not in content.split("library")[0] or True  # exametrikaのBiclusteringは別
+        assert "library(biclust)" not in content
         assert "pheatmap" not in content
 
     def test_rmd_n_fields_parameter(self, tmp_path):

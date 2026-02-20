@@ -32,6 +32,9 @@ except ImportError:
 # 共通定数定義
 # ========================================
 
+# アプリケーションバージョン（一元管理）
+APP_VERSION = "4.5.0"
+
 # Mark2の基準サイズ (A4: 595x842ポイント)
 MARK2_WIDTH = 595
 MARK2_HEIGHT = 842
@@ -60,6 +63,7 @@ R_EXPORT_FOLDER = "006_R_analysis_kit"   # R連携エクスポート（exametrik
 READING_RESULTS_FOLDER_NAME = "reading_results"  # 01_Results内のOMR結果サブフォルダ
 SESSION_STATE_FILE = "session_state.json"         # セッション状態保存ファイル
 MARKER_CACHE_FILE = "marker_cache.json"           # マーカー座標キャッシュ（Step2高速化用）
+WHITENESS_CACHE_FILE = "whiteness_cache.json"     # 白さキャッシュ（MarkChecker高速化用）
 
 # エラーチェック用定数
 ERROR_TYPE_NO_MARK = 'NoMark'
@@ -127,6 +131,25 @@ MARK2_BASE_HEIGHT = MARK2_HEIGHT
 MODE_MARK_ONLY = "mark_only"                   # マーク採点のみ
 MODE_MARK_AND_DESCRIPTIVE = "mark_and_descriptive"  # マーク採点 ＋ 記述採点
 MODE_DESCRIPTIVE_ONLY = "descriptive_only"      # 記述採点のみ
+
+# ========================================
+# v4.5 OMR 認識モード
+# ========================================
+OMR_MODE_THRESHOLD = "threshold"   # 従来の閾値方式
+OMR_MODE_KMEANS = "kmeans"         # K-means クラスタリング方式（v4.5 追加）
+
+# K-means パラメータ
+KMEANS_N_CLUSTERS = 2              # クラスタ数 (マーク済み / 空白)
+KMEANS_MIN_SAMPLES = 50            # 最小サンプル数（未満は閾値方式にフォールバック）
+KMEANS_FEATURES = [                # 特徴量名リスト (v4.5.0: 7次元)
+    'filled_ratio',
+    'mean_inv_brightness',
+    'dark_pixel_ratio',
+    'std_inv_brightness',
+    'center_edge_ratio',               # v4.5 追加: 中心/辺縁の濃度比
+    'normalized_filled',               # v4.5 追加: シート内正規化塗りつぶし比
+    'question_contrast',               # v4.5 追加: 設問内コントラスト
+]
 
 
 # ========================================

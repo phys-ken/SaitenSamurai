@@ -56,6 +56,7 @@ tests/descriptive_scoring_report/
 tests/grid_scoring_mode*
 tests/temp_capture_env/
 tests/tmp_safety_check/
+tests/test_realdata_*.py
 
 # --- Logs ---
 *.log
@@ -69,6 +70,7 @@ reading_results/
 boxed_figs/
 scored_figs/
 final_report/
+kmeans_report*.html
 
 # --- Session state ---
 session_state.json

@@ -14,10 +14,13 @@ saitensamurai.py から抽出された以下のクラスを含む:
 """
 
 # 標準ライブラリ
+import json
 import logging
+import re
 import sys
 import shutil
 import threading
+from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime
 
@@ -25,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # サードパーティライブラリ
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import cv2
 import pandas as pd
 import numpy as np
@@ -38,6 +41,7 @@ from constants import (
     DEFAULT_EXPAND_FACTOR, DEFAULT_EXPAND_FACTOR_Y,
     DEFAULT_BACKUP_FOLDER,
     MARK2_BASE_WIDTH, MARK2_BASE_HEIGHT,
+    WHITENESS_CACHE_FILE,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
 )
 
@@ -45,6 +49,7 @@ from constants import (
 from mark_checker import (
     apply_corrections_checker,
     detect_errors_checker,
+    detect_all_entries_checker,
     load_errors_checker,
     save_errors_checker,
     load_coordinates_csv_checker,
@@ -53,6 +58,7 @@ from mark_checker import (
     pil_to_imagetk_checker,
     CorrectedImageCache,
     _load_and_correct_image,
+    crop_from_corrected_image,
 )
 
 # 閾値キャリブレーション（threshold_calibrator.pyから）
@@ -84,14 +90,13 @@ class MarkCheckerGUI:
         
         self.error_df = None
         self.coords_df = None
+        self._all_entries_df = None
         self.current_index = 0
         self.photo_image = None
+        self._bbox_map = {}
         
-        # v3.9 高速化: 補正済み画像キャッシュ
-        self._image_cache = CorrectedImageCache(max_size=2)
-        # v3.9 高速化: 先読み済み表示画像
-        self._prefetched_index = -1
-        self._prefetched_pil_img = None
+        # v4.5 高速化: 補正済み画像キャッシュ
+        self._image_cache = CorrectedImageCache(max_size=32)
         # v3.9 高速化: 遅延CSV保存（ダーティフラグ）
         self._csv_dirty = False
         self._save_interval = 5  # N件ごとに保存
@@ -103,6 +108,22 @@ class MarkCheckerGUI:
         self.skip_questions = skip_questions
         self.template_path = template_path
         self.error_csv_path = self.xlsx_path.parent / "tmp_checking_dm_nm.csv"
+
+        # v4.5 安定化: グリッド描画のページング
+        self._grid_page_size = 100  # 1ページ上限（安定性重視）
+        self._grid_current_page = 0
+        self._grid_filtered_indices = []
+        self._grid_render_job = None
+        self._grid_resize_after = None
+        self._grid_size_after = None
+
+        # v4.5 選択肢カテゴリ用タブ: 薄い解答 / 濃い解答
+        self._choice_tab_active = False  # タブモードが有効か
+        self._choice_tab_current = "薄い"  # 現在のタブ: "薄い" or "濃い"
+
+        # v4.5 安定化: サムネイル画像キャッシュ（PIL）
+        self._thumb_cache = OrderedDict()
+        self._thumb_cache_max = 200
         
         # 正答データ（マークチェック時の正答枠表示用）
         self._answer_key = self._load_answer_key()
@@ -233,6 +254,8 @@ class MarkCheckerGUI:
         
         crop_x = max(0, min(int(crop_x), img_w - 1))
         crop_y = max(0, min(int(crop_y), img_h - 1))
+        expanded_w = min(int(expanded_w), img_w - crop_x)
+        expanded_h = min(int(expanded_h), img_h - crop_y)
         
         # マーク座標をクロップ＋拡大後の画像座標に変換
         smx = mx * res_scale_x
@@ -285,11 +308,19 @@ class MarkCheckerGUI:
 
     def on_close(self):
         """ウィンドウが閉じられるときの処理"""
-        # キーバインド解除
-        try:
-            self.window.unbind('<Key>')
-        except Exception:
-            pass
+        self._cancel_grid_render()
+        if self._grid_resize_after is not None:
+            try:
+                self.window.after_cancel(self._grid_resize_after)
+            except Exception:
+                pass
+            self._grid_resize_after = None
+        if self._grid_size_after is not None:
+            try:
+                self.window.after_cancel(self._grid_size_after)
+            except Exception:
+                pass
+            self._grid_size_after = None
         # v3.9 高速化: 未保存のCSV変更をフラッシュ
         try:
             self._flush_csv()
@@ -297,7 +328,8 @@ class MarkCheckerGUI:
             pass
         # v3.9 高速化: キャッシュ解放
         self._image_cache.clear()
-        self._prefetched_pil_img = None
+        self._thumb_cache.clear()
+        self._grid_photo_refs.clear()
         # sys.stdoutが差し替えられていた場合、元に戻す
         try:
             if self._original_stdout_ref is not None:
@@ -321,72 +353,995 @@ class MarkCheckerGUI:
         status_frame = tk.Frame(self.window, bg='lightblue', padx=10, pady=10)
         status_frame.pack(fill=tk.X)
         
-        self.status_label = tk.Label(status_frame, text="要チェック数○件 / チェック済み○件 / 進捗○○%", font=('Arial', 12, 'bold'), bg='lightblue')
-        self.status_label.pack()
-        
-        display_frame = tk.Frame(self.window, padx=10, pady=10)
+        self.status_label = tk.Label(status_frame, text="読み込み中...", font=('Arial', 12, 'bold'), bg='lightblue')
+        self.status_label.pack(side=tk.LEFT, expand=True)
+
+        # ====== メインコンテンツ: 左サイドパネル + 右コンテンツ ======
+        self._main_content = tk.Frame(self.window)
+        self._main_content.pack(fill=tk.BOTH, expand=True)
+
+        # --- 左サイドパネル ---
+        self._side_panel = tk.Frame(self._main_content, bg='#F5F7FA', width=200)
+        self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
+        self._side_panel.pack_propagate(False)
+
+        tk.Label(self._side_panel, text="カテゴリ", font=('Yu Gothic UI', 12, 'bold'),
+                 bg='#F5F7FA').pack(pady=(0, 5))
+
+        # カテゴリリストボックス
+        self._category_listbox = tk.Listbox(
+            self._side_panel, font=('Yu Gothic UI', 11), activestyle='none',
+            selectbackground='#42A5F5', selectforeground='white',
+        )
+        self._category_listbox.pack(fill=tk.BOTH, expand=True)
+        self._category_listbox.bind('<<ListboxSelect>>', self._on_category_selected)
+
+        # 並び順
+        sort_frame = tk.Frame(self._side_panel, bg='#F5F7FA')
+        sort_frame.pack(fill=tk.X, pady=(5, 0))
+        tk.Label(sort_frame, text="並び順:", bg='#F5F7FA',
+                 font=('Yu Gothic UI', 9)).pack(side=tk.LEFT)
+        self._sort_var = tk.StringVar(value="白さ順（白い順）")
+        self._sort_combo = ttk.Combobox(
+            sort_frame, textvariable=self._sort_var,
+            values=["画像名順", "白さ順（白い順）"],
+            state='readonly', width=15,
+        )
+        self._sort_combo.pack(side=tk.LEFT, padx=3)
+        self._sort_combo.bind('<<ComboboxSelected>>', lambda e: self._refresh_grid_view(reset_page=True))
+
+        # 統計ラベル
+        self._stats_label = tk.Label(self._side_panel, text="",
+                                      bg='#F5F7FA', font=('Yu Gothic UI', 9),
+                                      fg='#555', justify=tk.LEFT)
+        self._stats_label.pack(fill=tk.X, pady=(5, 0))
+
+        # 一括無効回答ボタン
+        self._btn_batch_minus1 = tk.Button(
+            self._side_panel, text="ノーマーク全件 → 無効回答(-1)",
+            command=self._batch_set_minus1,
+            bg='#FFCDD2', fg='#333', font=('Yu Gothic UI', 9, 'bold'),
+            relief=tk.FLAT, cursor='hand2',
+        )
+        # 初期状態では非表示（ノーマークカテゴリ選択時のみ表示）
+
+        # xlsx 反映ボタン
+        self._btn_apply = tk.Button(
+            self._side_panel, text="データの更新(再読み込み)",
+            command=self.apply_to_xlsx,
+            bg='#2E7D32', fg='white', font=('Yu Gothic UI', 10, 'bold'),
+            relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_apply.pack(fill=tk.X, pady=(3, 0))
+
+        # --- 右コンテンツエリア ---
+        self._content_area = tk.Frame(self._main_content, bg='#FAFAFA')
+        self._content_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        # ====== グリッド表示フレーム (デフォルト) ======
+        self._view_mode = "grid"
+        self._grid_view_frame = tk.Frame(self._content_area)
+        self._grid_photo_refs = []
+        self._grid_thumb_size = 160
+        self._grid_cols = 6
+        self._build_grid_view()
+        self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
+
+        # ====== 単体表示フレーム ======
+        self._single_view_frame = tk.Frame(self._content_area)
+        self._build_single_view()
+
+        # 白さキャッシュ
+        self._whiteness_cache = {}
+
+    def _build_single_view(self):
+        """単体表示フレームの内部ウィジェットを構築する"""
+        display_frame = tk.Frame(self._single_view_frame, padx=10, pady=10)
         display_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         info_frame = tk.Frame(display_frame)
         info_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.info_label = tk.Label(info_frame, text="ファイル: --- / 問題番号: --- / エラー種別: ---", font=('Arial', 10))
+
+        self.info_label = tk.Label(info_frame, text="ファイル: --- / 問題番号: --- / カテゴリ: ---",
+                                    font=('Arial', 10))
         self.info_label.pack()
-        
+
         self.image_label = tk.Label(display_frame, bg='white', relief=tk.SUNKEN)
         self.image_label.pack(fill=tk.BOTH, expand=True)
         self.image_label.config(width=1100)
-        
-        control_frame = tk.Frame(self.window, padx=10, pady=10)
+
+        control_frame = tk.Frame(self._single_view_frame, padx=10, pady=10)
         control_frame.pack(fill=tk.X)
-        
+
         result_frame = tk.Frame(control_frame)
         result_frame.pack(pady=(0, 10))
-        
+
         tk.Label(result_frame, text="読み取り結果:", font=('Arial', 10)).pack(side=tk.LEFT, padx=(0, 10))
         self.before_label = tk.Label(result_frame, text="---", font=('Arial', 12, 'bold'), fg='red')
         self.before_label.pack(side=tk.LEFT)
-        
+
         # --- 選択肢ボタン行（動的に生成） ---
         self._choice_btn_frame = tk.Frame(control_frame)
         self._choice_btn_frame.pack(pady=(0, 5))
-        self._choice_buttons = []  # (btn, value) のリスト
-        self._max_choices = 10  # デフォルト（座標CSV読み込み後に更新）
+        self._choice_buttons = []
+        self._max_choices = 10
         self._build_choice_buttons(self._max_choices)
-        
+
         input_frame = tk.Frame(control_frame)
         input_frame.pack(pady=(0, 10))
-        
+
         tk.Label(input_frame, text="修正:", font=('Arial', 9), fg='gray').pack(side=tk.LEFT, padx=(0, 5))
-        
         self.correction_entry = tk.Entry(input_frame, font=('Arial', 10), width=6, fg='#555')
         self.correction_entry.pack(side=tk.LEFT, padx=(0, 5))
-        self.correction_entry.bind('<Return>', lambda e: self.save_and_next())
-        
-        self._hint_label = tk.Label(input_frame, text="(1-10, -1=マークなし / Enterで保存)", font=('Arial', 8), fg='#999')
+        self.correction_entry.bind('<Return>', lambda e: self._save_single_and_back())
+
+        self._hint_label = tk.Label(input_frame, text="(1-10, -1=無効回答 / Enterで保存)",
+                                     font=('Arial', 8), fg='#999')
         self._hint_label.pack(side=tk.LEFT)
-        
-        # キーボードショートカットのバインド（数字キーで即選択+次へ）
-        self.window.bind('<Key>', self._on_key_press)
-        
+
+        # ナビゲーション: グリッドに戻るボタンのみ
         nav_frame = tk.Frame(control_frame)
         nav_frame.pack(pady=(0, 10))
-        
-        self.prev_button = tk.Button(nav_frame, text="← 前へ", command=self.show_previous, width=15)
-        self.prev_button.pack(side=tk.LEFT, padx=5)
-        
-        self.save_next_button = tk.Button(nav_frame, text="保存して次へ →", command=self.save_and_next, bg='#4CAF50', fg='white', font=('Arial', 10, 'bold'), width=18)
-        self.save_next_button.pack(side=tk.LEFT, padx=5)
-        
-        self.skip_button = tk.Button(nav_frame, text="SKIP", command=self.skip_current, bg='#FF9800', fg='white', font=('Arial', 10, 'bold'), width=10)
-        self.skip_button.pack(side=tk.LEFT, padx=5)
-        
-        apply_frame = tk.Frame(control_frame)
-        apply_frame.pack()
-        
-        self.apply_button = tk.Button(apply_frame, text="チェック結果をxlsxに反映", command=self.apply_to_xlsx, bg='darkgreen', fg='white', font=('Arial', 11, 'bold'), width=30, height=2)
-        self.apply_button.pack()
+
+        self._btn_save_back = tk.Button(
+            nav_frame, text="保存してグリッドに戻る",
+            command=self._save_single_and_back,
+            bg='#4CAF50', fg='white', font=('Arial', 10, 'bold'), width=22,
+        )
+        self._btn_save_back.pack(side=tk.LEFT, padx=5)
+
+        self._btn_cancel_back = tk.Button(
+            nav_frame, text="キャンセル（グリッドに戻る）",
+            command=self._switch_to_grid,
+            bg='#78909C', fg='white', font=('Arial', 10), width=22,
+        )
+        self._btn_cancel_back.pack(side=tk.LEFT, padx=5)
     
+    def _build_grid_view(self):
+        """グリッド表示フレームの内部ウィジェットを構築する (v4.5)"""
+        # ツールバー（カードサイズスライダーのみ）
+        toolbar = tk.Frame(self._grid_view_frame, bg='#37474F', padx=10, pady=6)
+        toolbar.pack(fill=tk.X)
+
+        # グリッドの件数ラベル
+        self._grid_count_label = tk.Label(
+            toolbar, text="", font=('Yu Gothic UI', 9), bg='#37474F', fg='#FFD54F',
+        )
+        self._grid_count_label.pack(side=tk.LEFT, padx=10)
+
+        # ページング
+        self._pager_frame = tk.Frame(toolbar, bg='#37474F')
+        self._pager_frame.pack(side=tk.LEFT)
+        self._btn_prev_page = tk.Button(
+            self._pager_frame, text="◀", width=3, command=self._prev_grid_page,
+            bg='#546E7A', fg='white', relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_prev_page.pack(side=tk.LEFT, padx=(8, 2))
+        self._page_label = tk.Label(
+            self._pager_frame, text="1/1", font=('Yu Gothic UI', 9), bg='#37474F', fg='white',
+        )
+        self._page_label.pack(side=tk.LEFT, padx=2)
+        self._btn_next_page = tk.Button(
+            self._pager_frame, text="▶", width=3, command=self._next_grid_page,
+            bg='#546E7A', fg='white', relief=tk.FLAT, cursor='hand2',
+        )
+        self._btn_next_page.pack(side=tk.LEFT, padx=(2, 8))
+
+        # 選択肢カテゴリ用タブ（初期状態では非表示）
+        self._tab_frame = tk.Frame(toolbar, bg='#37474F')
+        self._btn_tab_light = tk.Button(
+            self._tab_frame, text="薄い解答(ノーマーク疑惑)",
+            command=lambda: self._switch_choice_tab("薄い"),
+            bg='#42A5F5', fg='white', font=('Yu Gothic UI', 9, 'bold'),
+            relief=tk.FLAT, cursor='hand2', padx=8,
+        )
+        self._btn_tab_light.pack(side=tk.LEFT, padx=(8, 2))
+        self._btn_tab_dark = tk.Button(
+            self._tab_frame, text="濃い解答(複数マーク疑惑)",
+            command=lambda: self._switch_choice_tab("濃い"),
+            bg='#546E7A', fg='white', font=('Yu Gothic UI', 9),
+            relief=tk.FLAT, cursor='hand2', padx=8,
+        )
+        self._btn_tab_dark.pack(side=tk.LEFT, padx=(2, 8))
+
+        # カードサイズスライダー
+        self._grid_size_var = tk.IntVar(value=self._grid_thumb_size)
+        tk.Label(toolbar, text="サイズ:", font=('Yu Gothic UI', 9),
+                 bg='#37474F', fg='white').pack(side=tk.RIGHT)
+        self._grid_size_slider = tk.Scale(
+            toolbar, variable=self._grid_size_var, from_=80, to=300,
+            orient=tk.HORIZONTAL, length=120, showvalue=False,
+            bg='#37474F', fg='white', highlightthickness=0,
+            troughcolor='#546E7A', activebackground='#90CAF9',
+            command=self._on_grid_size_changed,
+        )
+        self._grid_size_slider.pack(side=tk.RIGHT, padx=(0, 5))
+
+        # スクロール可能キャンバス
+        canvas_frame = tk.Frame(self._grid_view_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+        self._grid_canvas = tk.Canvas(canvas_frame, bg='#FAFAFA', highlightthickness=0)
+        self._grid_scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self._grid_canvas.yview)
+        self._grid_inner_frame = tk.Frame(self._grid_canvas, bg='#FAFAFA')
+
+        self._grid_inner_frame.bind(
+            "<Configure>",
+            lambda e: self._grid_canvas.configure(scrollregion=self._grid_canvas.bbox("all"))
+        )
+        self._grid_canvas_window = self._grid_canvas.create_window((0, 0), window=self._grid_inner_frame, anchor="nw")
+        self._grid_canvas.configure(yscrollcommand=self._grid_scrollbar.set)
+
+        self._grid_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._grid_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # マウスホイール
+        self._grid_canvas.bind("<Enter>", lambda e: self._grid_canvas.bind_all("<MouseWheel>", self._grid_on_mousewheel))
+        self._grid_canvas.bind("<Leave>", lambda e: self._grid_canvas.unbind_all("<MouseWheel>"))
+
+        # キャンバスリサイズ
+        self._grid_canvas.bind("<Configure>", self._grid_on_canvas_resize)
+
+    def _grid_on_mousewheel(self, event):
+        try:
+            self._grid_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except Exception:
+            pass
+
+    def _grid_on_canvas_resize(self, event):
+        try:
+            self._grid_canvas.itemconfig(self._grid_canvas_window, width=event.width)
+        except Exception:
+            pass
+        new_cols = max(1, event.width // (self._grid_thumb_size + 20))
+        if new_cols != self._grid_cols:
+            self._grid_cols = new_cols
+            if hasattr(self, '_grid_resize_after') and self._grid_resize_after:
+                self.window.after_cancel(self._grid_resize_after)
+            self._grid_resize_after = self.window.after(150, self._refresh_grid_view)
+
+    def _on_grid_size_changed(self, _value=None):
+        """カードサイズスライダーの変更ハンドラ (v4.5)"""
+        new_size = self._grid_size_var.get()
+        if new_size == self._grid_thumb_size:
+            return
+        self._grid_thumb_size = new_size
+        try:
+            canvas_w = self._grid_canvas.winfo_width()
+            if canvas_w > 1:
+                self._grid_cols = max(1, canvas_w // (self._grid_thumb_size + 20))
+        except Exception:
+            pass
+        if hasattr(self, '_grid_size_after') and self._grid_size_after:
+            self.window.after_cancel(self._grid_size_after)
+        self._grid_size_after = self.window.after(200, self._refresh_grid_view)
+
+    def _thumb_cache_get(self, key):
+        """サムネイルキャッシュ取得（LRU更新）"""
+        if key in self._thumb_cache:
+            img = self._thumb_cache.pop(key)
+            self._thumb_cache[key] = img
+            return img
+        return None
+
+    def _thumb_cache_put(self, key, pil_img):
+        """サムネイルキャッシュ格納（LRU）"""
+        if key in self._thumb_cache:
+            self._thumb_cache.pop(key)
+        self._thumb_cache[key] = pil_img
+        while len(self._thumb_cache) > self._thumb_cache_max:
+            self._thumb_cache.popitem(last=False)
+
+    def _get_grid_thumbnail(self, filename, original_q_no, thumb_size):
+        """グリッドカード用サムネイルを取得（キャッシュ優先）"""
+        key = (filename, int(original_q_no), int(thumb_size))
+        cached = self._thumb_cache_get(key)
+        if cached is not None:
+            return cached
+
+        pil_img = get_display_image_checker(
+            self.coords_df, self.image_folder, filename, original_q_no,
+            scale_factor=1.0, expand_factor=DEFAULT_EXPAND_FACTOR,
+            cache=self._image_cache, bbox_map=self._bbox_map,
+        )
+        if pil_img is None:
+            return None
+
+        pil_img.thumbnail((thumb_size, thumb_size), Image.LANCZOS)
+        self._thumb_cache_put(key, pil_img)
+        return pil_img
+
+    def _prev_grid_page(self):
+        """グリッド前ページへ移動"""
+        if self._grid_current_page <= 0:
+            return
+        self._grid_current_page -= 1
+        self._refresh_grid_view(reset_page=False)
+
+    def _next_grid_page(self):
+        """グリッド次ページへ移動"""
+        if not self._grid_filtered_indices:
+            return
+        total_items = len(self._grid_filtered_indices)
+        total_pages = max(1, (total_items + self._grid_page_size - 1) // self._grid_page_size)
+        if self._grid_current_page >= total_pages - 1:
+            return
+        self._grid_current_page += 1
+        self._refresh_grid_view(reset_page=False)
+
+    def _update_grid_pager(self, total_items):
+        """ページングラベル・ボタン状態を更新"""
+        total_pages = max(1, (total_items + self._grid_page_size - 1) // self._grid_page_size)
+        if self._grid_current_page >= total_pages:
+            self._grid_current_page = total_pages - 1
+        self._page_label.config(text=f"{self._grid_current_page + 1}/{total_pages}")
+        self._btn_prev_page.config(state=(tk.NORMAL if self._grid_current_page > 0 else tk.DISABLED))
+        self._btn_next_page.config(state=(tk.NORMAL if self._grid_current_page < total_pages - 1 else tk.DISABLED))
+
+    def _cancel_grid_render(self):
+        """進行中の分割描画ジョブをキャンセル"""
+        if self._grid_render_job is not None:
+            try:
+                self.window.after_cancel(self._grid_render_job)
+            except Exception:
+                pass
+            self._grid_render_job = None
+
+    # --------------------------------------------------
+    # 選択肢カテゴリ タブ切替
+    # --------------------------------------------------
+
+    def _is_choice_category(self, cat):
+        """カテゴリが選択肢カテゴリかどうかを判定"""
+        return cat.startswith('選択肢 ')
+
+    def _switch_choice_tab(self, tab):
+        """選択肢カテゴリのタブを切り替える（"薄い" or "濃い"）"""
+        if self._choice_tab_current == tab:
+            return
+        self._choice_tab_current = tab
+        self._update_tab_button_styles()
+        self._refresh_grid_view()
+
+    def _update_tab_button_styles(self):
+        """タブボタンのアクティブ/非アクティブスタイルを更新"""
+        if self._choice_tab_current == "薄い":
+            self._btn_tab_light.config(bg='#42A5F5', font=('Yu Gothic UI', 9, 'bold'))
+            self._btn_tab_dark.config(bg='#546E7A', font=('Yu Gothic UI', 9))
+        else:
+            self._btn_tab_light.config(bg='#546E7A', font=('Yu Gothic UI', 9))
+            self._btn_tab_dark.config(bg='#42A5F5', font=('Yu Gothic UI', 9, 'bold'))
+
+    def _show_tab_mode(self, show):
+        """タブモードの表示/非表示を切り替える"""
+        if show:
+            self._pager_frame.pack_forget()
+            self._tab_frame.pack(side=tk.LEFT)
+            self._choice_tab_active = True
+        else:
+            self._tab_frame.pack_forget()
+            self._pager_frame.pack(side=tk.LEFT)
+            self._choice_tab_active = False
+
+    # --------------------------------------------------
+    # カテゴリサイドパネル
+    # --------------------------------------------------
+
+    def _on_category_selected(self, event=None):
+        """サイドパネルでカテゴリが選択されたときにグリッドを更新"""
+        cat = self._get_selected_category()
+        # ノーマークカテゴリ時のみ一括ボタンを表示
+        if cat == 'ノーマーク':
+            if self._btn_batch_minus1.winfo_manager() == '':
+                self._btn_batch_minus1.pack(fill=tk.X, pady=(8, 3),
+                                           before=self._btn_apply)
+        else:
+            self._btn_batch_minus1.pack_forget()
+
+        # 選択肢カテゴリの場合はタブモードに切替
+        if self._is_choice_category(cat):
+            self._choice_tab_current = "薄い"
+            self._update_tab_button_styles()
+            self._show_tab_mode(True)
+        else:
+            self._show_tab_mode(False)
+
+        self._refresh_grid_view(reset_page=True)
+
+    def _get_selected_category(self):
+        """サイドパネルで現在選択中のカテゴリ名を返す"""
+        sel = self._category_listbox.curselection()
+        if not sel:
+            return "要チェック"
+        text = self._category_listbox.get(sel[0])
+        # "選択肢 3  (45)" → "3" のようにカウント部分を除去
+        # フォーマット: "カテゴリ名  (N)" or "─── カテゴリ名  (N)"
+        text = text.lstrip('─ ')
+        if '(' in text:
+            text = text[:text.rfind('(')].strip()
+        return text
+
+    def _rebuild_category_list(self):
+        """全エントリDFからサイドパネルのカテゴリリストを再構築する（選択保持）"""
+        # 現在のカテゴリ選択を記憶
+        prev_category = self._get_selected_category()
+
+        self._category_listbox.delete(0, tk.END)
+        if self._all_entries_df is None or len(self._all_entries_df) == 0:
+            return
+
+        df = self._all_entries_df
+
+        # 要チェック件数: エラー型ありかつ after が -1 でないもの
+        needs_check = df[
+            (df['error_type'] != '') &
+            ~((df['after'] == '-1') | (df['after'] == '-1.0'))
+        ]
+        needs_check_count = len(needs_check)
+
+        # 要チェック
+        self._category_listbox.insert(tk.END, f"要チェック  ({needs_check_count})")
+        if needs_check_count > 0:
+            self._category_listbox.itemconfig(0, fg='#D32F2F')
+
+        # 区切り + 選択肢
+        choice_cats = sorted(
+            [c for c in df['category'].unique()
+             if c not in ('ノーマーク', '複数マーク', '不正な値', '無効回答(-1)') and c != ''],
+            key=lambda x: int(x) if x.isdigit() else 9999,
+        )
+        self._category_listbox.insert(tk.END, "───────────")
+        sep_idx = self._category_listbox.size() - 1
+        self._category_listbox.itemconfig(sep_idx, fg='#999', selectbackground='#F5F7FA')
+
+        for cat in choice_cats:
+            cnt = len(df[df['category'] == cat])
+            self._category_listbox.insert(tk.END, f"選択肢 {cat}  ({cnt})")
+
+        # エラーカテゴリ
+        self._category_listbox.insert(tk.END, "───────────")
+        sep_idx2 = self._category_listbox.size() - 1
+        self._category_listbox.itemconfig(sep_idx2, fg='#999', selectbackground='#F5F7FA')
+
+        for cat, label, color in [
+            ('ノーマーク', 'ノーマーク', '#E65100'),
+            ('複数マーク', '複数マーク', '#C62828'),
+            ('不正な値', '不正な値', '#78909C'),
+            ('無効回答(-1)', '無効回答(-1)', '#555'),
+        ]:
+            cnt = len(df[df['category'] == cat])
+            if cnt > 0:
+                idx = self._category_listbox.size()
+                self._category_listbox.insert(tk.END, f"{label}  ({cnt})")
+                self._category_listbox.itemconfig(idx, fg=color)
+
+        # 前回のカテゴリ選択を復元（見つからなければ「要チェック」へフォールバック）
+        restored = False
+        if prev_category:
+            for i in range(self._category_listbox.size()):
+                item_text = self._category_listbox.get(i)
+                # 「選択肢 3  (45)」などからカテゴリ名を抽出して比較
+                clean = item_text.lstrip('─ ')
+                if '(' in clean:
+                    clean = clean[:clean.rfind('(')].strip()
+                if clean == prev_category:
+                    self._category_listbox.selection_set(i)
+                    restored = True
+                    break
+        if not restored:
+            # デフォルト: 「要チェック」(インデックス0)
+            self._category_listbox.selection_set(0)
+
+    # --------------------------------------------------
+    # ビュー切り替え
+    # --------------------------------------------------
+
+    def _switch_to_grid(self):
+        """単体表示からグリッド表示に戻る"""
+        self._view_mode = "grid"
+        self.window.unbind('<Key>')
+        self._single_view_frame.pack_forget()
+        # _main_content の子を正しい順序で再配置（サイドパネル → コンテンツ）
+        # packは追加順で配置されるため、両方を外してから再 pack する
+        self._side_panel.pack_forget()
+        self._content_area.pack_forget()
+        self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
+        self._content_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
+        self._refresh_grid_view()
+
+    def _switch_to_single(self, df_idx):
+        """グリッドから単体表示に切り替える"""
+        self._view_mode = "single"
+        self.current_index = df_idx
+        self._grid_view_frame.pack_forget()
+        if self._side_panel.winfo_manager() != "":
+            self._side_panel.pack_forget()
+        self._single_view_frame.pack(fill=tk.BOTH, expand=True)
+        self.window.bind('<Key>', self._on_key_press)
+        self.show_current()
+
+    def _get_filtered_indices(self):
+        """サイドパネルのカテゴリ選択に基づき、all_entries_dfのインデックスを返す"""
+        if self._all_entries_df is None or len(self._all_entries_df) == 0:
+            return []
+
+        df = self._all_entries_df
+        cat = self._get_selected_category()
+
+        if cat == '要チェック':
+            mask = (df['error_type'] != '') & \
+                   ~((df['after'] == '-1') | (df['after'] == '-1.0'))
+        elif cat.startswith('選択肢 '):
+            choice_val = cat.replace('選択肢 ', '')
+            mask = df['category'] == choice_val
+        elif cat in ('ノーマーク', '複数マーク', '不正な値', '無効回答(-1)'):
+            mask = df['category'] == cat
+        else:
+            mask = pd.Series(True, index=df.index)
+
+        indices = list(df[mask].index)
+
+        # ソート: 選択肢カテゴリは常に白さ順
+        if self._is_choice_category(cat):
+            self._build_whiteness_cache_for_indices(indices)
+            indices.sort(key=lambda i: -self._whiteness_cache.get(i, 0.0))
+        else:
+            sort_mode = self._sort_var.get()
+            if sort_mode == "白さ順（白い順）":
+                self._build_whiteness_cache_for_indices(indices)
+                indices.sort(key=lambda i: -self._whiteness_cache.get(i, 0.0))
+            else:
+                # 画像名順: filename → question_no
+                indices.sort(key=lambda i: (df.at[i, 'filename'], df.at[i, 'question_no']))
+
+        return indices
+
+    def _refresh_grid_view(self, reset_page=False):
+        """グリッド表示を再描画する (v4.5 安定版)
+        
+        「準備→一括表示」方式:
+        1. Canvas から inner_frame を切り離す
+        2. ローディング表示を出す
+        3. 全カード (最大100件) を同期的に生成
+        4. inner_frame を Canvas に再配置し一括で表示
+        """
+        self._cancel_grid_render()
+        for w in self._grid_inner_frame.winfo_children():
+            w.destroy()
+        self._grid_photo_refs.clear()
+
+        indices = self._get_filtered_indices()
+        self._grid_filtered_indices = indices
+
+        cat = self._get_selected_category()
+        is_choice = self._is_choice_category(cat)
+
+        if is_choice and self._choice_tab_active:
+            # --- タブモード: 選択肢カテゴリ ---
+            total = len(indices)
+            if total <= 200:
+                half = max(1, total // 2) if total > 0 else 0
+            else:
+                half = 100
+
+            if self._choice_tab_current == "濃い":
+                page_indices = indices[total - half:] if total > 0 else []
+                display_label = f"濃い解答: {len(page_indices)}件 / 全{total}件"
+            else:
+                page_indices = indices[:half] if total > 0 else []
+                display_label = f"薄い解答: {len(page_indices)}件 / 全{total}件"
+            self._grid_count_label.config(text=display_label)
+        else:
+            # --- 通常ページモード ---
+            if reset_page:
+                self._grid_current_page = 0
+            self._update_grid_pager(len(indices))
+
+            start = self._grid_current_page * self._grid_page_size
+            end = min(start + self._grid_page_size, len(indices))
+            page_indices = indices[start:end]
+            self._grid_count_label.config(text=f"表示: {start + 1 if page_indices else 0}-{end} / {len(indices)}件")
+
+        # 統計更新
+        self._update_stats_label()
+
+        if not page_indices:
+            tk.Label(self._grid_inner_frame, text="該当する項目はありません",
+                     font=('Arial', 14), fg='gray', bg='#FAFAFA').grid(row=0, column=0, pady=40)
+            return
+
+        # --- 一括準備モード ---
+        # Canvas から inner_frame を切り離して非表示にする
+        self._grid_canvas.delete(self._grid_canvas_window)
+
+        # ローディング表示
+        canvas_w = max(200, self._grid_canvas.winfo_width())
+        canvas_h = max(100, self._grid_canvas.winfo_height())
+        loading_id = self._grid_canvas.create_text(
+            canvas_w // 2, canvas_h // 3,
+            text=f"読み込み中... ({len(page_indices)}件)",
+            font=('Yu Gothic UI', 14), fill='gray',
+        )
+        self._grid_canvas.update_idletasks()
+
+        # 全カードを同期的に作成（inner_frame は Canvas 非接続のため画面に出ない）
+        try:
+            for pos, idx in enumerate(page_indices):
+                row_i = pos // self._grid_cols
+                col_i = pos % self._grid_cols
+                self._create_grid_card(self._grid_inner_frame, idx, row_i, col_i)
+        except Exception as e:
+            logger.warning("グリッドカード生成中にエラー: %s", e)
+
+        # ローディング表示を削除して inner_frame を再配置 → 一気に表示
+        self._grid_canvas.delete(loading_id)
+        self._grid_canvas_window = self._grid_canvas.create_window(
+            (0, 0), window=self._grid_inner_frame, anchor="nw"
+        )
+        try:
+            if canvas_w > 1:
+                self._grid_canvas.itemconfig(self._grid_canvas_window, width=canvas_w)
+        except Exception:
+            pass
+        self._grid_canvas.configure(scrollregion=self._grid_canvas.bbox("all"))
+        self._grid_canvas.yview_moveto(0)
+
+    def _create_grid_card(self, parent, df_idx, row, col):
+        """グリッド内の1枚のカードを作成する (v4.5)"""
+        thumb_size = self._grid_thumb_size
+
+        entry = self._all_entries_df.iloc[df_idx]
+        filename = entry['filename']
+        question_no = int(entry['question_no'])
+        category = entry['category']
+        error_type = entry['error_type']
+        after_val = entry.get('after', '')
+
+        # カード枠色
+        is_corrected = pd.notna(after_val) and after_val != '' and after_val != 'skip'
+        if is_corrected:
+            border_color = '#81C784'  # 緑 (修正済み)
+        elif error_type == ERROR_TYPE_NO_MARK:
+            border_color = '#FFB74D'  # オレンジ (ノーマーク)
+        elif error_type == ERROR_TYPE_DOUBLE_MARK:
+            border_color = '#EF5350'  # 赤 (複数マーク)
+        elif error_type == ERROR_TYPE_INVALID:
+            border_color = '#FF7043'  # 深オレンジ (不正)
+        else:
+            border_color = '#E0E0E0'  # グレー (正常)
+
+        card = tk.Frame(parent, bg=border_color, padx=2, pady=2)
+        card.grid(row=row, column=col, padx=4, pady=4, sticky='nsew')
+        parent.columnconfigure(col, weight=1)
+
+        inner = tk.Frame(card, bg='white')
+        inner.pack(fill=tk.BOTH, expand=True)
+
+        # サムネイル画像
+        try:
+            original_q_no = question_no + self.skip_questions
+            pil_img = self._get_grid_thumbnail(filename, original_q_no, thumb_size)
+            if pil_img:
+                photo = ImageTk.PhotoImage(pil_img)
+                self._grid_photo_refs.append(photo)
+                img_label = tk.Label(inner, image=photo, bg='white', cursor='hand2')
+            else:
+                img_label = tk.Label(inner, text="(画像なし)", bg='white', fg='gray',
+                                     width=thumb_size // 8,
+                                     height=thumb_size // 16)
+        except MemoryError:
+            img_label = tk.Label(inner, text="(軽量表示)", bg='white', fg='gray',
+                                 width=thumb_size // 8,
+                                 height=thumb_size // 16)
+        except Exception:
+            img_label = tk.Label(inner, text="(読込失敗)", bg='white', fg='gray',
+                                 width=thumb_size // 8,
+                                 height=thumb_size // 16)
+        img_label.pack(padx=2, pady=2)
+
+        # 情報ラベル
+        cat_short = {
+            'ノーマーク': 'ノーマ', '複数マーク': '複マ', '不正な値': '不正',
+            '無効回答(-1)': '-1',
+        }.get(category, category)
+        status_text = f"→{after_val}" if is_corrected else ""
+        info_text = f"{Path(filename).stem}\nQ{question_no} [{cat_short}] {status_text}"
+        info_label = tk.Label(inner, text=info_text, font=('Yu Gothic UI', 7),
+                              bg='white', fg='#333', justify=tk.CENTER,
+                              wraplength=thumb_size)
+        info_label.pack(padx=2, pady=(0, 2))
+
+        # クリック → 単体表示に切り替え（カード全体が対象）
+        def on_card_click(event, target_idx=df_idx):
+            self._switch_to_single(target_idx)
+        for widget in (card, inner, img_label, info_label):
+            widget.bind("<Button-1>", on_card_click)
+            widget.configure(cursor='hand2')
+
+    def _batch_set_minus1(self):
+        """ノーマーク全件を -1 に一括設定する (v4.5)"""
+        if self._all_entries_df is None:
+            return
+        mask = (self._all_entries_df['error_type'] == ERROR_TYPE_NO_MARK) & \
+               (self._all_entries_df['after'].isna() | (self._all_entries_df['after'] == ''))
+        count = mask.sum()
+        if count == 0:
+            messagebox.showinfo("情報", "未修正のノーマーク項目はありません", parent=self.window)
+            return
+        ans = messagebox.askyesno(
+            "一括設定の確認",
+            f"未修正のノーマーク {count}件 を全て\n「無効回答(-1)」に設定します。\n\nよろしいですか?",
+            parent=self.window,
+        )
+        if not ans:
+            return
+        self._all_entries_df.loc[mask, 'after'] = '-1'
+        self._csv_dirty = True
+        self._flush_csv()
+        self._rebuild_category_list()
+        self._refresh_grid_view()
+        self._update_status_label()
+
+    def _update_status_label(self):
+        """ステータスラベルを最新状態に更新する"""
+        if self._all_entries_df is None or len(self._all_entries_df) == 0:
+            return
+        df = self._all_entries_df
+        total_errors = len(df[df['error_type'] != ''])
+        corrected = len(df[(df['error_type'] != '') &
+                           df['after'].notna() & (df['after'] != '')])
+        remaining = total_errors - corrected
+        self.status_label.config(
+            text=f"エラー {total_errors}件 / 修正済 {corrected}件 / 未修正 {remaining}件"
+        )
+
+    def _update_stats_label(self):
+        """サイドパネルの統計ラベルを更新する"""
+        if self._all_entries_df is None:
+            return
+        df = self._all_entries_df
+        total = len(df)
+        errors = len(df[df['error_type'] != ''])
+        corrected = len(df[(df['error_type'] != '') &
+                           df['after'].notna() & (df['after'] != '')])
+        self._stats_label.config(
+            text=f"全エントリ: {total}\nエラー: {errors}\n修正済: {corrected}"
+        )
+
+    def _read_whiteness_json_map(self):
+        """白さキャッシュJSONを辞書として読み込む（失敗時は空辞書）。"""
+        whiteness_json_path = self.coords_csv_path.parent / WHITENESS_CACHE_FILE
+        if not whiteness_json_path.exists():
+            return {}
+        try:
+            with open(whiteness_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logger.warning("白さキャッシュJSON読み込みエラー: %s", e)
+            return {}
+
+    def _build_fast_review_subset(self, all_entries_df, whiteness_map, top_n=100):
+        """高速レビュー用途向けにエントリを縮約する。
+
+        - エラー（ノーマーク/複数マーク/不正値）は全件保持
+        - 各選択肢カテゴリ（数字）は、白さ上位 top_n + 下位 top_n を保持
+        - 白さキャッシュが無い場合は従来互換で全件保持
+        """
+        if all_entries_df is None or len(all_entries_df) == 0:
+            return all_entries_df
+
+        # 白さキャッシュがない環境では従来挙動を維持
+        if not whiteness_map:
+            return all_entries_df
+
+        df = all_entries_df
+        selected = set()
+
+        error_mask = (
+            (df['category'].isin(['ノーマーク', '複数マーク', '不正な値', '無効回答(-1)'])) |
+            (df['error_type'] != '')
+        )
+        selected.update(df[error_mask].index.tolist())
+
+        choice_df = df[df['category'].astype(str).str.fullmatch(r'\d+')]
+        for _choice, group in choice_df.groupby('category', sort=False):
+            scored = []
+            for idx, row in group.iterrows():
+                filename = row['filename']
+                q_no_base = str(int(row['question_no']))
+                q_no_orig = str(int(row['question_no']) + self.skip_questions)
+                score = 0.0
+                try:
+                    by_file = whiteness_map.get(filename, {})
+                    # 互換: 旧データ/環境差異に備えて base/orig の両方を参照
+                    score = float(by_file.get(q_no_orig, by_file.get(q_no_base, 0.0)))
+                except Exception:
+                    score = 0.0
+                scored.append((idx, score))
+
+            scored.sort(key=lambda x: x[1], reverse=True)
+            top_indices = [idx for idx, _ in scored[:top_n]]
+            if len(scored) <= top_n:
+                bottom_indices = [idx for idx, _ in scored]
+            else:
+                bottom_indices = [idx for idx, _ in scored[-top_n:]]
+
+            selected.update(top_indices)
+            selected.update(bottom_indices)
+
+        if not selected:
+            return df
+
+        reduced_df = df.loc[sorted(selected)].copy().reset_index(drop=True)
+        logger.info("高速レビュー用に縮約: %d件 -> %d件", len(df), len(reduced_df))
+        return reduced_df
+
+    def _load_whiteness_from_json(self, whiteness_data=None):
+        """OMR処理時に保存された白さキャッシュJSONを読み込む。
+
+        Returns:
+            True: JSONから全エントリ分の白さを読み込めた
+            False: JSONが無いか不完全（フォールバック計算が必要）
+        """
+        if whiteness_data is None:
+            whiteness_data = self._read_whiteness_json_map()
+        if not whiteness_data:
+            return False
+
+        loaded = 0
+        for idx in self._all_entries_df.index:
+            entry = self._all_entries_df.iloc[idx]
+            filename = entry['filename']
+            q_no_base = str(int(entry['question_no']))
+            q_no_orig = str(int(entry['question_no']) + self.skip_questions)
+
+            by_file = whiteness_data.get(filename, {}) if isinstance(whiteness_data, dict) else {}
+            value = by_file.get(q_no_orig, by_file.get(q_no_base, None))
+            if value is not None:
+                self._whiteness_cache[idx] = float(value)
+                loaded += 1
+
+        total = len(self._all_entries_df)
+        logger.info("白さキャッシュJSONから読み込み: %d/%d件", loaded, total)
+        return loaded > 0
+
+    def _compute_whiteness(self, df_idx):
+        """指定インデックスのマーク領域の白さ（平均輝度）を計算してキャッシュ"""
+        if df_idx in self._whiteness_cache:
+            return self._whiteness_cache[df_idx]
+
+        entry = self._all_entries_df.iloc[df_idx]
+        filename = entry['filename']
+        question_no = int(entry['question_no']) + self.skip_questions
+
+        try:
+            bbox = None
+            if self.coords_df is not None:
+                from mark_checker import get_bbox_for_question_checker
+                bbox = get_bbox_for_question_checker(self.coords_df, filename, question_no)
+            if bbox is None:
+                self._whiteness_cache[df_idx] = 0.0
+                return 0.0
+
+            corrected_img = self._image_cache.get(filename)
+            if corrected_img is None:
+                img_path = self.image_folder / filename
+                if not img_path.exists():
+                    self._whiteness_cache[df_idx] = 0.0
+                    return 0.0
+                corrected_img = _load_and_correct_image(img_path)
+                self._image_cache.put(filename, corrected_img)
+
+            pil_img = crop_from_corrected_image(corrected_img, bbox, scale_factor=1.0,
+                                                 expand_factor=1.0)
+            gray = np.array(pil_img.convert('L'))
+            brightness = float(np.mean(gray))
+            self._whiteness_cache[df_idx] = brightness
+            return brightness
+        except Exception:
+            self._whiteness_cache[df_idx] = 0.0
+            return 0.0
+
+    def _build_whiteness_cache_for_indices(self, indices):
+        """白さキャッシュ未計算分をまとめて計算（画像単位で1回読込）"""
+        if not indices or self._all_entries_df is None or self.coords_df is None:
+            return
+
+        uncached = [i for i in indices if i not in self._whiteness_cache]
+        if not uncached:
+            return
+
+        # グリッド領域にローディング表示
+        self._cancel_grid_render()
+        for w in self._grid_inner_frame.winfo_children():
+            w.destroy()
+        self._grid_photo_refs.clear()
+        self._grid_canvas.delete(self._grid_canvas_window)
+
+        canvas_w = max(200, self._grid_canvas.winfo_width())
+        canvas_h = max(100, self._grid_canvas.winfo_height())
+        loading_id = self._grid_canvas.create_text(
+            canvas_w // 2, canvas_h // 3,
+            text=f"白さ指標を計算中... 0/{len(uncached)}件",
+            font=('Yu Gothic UI', 14), fill='gray',
+        )
+        self._grid_canvas.update_idletasks()
+
+        grouped = {}
+        for idx in uncached:
+            entry = self._all_entries_df.iloc[idx]
+            grouped.setdefault(entry['filename'], []).append(idx)
+
+        processed = 0
+        total = len(uncached)
+        for filename, idx_list in grouped.items():
+            corrected_img = self._image_cache.get(filename)
+            if corrected_img is None:
+                img_path = self.image_folder / filename
+                if img_path.exists():
+                    try:
+                        corrected_img = _load_and_correct_image(img_path)
+                        self._image_cache.put(filename, corrected_img)
+                    except Exception:
+                        corrected_img = None
+
+            for idx in idx_list:
+                try:
+                    entry = self._all_entries_df.iloc[idx]
+                    question_no = int(entry['question_no']) + self.skip_questions
+                    bbox = self._bbox_map.get((filename, int(question_no)))
+                    if corrected_img is None or bbox is None:
+                        self._whiteness_cache[idx] = 0.0
+                    else:
+                        x, y, w, h = bbox
+                        img_h, img_w = corrected_img.shape[:2]
+                        sx = img_w / MARK2_BASE_WIDTH
+                        sy = img_h / MARK2_BASE_HEIGHT
+                        rx = int(x * sx)
+                        ry = int(y * sy)
+                        rw = max(1, int(w * sx))
+                        rh = max(1, int(h * sy))
+                        rx = max(0, min(rx, img_w - 1))
+                        ry = max(0, min(ry, img_h - 1))
+                        rw = min(rw, img_w - rx)
+                        rh = min(rh, img_h - ry)
+                        roi = corrected_img[ry:ry + rh, rx:rx + rw]
+                        if roi.size == 0:
+                            self._whiteness_cache[idx] = 0.0
+                        else:
+                            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                            self._whiteness_cache[idx] = float(np.mean(gray))
+                except Exception:
+                    self._whiteness_cache[idx] = 0.0
+
+                processed += 1
+                if processed % 100 == 0:
+                    self._grid_canvas.itemconfig(
+                        loading_id, text=f"白さ指標を計算中... {processed}/{total}件"
+                    )
+                    self._grid_canvas.update_idletasks()
+
+        # ローディング表示を削除し inner_frame を再配置
+        self._grid_canvas.delete(loading_id)
+        self._grid_canvas_window = self._grid_canvas.create_window(
+            (0, 0), window=self._grid_inner_frame, anchor="nw"
+        )
+        try:
+            if canvas_w > 1:
+                self._grid_canvas.itemconfig(self._grid_canvas_window, width=canvas_w)
+        except Exception:
+            pass
+
+        self._update_status_label()
+
+    def _save_single_and_back(self):
+        """単体表示で修正を保存してグリッドに戻る"""
+        if self.save_current_correction():
+            self._rebuild_category_list()
+            self._switch_to_grid()
+
     def _build_choice_buttons(self, num_choices):
         """選択肢ボタン行を（再）構築する"""
         for w in self._choice_btn_frame.winfo_children():
@@ -414,10 +1369,10 @@ class MarkCheckerGUI:
         self._choice_buttons.append((btn_minus, -1))
     
     def _on_choice_button(self, value):
-        """選択肢ボタン押下: Entryに値をセットして保存+次へ"""
+        """選択肢ボタン押下: Entryに値をセットして保存+グリッドに戻る"""
         self.correction_entry.delete(0, tk.END)
         self.correction_entry.insert(0, str(value))
-        self.save_and_next()
+        self._save_single_and_back()
     
     def _on_key_press(self, event):
         """キーボードショートカット: 数字キーで即入力+次へ
@@ -474,73 +1429,132 @@ class MarkCheckerGUI:
             pass
 
     def load_data(self):
-        """データ読み込み"""
+        """データ読み込み — 全エントリ（正常＋エラー）をロードする"""
         try:
             self.update_file_info()
-            
-            should_continue = False
+
+            # 全エントリをExcelから読み込む
+            self._all_entries_df = detect_all_entries_checker(
+                self.xlsx_path,
+                registered_questions=self._get_registered_questions(),
+            )
+            logger.info("全エントリ読み込み: %d件", len(self._all_entries_df))
+
+            # after列をobject型に統一
+            if 'after' in self._all_entries_df.columns:
+                self._all_entries_df['after'] = self._all_entries_df['after'].astype('object')
+
+            # 前回の修正CSVがあればマージ
             if self.error_csv_path.exists():
-                existing_df = load_errors_checker(self.error_csv_path)
-                if len(existing_df) > 0:
-                    completed = len(existing_df[existing_df['after'].notna() & (existing_df['after'] != '') & (existing_df['after'] != 'skip')])
-                    skipped = len(existing_df[existing_df['after'] == 'skip'])
-                    total = len(existing_df)
-                    unchecked = total - completed - skipped
-                    
-                    choice = messagebox.askyesno(
-                        "作業継続の確認",
-                        f"前回の作業データが見つかりました。\n\n"
-                        f"【前回の作業状況】\n"
-                        f"  全件数: {total}件\n"
-                        f"  完了: {completed}件\n"
-                        f"  SKIP: {skipped}件\n"
-                        f"  未チェック: {unchecked}件\n\n"
-                        f"前回の続きから作業しますか？",
-                        parent=self.window
-                    )
-                    should_continue = choice
-            
-            if should_continue:
-                self.error_df = load_errors_checker(self.error_csv_path)
-                logger.info("前回の作業を継続します: %d件", len(self.error_df))
-            else:
-                if self.error_csv_path.exists():
-                    self.backup_csv(self.error_csv_path)
-                    self.error_csv_path.unlink()
-                    logger.info("既存のエラーCSVをバックアップして削除しました")
-                
-                detect_errors_checker(self.xlsx_path, self.error_csv_path,
-                                     registered_questions=self._get_registered_questions())
-                self.error_df = load_errors_checker(self.error_csv_path)
-            
-            error_order = {ERROR_TYPE_NO_MARK: 0, ERROR_TYPE_DOUBLE_MARK: 1, ERROR_TYPE_INVALID: 2}
-            self.error_df['sort_key'] = self.error_df['error_type'].map(error_order)
-            self.error_df = self.error_df.sort_values('sort_key').reset_index(drop=True)
-            self.error_df = self.error_df.drop('sort_key', axis=1)
-            logger.info("エラーソート完了: NoMark優先")
-            
+                saved_df = load_errors_checker(self.error_csv_path)
+                if len(saved_df) > 0:
+                    corrected = len(saved_df[
+                        saved_df['after'].notna() &
+                        (saved_df['after'] != '') &
+                        (saved_df['after'] != 'skip')
+                    ])
+                    if corrected > 0:
+                        choice = messagebox.askyesno(
+                            "作業継続の確認",
+                            f"前回の修正データが見つかりました。\n\n"
+                            f"  修正済: {corrected}件\n\n"
+                            f"前回の修正を引き継ぎますか？",
+                            parent=self.window,
+                        )
+                        if choice:
+                            self._merge_corrections(saved_df)
+                            logger.info("前回の修正を引き継ぎ: %d件", corrected)
+                        else:
+                            self.backup_csv(self.error_csv_path)
+                            self.error_csv_path.unlink()
+                            logger.info("既存の修正CSVをバックアップして削除しました")
+
+            # 白さキャッシュJSON（高速レビュー抽出・白さキャッシュ投入の両方で使用）
+            whiteness_map = self._read_whiteness_json_map()
+
+            # 表示対象を縮約: エラー全件 + 各選択肢の薄い/濃い top100
+            self._all_entries_df = self._build_fast_review_subset(
+                self._all_entries_df,
+                whiteness_map=whiteness_map,
+                top_n=100,
+            )
+
+            # 座標CSV読み込み
             self.coords_df = load_coordinates_csv_checker(self.coords_csv_path)
             logger.info("座標CSV読み込み: %d行", len(self.coords_df))
-            
+
             # 座標CSVから選択肢数を算出してボタン行を更新
             self._update_max_choices_from_coords()
-            
-            if len(self.error_df) > 0:
-                self.show_current()
+
+            # 高速参照用のbboxインデックスを構築
+            self._bbox_map = {}
+            for _i, c_row in self.coords_df.iterrows():
+                try:
+                    image_name = str(c_row['image_path'])
+                    q_no = int(c_row['question_no'])
+                    bbox_parts = str(c_row['choices_bbox']).split(';')
+                    if len(bbox_parts) == 4:
+                        self._bbox_map[(image_name, q_no)] = tuple(map(int, bbox_parts))
+                except Exception:
+                    continue
+            logger.info("座標インデックス構築: %d件", len(self._bbox_map))
+
+            # 座標欠損の集計（個別ではなくサマリーで報告）
+            missing_coords = []
+            for _i, row in self._all_entries_df.iterrows():
+                fn = row.get("filename", "")
+                q = int(row.get("question_no", 0))
+                orig_q = q + self.skip_questions
+                if (fn, orig_q) not in self._bbox_map:
+                    missing_coords.append((fn, orig_q))
+            if missing_coords:
+                # 影響画像数をカウント
+                affected_images = len(set(fn for fn, _ in missing_coords))
+                logger.info(
+                    "座標が取得できなかったエントリ: %d件（%d枚の画像）"
+                    "── マーカー検出精度の限界によるもので、正常動作です",
+                    len(missing_coords), affected_images,
+                )
+
+            # サイドパネル構築
+            self._rebuild_category_list()
+
+            # ステータス更新
+            self._update_status_label()
+
+            # 後方互換: error_df を _all_entries_df の参照にする
+            self.error_df = self._all_entries_df
+
+            # 白さ指標: JSONキャッシュがあれば即座にロード、なければ画像から計算
+            if len(self._all_entries_df) > 0:
+                whiteness_loaded = self._load_whiteness_from_json(whiteness_map)
+                if not whiteness_loaded:
+                    all_indices = list(self._all_entries_df.index)
+                    self._build_whiteness_cache_for_indices(all_indices)
+
+            # グリッド表示（デフォルト）
+            if len(self._all_entries_df) > 0:
+                self._grid_current_page = 0
+                self._refresh_grid_view(reset_page=True)
             else:
-                self.status_label.config(text="✓ チェックが必要な項目はありません")
-                self.info_label.config(text="全ての項目が正常です")
-                self.image_label.config(image='', text="\n\n✓ チェックが必要な項目はありません\n\n全ての項目が正常に処理されています。", font=('Arial', 18, 'bold'), fg='green', bg='white')
-                self.prev_button.config(state=tk.DISABLED)
-                self.save_next_button.config(state=tk.DISABLED)
-                self.skip_button.config(state=tk.DISABLED)
-                self.apply_button.config(state=tk.DISABLED)
-                self.correction_entry.config(state=tk.DISABLED)
-                self.before_label.config(text="---")
-                
+                self.status_label.config(text="✓ データがありません")
+
         except Exception as e:
             messagebox.showerror("エラー", f"データ読み込みエラー:\n{e}", parent=self.window)
             self.window.destroy()
+
+    def _merge_corrections(self, saved_df):
+        """保存済みの修正CSVを全エントリDFにマージする"""
+        corrections = saved_df[
+            saved_df['after'].notna() & (saved_df['after'] != '')
+        ]
+        for _, row in corrections.iterrows():
+            mask = (
+                (self._all_entries_df['filename'] == row['filename']) &
+                (self._all_entries_df['question_no'] == int(row['question_no']))
+            )
+            if mask.any():
+                self._all_entries_df.loc[mask, 'after'] = str(row['after'])
     
     def backup_csv(self, csv_path):
         """CSVファイルをバックアップ"""
@@ -575,233 +1589,160 @@ class MarkCheckerGUI:
         self.file_info_text.config(state=tk.DISABLED)
     
     def show_current(self):
-        """現在のインデックスの項目を表示"""
-        if self.error_df is None or len(self.error_df) == 0:
+        """現在のインデックスの項目を単体表示する"""
+        df = self._all_entries_df
+        if df is None or len(df) == 0:
             return
-        
+
         if self.current_index < 0:
             self.current_index = 0
-        if self.current_index >= len(self.error_df):
-            self.current_index = len(self.error_df) - 1
-        
-        row = self.error_df.iloc[self.current_index]
-        
+        if self.current_index >= len(df):
+            self.current_index = len(df) - 1
+
+        row = df.iloc[self.current_index]
         filename = row['filename']
         question_no = int(row['question_no'])
         before_value = row['before']
         after_value = row['after']
         error_type = row['error_type']
-        
-        total = len(self.error_df)
-        checked = len(self.error_df[self.error_df['after'].notna() & (self.error_df['after'] != '') & (self.error_df['after'] != 'skip')])
-        skipped = len(self.error_df[self.error_df['after'] == 'skip'])
-        unchecked = total - checked - skipped
-        progress = int(checked / total * 100) if total > 0 else 0
-        
-        self.status_label.config(text=f"全{total}件 / 完了{checked}件 / SKIP{skipped}件 / 未{unchecked}件 / 進捗{progress}%")
-        
-        error_type_jp = {ERROR_TYPE_NO_MARK: '無マーク', ERROR_TYPE_DOUBLE_MARK: 'ダブルマーク', ERROR_TYPE_INVALID: '不正な値'}.get(error_type, error_type)
-        
-        self.info_label.config(text=f"ファイル: {filename} / 問題番号: {question_no} / エラー種別: {error_type_jp} ({self.current_index + 1}/{total})")
-        
+        category = row.get('category', '')
+
+        # ステータス更新
+        self._update_status_label()
+
+        # カテゴリ表示
+        cat_jp = {
+            'ノーマーク': 'ノーマーク', '複数マーク': '複数マーク',
+            '不正な値': '不正な値', '無効回答(-1)': '無効回答(-1)',
+        }.get(category, f"選択肢 {category}")
+
+        self.info_label.config(
+            text=f"ファイル: {filename} / 問題番号: {question_no} / カテゴリ: {cat_jp}"
+        )
+
         before_text = f"「{before_value}」" if before_value else "(空白)"
         self.before_label.config(text=before_text)
-        
-        # 問題ごとの選択肢数でヒントテキストを更新
+
+        # 問題ごとの選択肢数でヒント更新
         q_choices = self._get_num_choices_for_question(question_no)
-        self._hint_label.config(text=f"(1-{q_choices}, -1=マークなし / Enterで保存)")
-        
+        self._hint_label.config(text=f"(1-{q_choices}, -1=無効回答 / Enterで保存)")
+
         self.correction_entry.delete(0, tk.END)
         if pd.notna(after_value) and after_value != '':
             self.correction_entry.insert(0, str(after_value))
-        else:
+        elif error_type != '':
+            # エラー項目にはデフォルト -1
             self.correction_entry.insert(0, DEFAULT_CORRECTION)
-        
+
         try:
-            # 座標CSVは元の問題番号（skip_questionsを含む）で記録されているため、
-            # 採点結果の問題番号（skip_questionsを除いたもの）にオフセットを加える
             original_q_no = question_no + self.skip_questions
-            
-            # v3.9 高速化: 先読み済み画像があればそれを使用
-            # 先読み画像はオーバーレイ＋リサイズ適用済みのためそのまま使う
-            if self._prefetched_index == self.current_index and self._prefetched_pil_img is not None:
-                pil_img = self._prefetched_pil_img
-                self._prefetched_pil_img = None
-                self._prefetched_index = -1
-            else:
-                pil_img = get_display_image_checker(
-                    self.coords_df, self.image_folder, filename, original_q_no,
-                    scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
-                    cache=self._image_cache
-                )
-                if pil_img:
-                    # 正答枠を描画（Answer Key が読み込まれている場合）
-                    pil_img = self._draw_answer_overlay(pil_img, filename, question_no)
-                    pil_img = fit_image_to_display(pil_img)
-            
-            if pil_img:
-                self.photo_image = pil_to_imagetk_checker(pil_img)
-                self.image_label.config(image=self.photo_image, text="", width=pil_img.width, height=pil_img.height)
-            else:
-                self.image_label.config(image='', text="画像を読み込めません", width=1100, height=150)
-                self.photo_image = None
-        except Exception as e:
-            self.image_label.config(image='', text=f"画像エラー: {e}", width=1100, height=150)
-            self.photo_image = None
-        
-        self.prev_button.config(state=tk.NORMAL if self.current_index > 0 else tk.DISABLED)
-        self.save_next_button.config(state=tk.NORMAL if self.current_index < len(self.error_df) - 1 else tk.DISABLED)
-        self.skip_button.config(state=tk.NORMAL)
-        
-        # v3.9 高速化: 次のエラーの画像を先読み（UIブロッキングなし）
-        self._schedule_prefetch()
-    
-    def _schedule_prefetch(self):
-        """次のエラー画像をアイドル時にバックグラウンドで先読みする"""
-        next_idx = self.current_index + 1
-        if self.error_df is None or next_idx >= len(self.error_df):
-            return
-        if self._prefetched_index == next_idx:
-            return  # 既に先読み済み
-        
-        self.window.after_idle(self._do_prefetch, next_idx)
-    
-    def _do_prefetch(self, target_index):
-        """先読み処理の実行"""
-        try:
-            if self.error_df is None or target_index >= len(self.error_df):
-                return
-            # ユーザーが先に移動した場合はスキップ
-            if self.current_index + 1 != target_index:
-                return
-            
-            next_row = self.error_df.iloc[target_index]
-            next_filename = next_row['filename']
-            next_q_no = int(next_row['question_no']) + self.skip_questions
-            next_scored_q_no = int(next_row['question_no'])
-            
-            # キャッシュに次の画像がなければ先にロード
-            if not self._image_cache.has(next_filename):
-                next_path = Path(self.image_folder) / next_filename
-                if next_path.exists():
-                    corrected = _load_and_correct_image(next_path)
-                    self._image_cache.put(next_filename, corrected)
-            
-            # 先読み画像を生成
             pil_img = get_display_image_checker(
-                self.coords_df, self.image_folder, next_filename, next_q_no,
+                self.coords_df, self.image_folder, filename, original_q_no,
                 scale_factor=DEFAULT_SCALE_FACTOR, expand_factor=DEFAULT_EXPAND_FACTOR,
-                cache=self._image_cache
+                cache=self._image_cache, bbox_map=self._bbox_map,
             )
             if pil_img:
-                # 正答枠を先読み画像にも描画
-                pil_img = self._draw_answer_overlay(pil_img, next_filename, next_scored_q_no)
+                pil_img = self._draw_answer_overlay(pil_img, filename, question_no)
                 pil_img = fit_image_to_display(pil_img)
-                self._prefetched_pil_img = pil_img
-                self._prefetched_index = target_index
-        except Exception:
-            # 先読み失敗は無視（通常パスでリトライされる）
-            self._prefetched_pil_img = None
-            self._prefetched_index = -1
+
+            if pil_img:
+                self.photo_image = pil_to_imagetk_checker(pil_img)
+                self.image_label.config(image=self.photo_image, text="",
+                                         width=pil_img.width, height=pil_img.height)
+            else:
+                self.image_label.config(image='', text="画像を読み込めません",
+                                         width=1100, height=150)
+                self.photo_image = None
+        except Exception as e:
+            self.image_label.config(image='', text=f"画像エラー: {e}",
+                                     width=1100, height=150)
+            self.photo_image = None
     
     def save_current_correction(self):
         """現在の修正内容を保存"""
-        if self.error_df is None or self.current_index >= len(self.error_df):
+        if self._all_entries_df is None or self.current_index >= len(self._all_entries_df):
             return False
-        
+
         correction = self.correction_entry.get().strip()
-        
+
         if correction:
-            self.error_df['after'] = self.error_df['after'].astype(object)
+            self._all_entries_df['after'] = self._all_entries_df['after'].astype(object)
             if correction == '-1':
-                self.error_df.at[self.current_index, 'after'] = '-1'
-            elif correction == 'skip':
-                self.error_df.at[self.current_index, 'after'] = 'skip'
-            elif correction.isdigit() and int(correction) >= 0:
-                self.error_df.at[self.current_index, 'after'] = correction
+                self._all_entries_df.at[self.current_index, 'after'] = '-1'
+            elif re.match(r'^-?\d+$', correction):
+                self._all_entries_df.at[self.current_index, 'after'] = correction
             else:
-                messagebox.showwarning("入力エラー", "0以上の整数、-1、またはskipを入力してください", parent=self.window)
+                messagebox.showwarning("入力エラー",
+                                        "整数または -1 を入力してください",
+                                        parent=self.window)
                 return False
         else:
-            self.error_df.at[self.current_index, 'after'] = pd.NA
-        
-        # v3.9 高速化: 遅延CSV保存（N件ごと or フラッシュ時に保存）
+            # 空欄 → 修正取り消し
+            self._all_entries_df.at[self.current_index, 'after'] = ''
+
+        # 遅延CSV保存
         self._csv_dirty = True
         self._unsaved_count += 1
         if self._unsaved_count >= self._save_interval:
             self._flush_csv()
         return True
-    
+
     def _flush_csv(self):
-        """ダーティなCSVをディスクに書き出す"""
-        if self._csv_dirty and self.error_df is not None:
-            save_errors_checker(self.error_df, self.error_csv_path)
-            self._csv_dirty = False
-            self._unsaved_count = 0
-    
-    def skip_current(self):
-        """現在の項目をSKIP"""
-        # CSV再読み込み後に after 列が float64 になる場合があるため、
-        # 文字列 'skip' 代入前に object 型へ変換しておく
-        if self.error_df['after'].dtype != object:
-            self.error_df['after'] = self.error_df['after'].astype('object')
-        self.error_df.at[self.current_index, 'after'] = 'skip'
-        self._csv_dirty = True
-        self._unsaved_count += 1
-        if self._unsaved_count >= self._save_interval:
-            self._flush_csv()
-        
-        if self.current_index < len(self.error_df) - 1:
-            self.current_index += 1
-            self.show_current()
-        else:
-            messagebox.showinfo("完了", "最後の項目です", parent=self.window)
-    
-    def show_previous(self):
-        """前の項目へ"""
-        if self.save_current_correction():
-            if self.current_index > 0:
-                self.current_index -= 1
-                self.show_current()
-            else:
-                messagebox.showinfo("最初の項目", "これが最初の項目です", parent=self.window)
-    
-    def save_and_next(self):
-        """保存して次へ"""
-        if self.save_current_correction():
-            if self.current_index < len(self.error_df) - 1:
-                self.current_index += 1
-                self.show_current()
-            else:
-                messagebox.showinfo("完了", "最後の項目です", parent=self.window)
-    
+        """修正のあるエントリだけをCSVに書き出す"""
+        if not self._csv_dirty or self._all_entries_df is None:
+            return
+        # 修正のあるエントリだけ抽出して保存（CSVを小さく保つ）
+        mask = self._all_entries_df['after'].notna() & (self._all_entries_df['after'] != '')
+        save_df = self._all_entries_df[mask][['filename', 'question_no', 'before', 'after', 'error_type']]
+        save_errors_checker(save_df, self.error_csv_path)
+        self._csv_dirty = False
+        self._unsaved_count = 0
+
     def apply_to_xlsx(self):
         """xlsxに反映"""
-        self.save_current_correction()
-        self._flush_csv()  # v3.9: xlsx反映前にCSVを確実に保存
-        
-        checked = len(self.error_df[self.error_df['after'].notna() & (self.error_df['after'] != '') & (self.error_df['after'] != 'skip')])
-        total = len(self.error_df)
-        
-        if checked == 0:
-            messagebox.showwarning("警告", "修正された項目がありません（skipを除く）", parent=self.window)
+        if self._view_mode == "single":
+            self.save_current_correction()
+        self._flush_csv()
+
+        if self._all_entries_df is None:
             return
-        
-        result = messagebox.askyesno("確認", f"{checked}/{total}件の修正をxlsxに反映します。\n（skip項目は除外されます）\n元のファイルはbackupフォルダにコピーされます。\n\n実行しますか?", parent=self.window)
-        
+
+        corrected = len(self._all_entries_df[
+            self._all_entries_df['after'].notna() &
+            (self._all_entries_df['after'] != '')
+        ])
+
+        if corrected == 0:
+            messagebox.showwarning("警告", "修正された項目がありません",
+                                    parent=self.window)
+            return
+
+        result = messagebox.askyesno(
+            "確認",
+            f"{corrected}件の修正をxlsxに反映します。\n"
+            f"元のファイルはbackupフォルダにコピーされます。\n\n実行しますか?",
+            parent=self.window,
+        )
         if not result:
             return
-        
+
         try:
-            backup_path, update_count = apply_corrections_checker(self.xlsx_path, self.error_csv_path)
-            
-            messagebox.showinfo("完了", f"xlsxファイルを更新しました。\n\n更新件数: {update_count}件\nバックアップ: {backup_path.name}\n\nデータを再読み込みして、画面をリフレッシュします。", parent=self.window)
-            
+            backup_path, update_count = apply_corrections_checker(
+                self.xlsx_path, self.error_csv_path,
+            )
+            messagebox.showinfo(
+                "完了",
+                f"xlsxファイルを更新しました。\n\n"
+                f"更新件数: {update_count}件\n"
+                f"バックアップ: {backup_path.name}\n\n"
+                f"データを再読み込みして画面をリフレッシュします。",
+                parent=self.window,
+            )
             self.refresh_data()
-                
         except Exception as e:
-            messagebox.showerror("エラー", f"xlsx更新エラー:\n{e}", parent=self.window)
-    
+            messagebox.showerror("エラー", f"xlsx更新エラー:\n{e}",
+                                  parent=self.window)
+
     def refresh_data(self):
         """データを再読み込みしてGUIをリフレッシュ"""
         try:
@@ -809,12 +1750,20 @@ class MarkCheckerGUI:
                 self.backup_csv(self.error_csv_path)
                 self.error_csv_path.unlink()
                 logger.info("リフレッシュのため、CSVをバックアップして削除しました")
-            
+
             self.current_index = 0
+            self._whiteness_cache.clear()
+            self._thumb_cache.clear()
+            self._grid_current_page = 0
+            self._view_mode = "grid"
+            self._single_view_frame.pack_forget()
+            if self._side_panel.winfo_manager() == "":
+                self._side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(8, 0), pady=8)
+            self._grid_view_frame.pack(fill=tk.BOTH, expand=True)
             self.load_data()
-            
         except Exception as e:
-            messagebox.showerror("エラー", f"データ再読み込みエラー:\n{e}", parent=self.window)
+            messagebox.showerror("エラー", f"データ再読み込みエラー:\n{e}",
+                                  parent=self.window)
 
 
 # ========================================
@@ -2306,7 +3255,8 @@ class StartupModeDialog:
     def _build_dialog(self):
         """ダイアログUIを構築"""
         self.dialog = tk.Toplevel(self.root)
-        self.dialog.title("採点侍 v4.4.1")
+        from constants import APP_VERSION
+        self.dialog.title(f"採点侍 v{APP_VERSION}")
         # transient(root) は使わない: root.withdraw() 中に呼ぶと
         # ダイアログも非表示になりフリーズするため
         self.dialog.grab_set()

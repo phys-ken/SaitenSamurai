@@ -50,6 +50,7 @@ pip install ^
     "PyMuPDF>=1.20.0" ^
     "matplotlib>=3.4.0" ^
     "reportlab>=3.6.0" ^
+    "scikit-learn>=1.0.0" ^
     "pyinstaller>=6.0.0"
 
 if errorlevel 1 (

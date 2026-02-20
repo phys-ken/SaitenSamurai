@@ -141,7 +141,8 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 | `00_Processing_Clean/` | `CLEAN_FOLDER` | 射影変換のみ適用したクリーン画像（記述式採点プレビュー用） |
 
 > **並列処理制約**: `_process_single_image()` は `ProcessPoolExecutor` で並列実行されます。
-> 引数タプルのアンパック順序（7要素）を変更する場合、全ワーカーに影響するため注意してください。
+> 引数タプルのアンパック順序（現行 8 要素）を変更する場合、全ワーカーに影響するため注意してください。
+> （後方互換のため 7 要素入力も受理する実装です）
 
 ### マークチェック正答オーバーレイ (`gui_components.py`)
 
@@ -267,12 +268,27 @@ python -m pytest tests/ -q --timeout=60 -p no:warnings
 # 特定のテストファイルのみ
 python -m pytest tests/test_scoring_e2e.py -v --timeout=60
 
+# 視覚回帰（実ウィンドウキャプチャ）を含める
+python -m pytest tests/ -m "visual" -v --timeout=120
+
+# 全テスト（通常 + visual）
+python -m pytest tests/ -m "not legacy_mock" -v --timeout=120
+
 # カバレッジ付き
 python -m pytest tests/ -q --timeout=60 -p no:warnings --cov=main_src --cov-report=term-missing
 ```
 
 > `--timeout=60` を必ず付けてください。GUI テストがハングした場合にタイムアウトで失敗させます。
 > テスト実行には `pytest-timeout` が必要です（`pip install pytest-timeout`）。
+
+### マーカー方針（v4.5 テスト再編）
+
+- `visual`: スクリーンショット/視覚回帰テスト（通常実行から除外）
+- `gui_heavy`: 実ウィンドウを多く開く重量GUIテスト
+- `legacy_mock`: 手組みモックUIを含む移行中テスト
+
+通常の開発サイクルでは `visual` / `legacy_mock` を除外した高速回帰を回し、
+リリース前またはUI変更時に `visual` を明示実行してください。
 
 ### テスト共通設定 (`conftest.py`)
 

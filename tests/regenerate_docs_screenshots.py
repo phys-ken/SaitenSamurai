@@ -940,6 +940,12 @@ def main():
         print("  → desc_08_grid_mode")
         capture_desc_08_grid_mode(root, image_paths)
 
+        print("  → 02a_main_mark_only (v4.5 認識方式コンボ)")
+        capture_02a_main_mark_only(root)
+
+        print("  → 18_mark_checker (v4.5 タブ+グリッド)")
+        capture_18_mark_checker(root)
+
     print("\n[3/3] 清掃中...")
     root.destroy()
 
@@ -956,6 +962,8 @@ def main():
         "desc_06_filter_active.png",
         "desc_07_all_scored.png",
         "desc_08_grid_mode.png",
+        "02a_main_mark_only.png",
+        "18_mark_checker.png",
     ]
     for t in targets:
         p = DOCS_IMAGES / t
@@ -966,6 +974,249 @@ def main():
             print(f"  ✗ {t} — 失敗")
 
     print("\n完了！")
+
+
+    print("\n完了！")
+
+
+# ============================================================
+# 02a. メイン画面（マーク採点モード） — v4.5 認識方式コンボボックス付き
+# ============================================================
+
+def capture_02a_main_mark_only(root: tk.Tk):
+    """02a_main_mark_only.png — マーク採点メイン画面（v4.5 認識方式選択付き）"""
+    BG = "#F0F4F8"
+    SECTION_BG = "#FFFFFF"
+    BTN_RUN = "#4CAF50"
+    BTN_FILE = "#E3F2FD"
+    HEADER_TEXT = "#37474F"
+    FONT_NORM = ("Yu Gothic UI", 9)
+    FONT_BOLD = ("Yu Gothic UI", 9, "bold")
+    FONT_HEAD = ("Yu Gothic UI", 11, "bold")
+
+    win = tk.Toplevel(root)
+    win.title("採点侍 — SaitenSamurai v4.5")
+    win.geometry("780x620")
+    win.configure(bg=BG)
+    win.resizable(False, False)
+
+    # ── タイトルバー ──
+    title_bar = tk.Frame(win, bg="#1A237E", padx=12, pady=8)
+    title_bar.pack(fill=tk.X)
+    tk.Label(title_bar, text="⚔ 採点侍  SaitenSamurai v4.5",
+             font=("Yu Gothic UI", 14, "bold"), bg="#1A237E", fg="white").pack(side=tk.LEFT)
+    tk.Label(title_bar, text="マーク採点モード",
+             font=("Yu Gothic UI", 9), bg="#1A237E", fg="#90CAF9").pack(side=tk.RIGHT)
+
+    main_frame = tk.Frame(win, bg=BG, padx=16, pady=12)
+    main_frame.pack(fill=tk.BOTH, expand=True)
+
+    # ── ファイル選択セクション ──
+    file_group = tk.LabelFrame(main_frame, text="ファイル設定", font=FONT_BOLD,
+                               bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT,
+                               padx=10, pady=8)
+    file_group.pack(fill=tk.X, pady=(0, 8))
+
+    def file_row(parent, label, placeholder, btn_text="参照"):
+        row = tk.Frame(parent, bg=SECTION_BG)
+        row.pack(fill=tk.X, pady=3)
+        tk.Label(row, text=label, font=FONT_NORM, bg=SECTION_BG,
+                 width=16, anchor=tk.W).pack(side=tk.LEFT)
+        entry = tk.Entry(row, font=("Yu Gothic UI", 8), fg="#999",
+                         relief=tk.SOLID, bd=1)
+        entry.insert(0, placeholder)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
+        tk.Button(row, text=btn_text, font=FONT_NORM, bg=BTN_FILE,
+                  relief=tk.FLAT, cursor="hand2", padx=6).pack(side=tk.LEFT)
+        return entry
+
+    file_row(main_frame, "スキャン画像フォルダ", "例: C:\\Users\\teacher\\scans\\class_A",
+             "フォルダ選択")
+    file_row(main_frame, "Mark2 座標ファイル", "例: M2-03-002_座標ファイル.xlsx",
+             "ファイル選択")
+    file_row(main_frame, "正答データ", "（認識実行後に自動設定）",
+             "ファイル選択")
+
+    # Skip 数
+    skip_row = tk.Frame(main_frame, bg=BG)
+    skip_row.pack(fill=tk.X, pady=(0, 6))
+    tk.Label(skip_row, text="Skip 数:", font=FONT_NORM, bg=BG,
+             width=16, anchor=tk.W).pack(side=tk.LEFT)
+    tk.Spinbox(skip_row, from_=0, to=20, width=5, font=FONT_NORM).pack(side=tk.LEFT, padx=4)
+    tk.Label(skip_row, text="（学年・クラス・番号・氏名 など解答欄の前にあるマーク欄の数）",
+             font=("Yu Gothic UI", 8), fg="#777", bg=BG).pack(side=tk.LEFT)
+
+    # ── オプション / 認識方式セクション ──
+    option_group = tk.LabelFrame(main_frame, text="OMR オプション", font=FONT_BOLD,
+                                 bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT,
+                                 padx=10, pady=8)
+    option_group.pack(fill=tk.X, pady=(0, 8))
+
+    mode_row = tk.Frame(option_group, bg=SECTION_BG)
+    mode_row.pack(fill=tk.X, pady=2)
+    tk.Label(mode_row, text="認識方式:", font=FONT_NORM, bg=SECTION_BG).pack(side=tk.LEFT)
+    combo = ttk.Combobox(mode_row, width=26,
+                         values=["（推奨）クラスタリング", "しきい値による識別（従来式）"],
+                         state="readonly")
+    combo.set("（推奨）クラスタリング")
+    combo.pack(side=tk.LEFT, padx=(5, 12))
+    tk.Label(mode_row, text="✔ K-means 7次元特徴量で高精度判定",
+             font=("Yu Gothic UI", 8), fg="#388E3C", bg=SECTION_BG).pack(side=tk.LEFT)
+
+    # ── 実行ボタン ──
+    pipeline = tk.Frame(main_frame, bg=BG)
+    pipeline.pack(fill=tk.X, pady=(4, 0))
+    pipeline.columnconfigure(0, weight=1)
+    pipeline.columnconfigure(1, weight=1)
+    pipeline.columnconfigure(2, weight=1)
+
+    def step_btn(col, step, title, desc, color, enabled=True):
+        f = tk.LabelFrame(pipeline, text=step, font=FONT_BOLD,
+                          bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT,
+                          padx=8, pady=8)
+        f.grid(row=0, column=col, sticky="nsew", padx=4)
+        tk.Label(f, text=title, font=FONT_HEAD, bg=SECTION_BG, fg=HEADER_TEXT).pack(pady=(0, 4))
+        tk.Button(f, text=desc, font=("Yu Gothic UI", 10, "bold"),
+                  bg=color if enabled else "#BDBDBD",
+                  fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=10, pady=6,
+                  state=tk.NORMAL if enabled else tk.DISABLED).pack(fill=tk.X)
+
+    step_btn(0, "Step 1 — OMR 認識", "マーク読み取り", "▶ 認識実行", "#4CAF50")
+    step_btn(1, "Step 2 — 正答・採点", "採点実行", "✔ 採点実行", "#1976D2")
+    step_btn(2, "Step 3 — 結果出力", "Excel 出力", "📊 出力実行", "#FF8F00")
+
+    # ステータスバー
+    status = tk.Frame(win, bg="#37474F", padx=10, pady=4)
+    status.pack(fill=tk.X, side=tk.BOTTOM)
+    tk.Label(status, text="就緒 — ファイルを選択して認識を実行してください",
+             font=("Yu Gothic UI", 8), bg="#37474F", fg="#B0BEC5").pack(side=tk.LEFT)
+
+    win.update_idletasks()
+    win.update()
+    _capture_window(win, "02a_main_mark_only")
+    win.destroy()
+
+
+# ============================================================
+# 18. マークチェック画面 — v4.5 タブ（薄い/濃い解答）付きグリッドビュー
+# ============================================================
+
+def capture_18_mark_checker(root: tk.Tk):
+    """18_mark_checker.png — マークチェック画面（v4.5 グリッド＋タブ）"""
+    BG = "#FAFAFA"
+    TOOLBAR_BG = "#37474F"
+
+    win = tk.Toplevel(root)
+    win.title("マークチェック")
+    win.geometry("940x680")
+    win.configure(bg=BG)
+
+    # ── 進捗バー ──
+    prog_bar = tk.Frame(win, bg="#1A237E", padx=10, pady=6)
+    prog_bar.pack(fill=tk.X)
+    tk.Label(prog_bar, text="マークチェック",
+             font=("Yu Gothic UI", 12, "bold"), bg="#1A237E", fg="white").pack(side=tk.LEFT)
+    tk.Label(prog_bar, text="エラー: 12件  |  チェック済み: 8件  |  進捗: 67%",
+             font=("Yu Gothic UI", 9), bg="#1A237E", fg="#90CAF9").pack(side=tk.LEFT, padx=16)
+    tk.Canvas(prog_bar, width=200, height=12, bg="#455A64",
+              highlightthickness=0).pack(side=tk.LEFT)
+
+    # ── ツールバー（タブ付き）──
+    toolbar = tk.Frame(win, bg=TOOLBAR_BG, padx=8, pady=5)
+    toolbar.pack(fill=tk.X)
+
+    # ページング
+    tk.Button(toolbar, text="◀", width=3, bg="#546E7A", fg="white", relief=tk.FLAT,
+              cursor="hand2").pack(side=tk.LEFT)
+    tk.Label(toolbar, text="1/2", font=("Yu Gothic UI", 9), bg=TOOLBAR_BG,
+             fg="white").pack(side=tk.LEFT, padx=4)
+    tk.Button(toolbar, text="▶", width=3, bg="#546E7A", fg="white", relief=tk.FLAT,
+              cursor="hand2").pack(side=tk.LEFT)
+
+    # 件数ラベル
+    tk.Label(toolbar, text="12件", font=("Yu Gothic UI", 9, "bold"),
+             bg=TOOLBAR_BG, fg="#FFD54F").pack(side=tk.LEFT, padx=10)
+
+    # タブ（v4.5 新機能）
+    tk.Button(toolbar, text="薄い解答(ノーマーク疑惑)",
+              bg="#42A5F5", fg="white",
+              font=("Yu Gothic UI", 9, "bold"),
+              relief=tk.FLAT, cursor="hand2", padx=8).pack(side=tk.LEFT, padx=(8, 2))
+    tk.Button(toolbar, text="濃い解答(複数マーク疑惑)",
+              bg="#546E7A", fg="white",
+              font=("Yu Gothic UI", 9),
+              relief=tk.FLAT, cursor="hand2", padx=8).pack(side=tk.LEFT, padx=(2, 8))
+
+    # サイズスライダー
+    tk.Label(toolbar, text="サイズ:", font=("Yu Gothic UI", 9),
+             bg=TOOLBAR_BG, fg="white").pack(side=tk.RIGHT)
+    tk.Scale(toolbar, from_=80, to=300, orient=tk.HORIZONTAL, length=120,
+             showvalue=False, bg=TOOLBAR_BG, fg="white",
+             highlightthickness=0, troughcolor="#546E7A").pack(side=tk.RIGHT, padx=(0, 4))
+
+    # ── グリッドエリア ──
+    grid_outer = tk.Frame(win, bg=BG)
+    grid_outer.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+    # ダミーカードデータ
+    cards = [
+        ("student_003.jpg", "Q5", "0",  "#FFCDD2", "未マーク"),
+        ("student_007.jpg", "Q3", "3,5", "#FFF3E0", "複数マーク"),
+        ("student_012.jpg", "Q8", "0",  "#FFCDD2", "未マーク"),
+        ("student_015.jpg", "Q2", "0",  "#FFCDD2", "未マーク"),
+        ("student_018.jpg", "Q6", "2,4", "#FFF3E0", "複数マーク"),
+        ("student_021.jpg", "Q1", "0",  "#FFCDD2", "未マーク"),
+        ("student_025.jpg", "Q9", "1,6", "#FFF3E0", "複数マーク"),
+        ("student_029.jpg", "Q4", "0",  "#FFCDD2", "未マーク"),
+    ]
+
+    for i, (fn, q, val, bg_col, err_type) in enumerate(cards):
+        r, c = divmod(i, 4)
+        card = tk.Frame(grid_outer, bg=bg_col, bd=1, relief=tk.RAISED,
+                        padx=4, pady=4, width=205, height=160)
+        card.grid(row=r, column=c, padx=4, pady=4, sticky="nsew")
+        card.grid_propagate(False)
+
+        # ダミー画像エリア（灰色の矩形）
+        img_canvas = tk.Canvas(card, width=180, height=80, bg="#EEEEEE",
+                               highlightthickness=0)
+        img_canvas.pack(pady=(2, 4))
+        img_canvas.create_rectangle(20, 20, 160, 60, fill="#CFD8DC", outline="#90A4AE", width=2)
+        img_canvas.create_text(90, 40, text=f"マーク欄 {q}",
+                               font=("Yu Gothic UI", 9), fill="#546E7A")
+
+        info_f = tk.Frame(card, bg=bg_col)
+        info_f.pack(fill=tk.X)
+        tk.Label(info_f, text=fn, font=("Yu Gothic UI", 7), fg="#777", bg=bg_col).pack(side=tk.LEFT)
+        tk.Label(info_f, text=err_type, font=("Yu Gothic UI", 8, "bold"),
+                 fg="#C62828" if "未" in err_type else "#E65100", bg=bg_col).pack(side=tk.RIGHT)
+
+        tk.Label(card, text=f"読取値: {val}", font=("Yu Gothic UI", 8),
+                 fg="#555", bg=bg_col).pack()
+
+    for c in range(4):
+        grid_outer.columnconfigure(c, weight=1)
+
+    # ── 修正パネル（下部）──
+    ctrl = tk.Frame(win, bg="#ECEFF1", padx=8, pady=6)
+    ctrl.pack(fill=tk.X, side=tk.BOTTOM)
+    tk.Label(ctrl, text="修正値を選択:", font=("Yu Gothic UI", 9, "bold"),
+             bg="#ECEFF1").pack(side=tk.LEFT)
+    for i in range(1, 8):
+        tk.Button(ctrl, text=str(i), width=3, font=("Yu Gothic UI", 10, "bold"),
+                  bg="#E3F2FD", relief=tk.RAISED, cursor="hand2").pack(side=tk.LEFT, padx=2)
+    tk.Button(ctrl, text="-1 無効", width=6, font=("Yu Gothic UI", 9, "bold"),
+              bg="#FFCDD2", fg="#C62828", relief=tk.RAISED, cursor="hand2").pack(side=tk.LEFT, padx=(8, 0))
+    tk.Button(ctrl, text="✔ 確定して次へ",
+              bg="#4CAF50", fg="white",
+              font=("Yu Gothic UI", 9, "bold"),
+              relief=tk.FLAT, cursor="hand2", padx=10).pack(side=tk.RIGHT)
+
+    win.update_idletasks()
+    win.update()
+    _capture_window(win, "18_mark_checker")
+    win.destroy()
 
 
 if __name__ == "__main__":

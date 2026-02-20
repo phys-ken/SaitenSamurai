@@ -1,6 +1,12 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 120
+addopts = "-m 'not visual and not legacy_mock'"
+markers = [
+    "visual: スクリーンショット/視覚回帰テスト（通常実行から除外）",
+    "gui_heavy: 実ウィンドウを多数生成するGUI重量テスト",
+    "legacy_mock: 手組みモックUIを含む移行中テスト",
+]
 
 [tool.coverage.run]
 source = ["main_src"]

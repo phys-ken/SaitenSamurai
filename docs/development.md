@@ -124,7 +124,7 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 
 | フォルダ | 定数 | 内容 |
 |---|---|---|
-| `00_Processing_Boxed/` | `BOXED_FOLDER` | マーク認識枠を描画した画像（マークチェック用） |
+| `00_Processing/` | `BOXED_FOLDER` | マーク認識枠を描画した画像（マークチェック用） |
 | `00_Processing_Clean/` | `CLEAN_FOLDER` | 射影変換のみ適用したクリーン画像（記述式採点プレビュー用） |
 
 ```mermaid
@@ -137,13 +137,31 @@ flowchart LR
 
 !!! warning "並列処理制約"
     `_process_single_image()` は `ProcessPoolExecutor` で並列実行されます。
-    引数タプルのアンパック順序（7要素）を変更する場合、全ワーカーに影響するため注意してください。
+    引数タプルのアンパック順序（8要素）を変更する場合、全ワーカーに影響するため注意してください。
 
 ??? info "args タプルの構成"
     ```python
     (image_path_str, boxed_folder_str, clean_folder_str,
-     coordinates, question_groups, color_threshold, area_threshold)
+    coordinates, question_groups, color_threshold, area_threshold, omr_mode)
     ```
+
+### OMR 結果キャッシュ（v4.5.1）
+
+`process_box_drawer()` は `01_Results/` 配下に以下のキャッシュを保存します。
+
+| ファイル | 用途 |
+|---|---|
+| `marker_cache.json` | Step2 での射影変換高速化用キャッシュ |
+| `whiteness_cache.json` | マークチェック画面の白さ順ソート高速化用キャッシュ |
+
+`MarkCheckerGUI` 起動時は `whiteness_cache.json` を優先読み込みし、
+見つからない場合のみ画像から白さを再計算します。
+
+### K-means レポート集約時の注意（ラベル正規化）
+
+K-means は画像単位で独立実行されるため、クラスタID（0/1）は画像ごとに入れ替わる可能性があります。
+`generate_kmeans_report()` では集約時に「marked=1 / empty=0」へ正規化してから
+ヒストグラム・PCA散布図を作成してください。
 
 ### マークチェック正答オーバーレイ (`gui_components.py`)
 
@@ -292,6 +310,12 @@ python -m pytest tests/test_scoring_e2e.py -v --timeout=60
 # カバレッジ付き
 python -m pytest tests/ -q --timeout=60 -p no:warnings --cov=main_src --cov-report=term-missing
 ```
+
+!!! info "2026-02 ローカル統合実行結果（参考）"
+    `python -m pytest tests/ -q --timeout=60 -p no:warnings` 実行時、
+    多くの環境で全体は通過しますが、Windows の Tcl/Tk 配布状態によっては
+    `init.tcl` 不在に起因する `tkinter.TclError` が 1 件発生する場合があります。
+    これはアプリ本体の業務ロジック不具合ではなく、実行環境依存の失敗です。
 
 !!! warning "タイムアウト設定"
     `--timeout=60` を必ず付けてください。GUI テストがハングした場合にタイムアウトで失敗させます。  

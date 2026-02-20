@@ -1256,9 +1256,11 @@ class TestGridModeScorerStructure:
         src = inspect.getsource(_SingleQuestionScorer._refresh_grid)
         assert "得点 昇順" in src, "得点昇順ソートがない"
         assert "得点 降順" in src, "得点降順ソートがない"
-        assert "#E3F2FD" in src, "満点の背景色がない"
-        assert "#FFEBEE" in src, "0点の背景色がない"
-        assert "#FFF3E0" in src, "中間点の背景色がない"
+        # 色定義は _score_to_card_style に抽出されている
+        style_src = inspect.getsource(_SingleQuestionScorer._score_to_card_style)
+        assert "#E3F2FD" in style_src, "満点の背景色がない"
+        assert "#FFEBEE" in style_src, "0点の背景色がない"
+        assert "#FFF3E0" in style_src, "中間点の背景色がない"
 
     def test_grid_thumb_cache(self):
         """サムネイルキャッシュが存在する"""
@@ -1267,6 +1269,46 @@ class TestGridModeScorerStructure:
         src = inspect.getsource(_SingleQuestionScorer)
         assert "_grid_thumb_cache" in src, "グリッドサムネイルキャッシュがない"
         assert "_load_grid_thumb" in src, "サムネイル読み込みメソッドがない"
+
+    def test_differential_card_update_exists(self):
+        """カードクリック時に全体再描画ではなく差分更新が行われる"""
+        import inspect
+        from descriptive_scorer import _SingleQuestionScorer
+        # _on_grid_card_click が _update_single_card を呼ぶ
+        click_src = inspect.getsource(_SingleQuestionScorer._on_grid_card_click)
+        assert "_update_single_card" in click_src, \
+            "_on_grid_card_click は _update_single_card を呼ぶべき"
+        assert "_refresh_grid" not in click_src, \
+            "_on_grid_card_click で _refresh_grid を呼ぶと全カード再描画になる"
+        # _update_single_card メソッドが存在
+        assert hasattr(_SingleQuestionScorer, "_update_single_card"), \
+            "_update_single_card メソッドがない"
+
+    def test_score_to_card_style_logic(self):
+        """_score_to_card_style が正しいスタイルを返す"""
+        from descriptive_scorer import _SingleQuestionScorer
+        fn = _SingleQuestionScorer._score_to_card_style
+        # 未採点
+        bg, mark, fg = fn(None, 5)
+        assert mark == "─"
+        # 満点
+        bg, mark, fg = fn(5, 5)
+        assert mark == "○" and bg == "#E3F2FD"
+        # 0点
+        bg, mark, fg = fn(0, 5)
+        assert mark == "×" and bg == "#FFEBEE"
+        # 中間点
+        bg, mark, fg = fn(3, 5)
+        assert mark == "△" and bg == "#FFF3E0"
+
+    def test_scroll_enter_leave_pattern(self):
+        """グリッドCanvasにEnter/LeaveパターンでMouseWheelをバインドしている"""
+        import inspect
+        from descriptive_scorer import _SingleQuestionScorer
+        src = inspect.getsource(_SingleQuestionScorer._build_grid_panel)
+        assert '<Enter>' in src, "Canvasに<Enter>バインドがない"
+        assert '<Leave>' in src, "Canvasに<Leave>バインドがない"
+        assert 'unbind_all' in src, "Leaveでunbind_allしていない"
 
 
 # ============================================================

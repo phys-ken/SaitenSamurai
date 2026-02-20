@@ -22,7 +22,7 @@ K-means 法は消しゴム跡検出に特化した **中心エッジ比（center
 
 インタラクティブなグラフ・スライダー・画像ツールチップを含む比較レポートは以下のリンクから閲覧できます。
 
-<a href="./research/" class="btn-download" target="_blank">
+<a href="report.html" class="btn-download" target="_blank">
 :material-chart-bar: アルゴリズム比較レポートを開く（別タブ）
 </a>
 
@@ -38,4 +38,4 @@ K-means 法は消しゴム跡検出に特化した **中心エッジ比（center
 - 消しゴム跡（薄いマーク）に対する誤認識を大幅に低減
 - クラスタリングの境界は訓練不要で動的に決定されるため、異なるスキャナ・用紙に対しても安定
 
-詳細な分析結果・混同行列・Precision-Recall 曲線は [レポート](./research/){:target="_blank"} 内でご確認ください。
+詳細な分析結果・混同行列・Precision-Recall 曲線は [レポート](report.html){:target="_blank"} 内でご確認ください。

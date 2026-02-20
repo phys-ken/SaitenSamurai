@@ -195,10 +195,6 @@ a = Analysis(
         'sklearn.preprocessing._csr_polynomial_expansion',
         'sklearn.preprocessing._polynomial',
 
-        # --- scipy/joblib 全体を除外 (KMeans/StandardScaler/PCA は不要) ---
-        'scipy',
-        'joblib',
-        'threadpoolctl',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -225,18 +221,14 @@ a.datas = [
         and not d[0].split('/')[-1].startswith('DejaVuSans')
     )
     and not d[0].startswith('sklearn/datasets/')
-    and not d[0].startswith('scipy/')
     and 'tests' not in d[0].split('/')
 ]
 
 # --- 不要バイナリの除外 ---
 # Pillow AVIF/WebP プラグイン DLL（マークシート処理で不使用）
 # opencv ffmpeg DLL（headless版では不要）
-# scipy 全体（KMeans/StandardScaler/PCA は scipy 不要）
 _excluded_binary_prefixes = (
     '_avif', '_webp', 'opencv_videoio_ffmpeg',
-    'scipy/', 'scipy\\',
-    'scipy.libs/', 'scipy.libs\\',
 )
 a.binaries = [
     b for b in a.binaries

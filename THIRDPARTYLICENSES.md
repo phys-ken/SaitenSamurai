@@ -1,6 +1,6 @@
 # サードパーティライセンス / Third-Party Licenses
 
-採点侍 (SaitenSamurai) v4.1 が利用している外部ライブラリ・プロジェクトのライセンス情報です。
+採点侍 (SaitenSamurai) v4.5 が利用している外部ライブラリ・プロジェクトのライセンス情報です。
 
 ---
 
@@ -24,6 +24,14 @@
 ---
 
 ## コア依存パッケージ
+
+### scikit-learn
+
+- **ライセンス**: BSD 3-Clause License
+- **著作権**: Copyright (c) 2007-2026 The scikit-learn developers
+- **URL**: https://github.com/scikit-learn/scikit-learn
+- **用途**: K-means クラスタリング（`KMeans`）、特徴量標準化（`StandardScaler`）、主成分分析（`PCA`）
+- **バージョン**: 1.8.0
 
 ### OpenCV (opencv-python-headless)
 

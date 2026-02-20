@@ -90,7 +90,7 @@ a = Analysis(
         'pip',
         'wheel',
         'test',
-        'pydoc',
+        # 'pydoc',  # sklearn が内部的に依存 (inspect→pydoc) — 除外不可
         'lib2to3',
         'tkinter.test',
         'idlelib',

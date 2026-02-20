@@ -180,7 +180,7 @@ def trim_descriptive_regions(
     # 元画像からの高解像度切り出しモード
     use_highres = original_image_folder is not None
     if use_highres:
-        from saitensamurai import (
+        from omr_engine import (
             detect_corner_markers, apply_perspective_transform,
             compute_output_scale,
         )
@@ -325,13 +325,13 @@ def generate_return_sheets(
         else:
             logger.info(msg)
 
-    # saitensamurai から必要な関数をインポート（遅延インポート）
-    from saitensamurai import (
+    # 各モジュールから直接インポート（saitensamurai.py 経由の連鎖インポートを回避）
+    from omr_engine import (
         detect_corner_markers, apply_perspective_transform,
-        compute_output_scale,
-        parse_excel_coordinates, load_template, load_mark2_results,
-        score_answers, draw_scoring_results,
+        compute_output_scale, parse_excel_coordinates,
     )
+    from scoring_engine import load_template, load_mark2_results, score_answers
+    from image_renderer import draw_scoring_results
 
     image_folder = Path(image_folder)  # type: ignore[assignment]
     output_folder = Path(output_folder)  # type: ignore[assignment]

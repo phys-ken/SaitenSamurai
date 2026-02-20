@@ -194,10 +194,8 @@ class SaitenSamuraiGUI:
             value=(mode in (MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY))
         )
         # 記述採点の結果を分析ファイル（CTT/R）に含むか
-        # 記述のみモードではON固定
-        self.include_descriptive_in_analysis = tk.BooleanVar(
-            value=True if mode == MODE_DESCRIPTIVE_ONLY else True
-        )
+        # デフォルトON。マークのみモードではチェックボックス自体が非表示
+        self.include_descriptive_in_analysis = tk.BooleanVar(value=True)
         
         # 採点結果描画の詳細設定（セッション保存/復元対象）
         self.rendering_settings = get_rendering_settings()
@@ -1100,6 +1098,10 @@ class SaitenSamuraiGUI:
         Step2 では pack 順序が重要なため、常時表示ボタンも含めて
         一度 forget してから正しい順序で再 pack する。
         """
+        # MODE_DESCRIPTIVE_ONLY ではレイアウトが初期化時に確定しており、
+        # toggle による再構成は不要（二重 pack 防止）
+        if self.app_mode == MODE_DESCRIPTIVE_ONLY:
+            return
         if self.descriptive_enabled.get():
             # --- Step1: 記述問題設定ボタンを表示 ---
             self.desc_setup_btn.pack(fill=tk.X, pady=(5, 0))
@@ -1234,7 +1236,7 @@ class SaitenSamuraiGUI:
                 descriptive_scores=scores_data.get("scores", {}),
                 output_folder=str(output_folder),
                 log_callback=self.log_message,
-                rendering_settings=self.rendering_settings,
+                rendering_settings=dict(self.rendering_settings),
             )
 
             if result:

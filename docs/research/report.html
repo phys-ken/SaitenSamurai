@@ -136,7 +136,7 @@ body { font-family: 'Segoe UI','Hiragino Sans','Yu Gothic UI',sans-serif; backgr
     <button class="tab-btn" onclick="switchScatterTab('th',this)">しきい値 ラベル</button>
     <button class="tab-btn" onclick="switchScatterTab('dis',this)">不一致のみ</button>
   </div>
-  <div style="padding-top:8px;position:relative"><canvas id="scatter-chart" height="420"></canvas></div>
+  <div style="padding-top:8px;position:relative;height:320px"><canvas id="scatter-chart"></canvas></div>
   <div id="scatter-tooltip"></div>
   <div class="edu-box">
     <h4>&#128161; PCAとは？</h4>
@@ -320,7 +320,7 @@ function renderScatterChart(mode){
   if(scatterChart)scatterChart.destroy();
   const ctx=document.getElementById('scatter-chart').getContext('2d');
   scatterChart=new Chart(ctx,{type:'scatter',data:{datasets:makeScatterDatasets(mode)},options:{
-    animation:false,
+    animation:false,maintainAspectRatio:false,
     plugins:{title:{display:true,text:`PCA散布図  PC1=${exp[0]}%, PC2=${exp[1]}% (7次元特徴量)`}},
     scales:{x:{title:{display:true,text:`PC1 (${exp[0]}%)`}},y:{title:{display:true,text:`PC2 (${exp[1]}%)`}}},
     onHover:(event,elements)=>{

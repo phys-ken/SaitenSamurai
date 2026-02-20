@@ -1778,9 +1778,18 @@ class SaitenSamuraiGUI:
         self.color_threshold.set(state.get("color_threshold", 0.1))
         self.area_threshold.set(state.get("area_threshold", 0.4))
 
-        desc_on = state.get("descriptive_enabled", False)
-        self.descriptive_enabled.set(desc_on)
-        self._on_descriptive_toggle()
+        # descriptive_enabled は起動時の app_mode によって決まるため、
+        # MODE_MARK_AND_DESCRIPTIVE のときのみセッション値を復元する。
+        # MODE_MARK_ONLY でマーク＆記述セッションを読み込んだ際に
+        # descriptive_enabled=True が適用されると _on_descriptive_toggle(True) で
+        # 記述UI が強制表示・Step2 レイアウトが壊れ、マークチェックボタンが
+        # 無効のままになるバグを防ぐ。
+        # MODE_MARK_ONLY: False 固定（init で設定済み）
+        # MODE_DESCRIPTIVE_ONLY: True 固定（init で設定済み）
+        if self.app_mode == MODE_MARK_AND_DESCRIPTIVE:
+            desc_on = state.get("descriptive_enabled", True)
+            self.descriptive_enabled.set(desc_on)
+            self._on_descriptive_toggle()
 
         # 描画詳細設定の復元
         saved_rs = state.get("rendering_settings")

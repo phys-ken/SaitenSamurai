@@ -20,7 +20,8 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import sys
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 
@@ -1366,10 +1367,16 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     all_kmeans_infos = []  # K-means 情報集約用
     whiteness_all = {}  # 白さキャッシュ（MarkChecker高速化用）
 
-    # --- 並列処理 (ProcessPoolExecutor) ---
+    # --- 並列処理 ---
+    # PyInstaller frozen EXE では ProcessPoolExecutor がワーカープロセスで
+    # EXE を再実行し GUI が多重起動する問題があるため、ThreadPoolExecutor を使用。
+    # OpenCV/NumPy は GIL を解放するため ThreadPoolExecutor でも並列性を確保できる。
+    is_frozen = getattr(sys, 'frozen', False)
+    PoolExecutor = ThreadPoolExecutor if is_frozen else ProcessPoolExecutor
     max_workers = max(1, (os.cpu_count() or 1) - 1)
     total = len(image_files)
-    logger.info("並列ワーカー数: %d", max_workers)
+    logger.info("並列ワーカー数: %d (%s)", max_workers,
+                "ThreadPool" if is_frozen else "ProcessPool")
 
     worker_args = [
         (str(img), str(boxed_folder), str(clean_folder), coordinates, question_groups,
@@ -1378,7 +1385,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
     ]
 
     completed = 0
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    with PoolExecutor(max_workers=max_workers) as executor:
         future_to_name = {
             executor.submit(_process_single_image, args): Path(args[0]).name
             for args in worker_args

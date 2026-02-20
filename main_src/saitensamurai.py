@@ -23,6 +23,20 @@
 """
 
 # ========================================
+# PyInstaller frozen EXE 対策: stdio リダイレクト
+# ========================================
+# console=False の frozen EXE では sys.stdout/stderr が None になる。
+# モジュールインポート中に print/logging が呼ばれると AttributeError になるため、
+# 全インポートより前に os.devnull へリダイレクトする。
+import sys as _sys
+import os as _os
+if getattr(_sys, 'frozen', False):
+    if _sys.stdout is None:
+        _sys.stdout = open(_os.devnull, 'w', encoding='utf-8')
+    if _sys.stderr is None:
+        _sys.stderr = open(_os.devnull, 'w', encoding='utf-8')
+
+# ========================================
 # 後方互換 re-export
 # ========================================
 

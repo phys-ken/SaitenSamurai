@@ -321,12 +321,16 @@ def setup_logging(log_dir=None, level=logging.INFO):
     root_logger.addHandler(fh)
 
     # コンソールハンドラ（既存 print 互換フォーマット）
-    # PyInstaller console=False 環境では sys.stdout が None になるためガード
-    stream = sys.stdout if sys.stdout is not None else open(os.devnull, 'w')
+    # PyInstaller console=False 環境では sys.stdout/stderr が None になるためガード
+    stream = sys.stdout if sys.stdout is not None else open(os.devnull, 'w', encoding='utf-8')
     ch = logging.StreamHandler(stream)
     ch.setLevel(level)
     ch.setFormatter(logging.Formatter("%(message)s"))
     root_logger.addHandler(ch)
+
+    # sys.stderr が None のままだと logging 内部の handleError() がクラッシュする
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, 'w', encoding='utf-8')
 
     return log_path
 

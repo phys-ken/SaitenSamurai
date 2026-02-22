@@ -2149,11 +2149,16 @@ class SaitenSamuraiGUI:
         def _worker():
             try:
                 from student_answer_pdf import generate_pre_scoring_pdfs
+
+                def _gui_log(msg: str):
+                    self.root.after(0, lambda m=msg: self.log_message(m))
+
                 pdfs = generate_pre_scoring_pdfs(
                     processing_folder=processing_folder,
                     config=config,
                     output_base_folder=results_folder,
                     original_folder=original_folder,
+                    log_callback=_gui_log,
                 )
                 if pdfs:
                     self.root.after(0, lambda: self.log_message(
@@ -2173,12 +2178,17 @@ class SaitenSamuraiGUI:
             from student_answer_pdf import generate_post_scoring_pdfs
             boxed_folder = str(Path(self.image_folder_path.get()) / RESULTS_FOLDER / BOXED_FOLDER)
             original_folder = self.image_folder_path.get()
+
+            def _gui_log(msg: str):
+                self.root.after(0, lambda m=msg: self.log_message(m))
+
             pdfs = generate_post_scoring_pdfs(
                 processing_folder=boxed_folder,
                 config=desc_config,
                 scores_data=scores_data,
                 output_base_folder=results_folder,
                 original_folder=original_folder,
+                log_callback=_gui_log,
             )
             if pdfs:
                 self.root.after(0, lambda: self.log_message(

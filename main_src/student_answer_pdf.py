@@ -82,59 +82,75 @@ def _crop_region_from_image(
     region: List[int],
     processing_folder: str,
     original_folder: Optional[str] = None,
+    log_callback=None,
 ) -> Optional[Image.Image]:
     """
     1枚の画像から指定領域を切り出して PIL.Image で返す。
 
     region は 00_Processing 画像 (595×842) に対するピクセル座標 [x1, y1, x2, y2]。
-    original_folder が指定されていれば高解像度元画像から切り出す。
+    original_folder が指定されていれば高解像度元画像から切り出す（マーカーがある場合のみ補正）。
+    日本語パスを含む環境でも動作するよう PIL.Image.open をベースにしている。
     """
     filename = Path(image_path).name
 
-    try:
-        if original_folder:
-            orig_path = Path(original_folder) / filename
-            if orig_path.exists():
+    def _pil_crop(pil_img: Image.Image, scale: float = 1.0) -> Optional[Image.Image]:
+        """PIL画像から region をクロップ（スケール適用済み座標でクリッピング）"""
+        img_w, img_h = pil_img.size
+        x1 = max(0, min(int(region[0] * scale), img_w))
+        y1 = max(0, min(int(region[1] * scale), img_h))
+        x2 = max(0, min(int(region[2] * scale), img_w))
+        y2 = max(0, min(int(region[3] * scale), img_h))
+        if x1 >= x2 or y1 >= y2:
+            return None
+        return pil_img.crop((x1, y1, x2, y2)).copy()
+
+    # ── 高解像度元画像からの切り出し（オプション） ────────────────
+    if original_folder:
+        orig_path = Path(original_folder) / filename
+        if orig_path.exists():
+            try:
                 from omr_engine import (
                     detect_corner_markers,
                     apply_perspective_transform,
                     compute_output_scale,
                 )
-                with open(str(orig_path), 'rb') as f:
-                    img_bytes = f.read()
+                img_bytes = orig_path.read_bytes()  # Unicode パス対応
                 orig_img = cv2.imdecode(
                     np.frombuffer(img_bytes, dtype=np.uint8), cv2.IMREAD_COLOR
                 )
                 if orig_img is not None:
-                    corners = detect_corner_markers(orig_img)
-                    if corners:
-                        corrected, _ = apply_perspective_transform(orig_img, corners)
-                        scale = compute_output_scale(corrected)
-                        x1 = int(region[0] * scale)
-                        y1 = int(region[1] * scale)
-                        x2 = int(region[2] * scale)
-                        y2 = int(region[3] * scale)
-                        h, w = corrected.shape[:2]
-                        x1, y1 = max(0, x1), max(0, y1)
-                        x2, y2 = min(w, x2), min(h, y2)
-                        cropped = corrected[y1:y2, x1:x2]
-                        return Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+                    scale = compute_output_scale(orig_img)  # 変換前画像で計算
+                    corners = detect_corner_markers(orig_img)  # マーカーなし→ValueError
+                    corrected, _ = apply_perspective_transform(
+                        orig_img, corners, output_scale=scale
+                    )
+                    corrected_pil = Image.fromarray(
+                        cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
+                    )
+                    result = _pil_crop(corrected_pil, scale)
+                    if result is not None:
+                        return result
+            except Exception:
+                # マーカーなし or 変換失敗 → 処理済み画像にフォールバック
+                pass
 
-        # フォールバック: Processing 画像を使用
+    # ── フォールバック: 処理済み (00_boxed) 画像を PIL で直接読む ──
+    # PIL.Image.open は日本語パスでも動作する
+    try:
         proc_path = Path(processing_folder) / filename
         if not proc_path.exists():
+            # image_path が processing_folder 直下にない場合は image_path 自体を試す
+            proc_path = Path(image_path)
+        if not proc_path.exists():
             return None
-        img = cv2.imread(str(proc_path))
-        if img is None:
-            return None
-        x1, y1, x2, y2 = region
-        h, w = img.shape[:2]
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
-        cropped = img[y1:y2, x1:x2]
-        return Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+        with Image.open(str(proc_path)) as pil_img:
+            pil_img.load()  # ファイルを閉じる前に読み込む
+            return _pil_crop(pil_img, 1.0)
     except Exception as e:
-        logger.warning("画像切り出し失敗 %s: %s", filename, e)
+        msg = f"画像切り出し失敗 {filename}: {e}"
+        logger.warning(msg)
+        if log_callback:
+            log_callback(msg)
         return None
 
 
@@ -296,29 +312,36 @@ def generate_pre_scoring_pdfs(
     output_base_folder: str,
     original_folder: Optional[str] = None,
     progress_callback=None,
+    log_callback=None,
 ) -> List[str]:
     """
     採点前の設問別解答一覧 PDF を生成する。
 
     Args:
-        processing_folder: 00_Processing フォルダ
+        processing_folder: 00_Processing (boxed) フォルダ
         config: descriptive_config (questions 含む)
         output_base_folder: _saiten_grading_results のパス
         original_folder: 元画像フォルダ (高解像度切り出し用, 任意)
         progress_callback: callback(current, total) 進捗通知
+        log_callback: callback(message: str) GUI ログ出力用
 
     Returns:
         生成された PDF パスのリスト
     """
+    def _log(msg: str):
+        logger.info(msg)
+        if log_callback:
+            log_callback(msg)
+
     questions = config.get("questions", [])
     if not questions:
-        logger.warning("generate_pre_scoring_pdfs: 問題が未設定です")
+        _log("解答一覧PDF: 問題が未設定です")
         return []
 
     from name_trimmer import get_image_files
     image_files = get_image_files(processing_folder)
     if not image_files:
-        logger.warning("generate_pre_scoring_pdfs: 画像ファイルがありません")
+        _log("解答一覧PDF: 画像ファイルがありません")
         return []
 
     # 自然順ソート
@@ -340,7 +363,8 @@ def generate_pre_scoring_pdfs(
         entries = []
         for img_path in image_files:
             pil_img = _crop_region_from_image(
-                img_path, region, processing_folder, original_folder
+                img_path, region, processing_folder, original_folder,
+                log_callback=log_callback,
             )
             entries.append({
                 "filename": Path(img_path).name,
@@ -357,8 +381,9 @@ def generate_pre_scoring_pdfs(
         result = _generate_question_pdf(question, entries, str(pdf_path), mode="pre")
         if result:
             generated.append(result)
+            _log(f"  採点前PDF: {Path(result).name} ({len([e for e in entries if e['image']])}画像)")
 
-    logger.info("採点前PDF生成完了: %d ファイル → %s", len(generated), out_dir)
+    _log(f"採点前PDF生成完了: {len(generated)}ファイル")
     return generated
 
 
@@ -369,30 +394,37 @@ def generate_post_scoring_pdfs(
     output_base_folder: str,
     original_folder: Optional[str] = None,
     progress_callback=None,
+    log_callback=None,
 ) -> List[str]:
     """
     採点後の設問別解答一覧 PDF を生成する (得点の高い順にソート)。
 
     Args:
-        processing_folder: 00_Processing フォルダ
+        processing_folder: 00_Processing (boxed) フォルダ
         config: descriptive_config (questions 含む)
         scores_data: {"scores": {filename: {question_id: score, ...}, ...}}
         output_base_folder: _saiten_grading_results のパス
         original_folder: 元画像フォルダ (高解像度切り出し用, 任意)
         progress_callback: callback(current, total) 進捗通知
+        log_callback: callback(message: str) GUI ログ出力用
 
     Returns:
         生成された PDF パスのリスト
     """
+    def _log(msg: str):
+        logger.info(msg)
+        if log_callback:
+            log_callback(msg)
+
     questions = config.get("questions", [])
     if not questions:
-        logger.warning("generate_post_scoring_pdfs: 問題が未設定です")
+        _log("解答一覧PDF（採点後）: 問題が未設定です")
         return []
 
     from name_trimmer import get_image_files
     image_files = get_image_files(processing_folder)
     if not image_files:
-        logger.warning("generate_post_scoring_pdfs: 画像ファイルがありません")
+        _log("解答一覧PDF（採点後）: 画像ファイルがありません")
         return []
 
     scores_dict = scores_data.get("scores", {})
@@ -408,14 +440,14 @@ def generate_post_scoring_pdfs(
     for q_idx, question in enumerate(questions):
         q_id = question["id"]
         q_name = question.get("name", q_id)
-        max_score = question.get("max_score", 0)
         region = question["region"]
 
         entries = []
         for img_path in image_files:
             filename = Path(img_path).name
             pil_img = _crop_region_from_image(
-                img_path, region, processing_folder, original_folder
+                img_path, region, processing_folder, original_folder,
+                log_callback=log_callback,
             )
             score = scores_dict.get(filename, {}).get(q_id)
             entries.append({
@@ -441,6 +473,7 @@ def generate_post_scoring_pdfs(
         result = _generate_question_pdf(question, entries, str(pdf_path), mode="post")
         if result:
             generated.append(result)
+            _log(f"  採点後PDF: {Path(result).name} ({len([e for e in entries if e['image']])}画像)")
 
-    logger.info("採点後PDF生成完了: %d ファイル → %s", len(generated), out_dir)
+    _log(f"採点後PDF生成完了: {len(generated)}ファイル")
     return generated

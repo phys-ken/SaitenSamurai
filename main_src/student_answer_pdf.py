@@ -108,7 +108,7 @@ def _crop_region_from_image(
                 if orig_img is not None:
                     corners = detect_corner_markers(orig_img)
                     if corners:
-                        corrected = apply_perspective_transform(orig_img, corners)
+                        corrected, _ = apply_perspective_transform(orig_img, corners)
                         scale = compute_output_scale(corrected)
                         x1 = int(region[0] * scale)
                         y1 = int(region[1] * scale)

@@ -86,8 +86,10 @@ def _make_stub_app(img_folder="", mode=MODE_MARK_AND_DESCRIPTIVE):
     )
     app.include_descriptive_in_analysis = tk.BooleanVar(root, value=True)
     app.rendering_settings = get_rendering_settings()
-    app._log_messages = []
-    app.log_message = lambda msg: app._log_messages.append(msg)
+    _log_msgs: list[str] = []
+    object.__setattr__(app, '_log_messages', _log_msgs)
+    object.__setattr__(app, 'log_message',
+                       lambda message, replace_last=False: _log_msgs.append(str(message)))
     app._desc_status_label = tk.Label(root)
     app._desc_status_frame = tk.Frame(root)
     app._on_descriptive_toggle = lambda: None

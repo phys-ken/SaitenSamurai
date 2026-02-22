@@ -584,6 +584,16 @@ class SaitenSamuraiGUI:
         elif self.app_mode == MODE_MARK_AND_DESCRIPTIVE:
             self._chk_include_desc_analysis.pack(fill=tk.X, pady=(0, 3))
         # マークのみでは非表示（_on_descriptive_toggle で制御）
+
+        # 採点後の解答一覧PDF チェックボックス（記述ON時のみ表示）
+        self.post_scoring_pdf_enabled = tk.BooleanVar(value=False)
+        self._chk_post_scoring_pdf = tk.Checkbutton(
+            step3, text="採点後の解答一覧PDFを出力する",
+            variable=self.post_scoring_pdf_enabled, bg=SECTION_BG,
+            font=("Yu Gothic UI", 8), anchor=tk.W, cursor="hand2"
+        )
+        if self.app_mode in (MODE_DESCRIPTIVE_ONLY, MODE_MARK_AND_DESCRIPTIVE):
+            self._chk_post_scoring_pdf.pack(fill=tk.X, pady=(0, 3))
         
         # --- 集計実行 + 結果フォルダ（横並び） ---
         self._step3_run_row = tk.Frame(step3, bg=SECTION_BG)
@@ -1127,6 +1137,7 @@ class SaitenSamuraiGUI:
 
             # --- Step3: 記述採点を分析に含むチェックボックスを表示（ボタン上部） ---
             self._chk_include_desc_analysis.pack(fill=tk.X, pady=(0, 3), before=self._step3_run_row)
+            self._chk_post_scoring_pdf.pack(fill=tk.X, pady=(0, 3), before=self._step3_run_row)
         else:
             # 記述OFFの場合は記述関連ウィジェットを非表示
             self.desc_setup_btn.pack_forget()
@@ -1134,6 +1145,7 @@ class SaitenSamuraiGUI:
             self._desc_status_frame.pack_forget()
             self._btn_desc_review.pack_forget()
             self._chk_include_desc_analysis.pack_forget()
+            self._chk_post_scoring_pdf.pack_forget()
 
     def _set_desc_status(self, text):
         """記述ステータスのテキストを更新する（Label互換 + Text表示）"""
@@ -2108,13 +2120,16 @@ class SaitenSamuraiGUI:
 
         try:
             from descriptive_scorer import setup_descriptive_regions_integrated
-            config = setup_descriptive_regions_integrated(
+            config, gen_pdf = setup_descriptive_regions_integrated(
                 str(boxed_folder), config_path, parent=self.root
             )
             if config:
                 self.log_message(f"✓ 記述問題設定完了: {len(config['questions'])}問")
                 self._update_descriptive_status()
                 self._save_session_state()
+                # 解答一覧PDF生成（採点前）
+                if gen_pdf:
+                    self._generate_pre_scoring_pdf(config, str(boxed_folder))
             else:
                 self.log_message("記述問題設定がキャンセルされました。")
         except Exception as e:
@@ -2122,6 +2137,57 @@ class SaitenSamuraiGUI:
             import traceback
             self.log_message(traceback.format_exc())
             messagebox.showerror("エラー", f"記述問題設定中にエラーが発生しました:\n{e}")
+
+    def _generate_pre_scoring_pdf(self, config, processing_folder):
+        """採点前の設問別解答一覧PDFをバックグラウンドで生成する。"""
+        import threading
+
+        results_folder = str(Path(self.image_folder_path.get()) / RESULTS_FOLDER)
+        # 元画像フォルダ（高解像度切り出し用）
+        original_folder = self.image_folder_path.get()
+
+        def _worker():
+            try:
+                from student_answer_pdf import generate_pre_scoring_pdfs
+                pdfs = generate_pre_scoring_pdfs(
+                    processing_folder=processing_folder,
+                    config=config,
+                    output_base_folder=results_folder,
+                    original_folder=original_folder,
+                )
+                if pdfs:
+                    self.root.after(0, lambda: self.log_message(
+                        f"✓ 解答一覧PDF（採点前）: {len(pdfs)}ファイル生成完了"
+                    ))
+            except Exception as e:
+                self.root.after(0, lambda: self.log_message(
+                    f"解答一覧PDF生成エラー: {e}"
+                ))
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+    def _generate_post_scoring_pdf_sync(self, desc_config, scores_data, results_folder):
+        """採点後の設問別解答一覧PDFを生成する（集計スレッド内から同期呼び出し）。"""
+        try:
+            from student_answer_pdf import generate_post_scoring_pdfs
+            boxed_folder = str(Path(self.image_folder_path.get()) / RESULTS_FOLDER / BOXED_FOLDER)
+            original_folder = self.image_folder_path.get()
+            pdfs = generate_post_scoring_pdfs(
+                processing_folder=boxed_folder,
+                config=desc_config,
+                scores_data=scores_data,
+                output_base_folder=results_folder,
+                original_folder=original_folder,
+            )
+            if pdfs:
+                self.root.after(0, lambda: self.log_message(
+                    f"✓ 解答一覧PDF（採点後）: {len(pdfs)}ファイル生成完了"
+                ))
+        except Exception as e:
+            self.root.after(0, lambda: self.log_message(
+                f"解答一覧PDF（採点後）生成エラー: {e}"
+            ))
 
     def _ask_descriptive_setup_action(self):
         """記述問題設定ボタン押下時の3択ダイアログ。
@@ -3318,6 +3384,12 @@ class SaitenSamuraiGUI:
                 self.last_results_folder = str(final_report)
                 self.root.after(0, lambda: self.open_results_btn.config(state=tk.NORMAL))
 
+                # 採点後の解答一覧PDF生成
+                if self.post_scoring_pdf_enabled.get():
+                    self._generate_post_scoring_pdf_sync(
+                        desc_config, scores_data, str(results_folder)
+                    )
+
                 stats = result["stats"]
                 summary = (
                     f"サマリー生成が正常に完了しました！\n\n"
@@ -3436,6 +3508,13 @@ class SaitenSamuraiGUI:
                 results_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER
                 self.last_results_folder = str(results_folder / FINAL_REPORT_FOLDER)
                 self.root.after(0, lambda: self.open_results_btn.config(state=tk.NORMAL))
+
+                # 採点後の解答一覧PDF生成（マーク+記述モード）
+                if (self.post_scoring_pdf_enabled.get()
+                        and desc_config and scores_data):
+                    self._generate_post_scoring_pdf_sync(
+                        desc_config, scores_data, str(results_folder),
+                    )
                 
                 stats = result['stats']
                 summary = f"""サマリー生成が正常に完了しました！

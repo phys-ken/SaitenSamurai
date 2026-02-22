@@ -331,6 +331,7 @@ class IntegratedDescriptiveSetup:
         self.image_folder = image_folder
         self.config_save_path = config_save_path
         self.result_config = None  # 完了時に設定が入る
+        self.generate_answer_pdf = False  # 解答一覧PDF生成フラグ
 
         # 画像ファイル取得
         self._image_files = get_image_files(image_folder)
@@ -453,6 +454,14 @@ class IntegratedDescriptiveSetup:
         tk.Button(btn_frame, text="✔ 設定を保存", command=self._on_save,
                   font=("Yu Gothic UI", 10, "bold"), bg="#81C784", fg="white",
                   relief=tk.FLAT, cursor="hand2").pack(side=tk.RIGHT)
+
+        # 解答一覧 PDF チェックボックス（設定保存ボタンの下）
+        self._gen_answer_pdf_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            right, text="生徒の解答一覧PDFを作成する（時間がかかります）",
+            variable=self._gen_answer_pdf_var, bg=BG,
+            font=("Yu Gothic UI", 8), anchor=tk.W, cursor="hand2"
+        ).pack(fill=tk.X, pady=(6, 0))
 
         # ステータス
         self._status_label = tk.Label(right, text="", bg=BG, font=("Yu Gothic UI", 9), fg="#555")
@@ -675,6 +684,7 @@ class IntegratedDescriptiveSetup:
 
         save_descriptive_config(self.config_save_path, config)
         self.result_config = config
+        self.generate_answer_pdf = self._gen_answer_pdf_var.get()
         self.win.grab_release()
         self.win.destroy()
 
@@ -694,7 +704,7 @@ def setup_descriptive_regions_integrated(
     Phase 2A: 領域選択と設問情報設定を1画面で完結する。
     """
     setup = IntegratedDescriptiveSetup(parent, image_folder, config_save_path)
-    return setup.result_config
+    return setup.result_config, setup.generate_answer_pdf
 
 
 def select_total_position(

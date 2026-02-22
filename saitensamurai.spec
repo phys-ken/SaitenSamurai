@@ -55,6 +55,7 @@ a = Analysis(
         'descriptive_renderer',
         'name_trimmer',
         'r_export',
+        'student_answer_pdf',
         # オプショナル依存 (exe には含める)
         'fitz',
         'matplotlib',

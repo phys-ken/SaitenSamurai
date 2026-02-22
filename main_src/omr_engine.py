@@ -680,8 +680,15 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
         question_contrast,        # (N,)
     ])  # → (N, 7)
 
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.cluster import KMeans
+    try:
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.cluster import KMeans
+    except ImportError as _e:
+        raise RuntimeError(
+            "K-meansクラスタリングに必要な scikit-learn が見つかりません。\n"
+            "pip install scikit-learn を実行してください。\n"
+            f"（詳細: {_e}）"
+        ) from _e
 
     scaler = StandardScaler()
     X = scaler.fit_transform(features)

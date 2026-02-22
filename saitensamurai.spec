@@ -10,8 +10,13 @@
 import os
 import re
 import sys
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
+
+# scikit-learn と joblib を丸ごと収集（Cython .pyd を含む全モジュールを同梱するため）
+_sklearn_datas, _sklearn_binaries, _sklearn_hiddenimports = collect_all('sklearn')
+_joblib_datas, _joblib_binaries, _joblib_hiddenimports = collect_all('joblib')
 
 # main_src をインポートパスに追加
 MAIN_SRC = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'main_src')
@@ -26,11 +31,11 @@ EXE_NAME = f'SaitenSamurai_v{_version}'
 a = Analysis(
     ['main_src/saitensamurai.py'],
     pathex=[MAIN_SRC],
-    binaries=[],
+    binaries=[] + _sklearn_binaries + _joblib_binaries,
     datas=[
         ('resources/icon.ico', 'resources'),
         ('resources/samurai.png', 'resources'),
-    ],
+    ] + _sklearn_datas + _joblib_datas,
     hiddenimports=[
         # エントリポイント (遅延インポートで使われる)
         'saitensamurai',
@@ -59,18 +64,26 @@ a = Analysis(
         'reportlab.lib',
         'reportlab.platypus',
         'reportlab.graphics',
-        # scikit-learn (KMeans, StandardScaler, PCA のみ使用)
+        # scikit-learn / joblib / threadpoolctl
+        # collect_all で収集した一覧をマージ（Cython .pyd を含む全モジュールを確実に同梱）
+        *_sklearn_hiddenimports,
+        *_joblib_hiddenimports,
+        'threadpoolctl',          # sklearn>=1.0 の必須依存
+        # 念のため明示（collect_all でカバーされるが二重指定は無害）
         'sklearn',
         'sklearn.cluster',
-        'sklearn.cluster._kmeans',
+        'sklearn.cluster._k_means_common',
+        'sklearn.cluster._k_means_elkan',
+        'sklearn.cluster._k_means_lloyd',
         'sklearn.preprocessing',
         'sklearn.preprocessing._data',
-        'sklearn.decomposition',
-        'sklearn.decomposition._pca',
         'sklearn.utils',
         'sklearn.utils._param_validation',
         'sklearn.metrics',
         'sklearn.metrics.pairwise',
+        'joblib',
+        'joblib.externals.loky',
+        'joblib.externals.loky.backend',
     ],
     hookspath=[],
     hooksconfig={},
@@ -88,7 +101,7 @@ a = Analysis(
         'sphinx',
         'docutils',
         'pip',
-        'wheel',
+        # 'wheel',  # collect_all(sklearn/joblib) の依存解析と衝突するため除外しない
         'test',
         # 'pydoc',  # sklearn が内部的に依存 (inspect→pydoc) — 除外不可
         'lib2to3',

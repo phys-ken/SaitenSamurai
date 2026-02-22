@@ -85,19 +85,73 @@ class TestNaturalSortKey:
 # ================================================================
 
 class TestComputeGrid:
-    def test_small_region_many_cols(self):
-        """小さい領域は多くの列数になる"""
-        cols, rows, iw, ih = sap._compute_grid([0, 0, 59, 84])
-        assert cols >= 2
-        assert rows >= 2
-        assert iw > 0
-        assert ih > 0
+    """_compute_grid のアルゴリズム検証
 
-    def test_large_region_single_col(self):
-        """大きい領域は1列になる"""
-        cols, rows, iw, ih = sap._compute_grid([0, 0, 595, 421])
+    スキャン原稿を A4 と仮定し、記述欄の「物理サイズ」を基準に列数を決める:
+      - scale = img_w / img_w_natural が [1.0, _SCALE_UPPER] に収まる最大列数
+      - 収まる整数が存在しない場合は _SCALE_UPPER を守り scale < 1.0 を許容
+    """
+
+    def _natural_w(self, rw: int) -> float:
+        """ピクセル幅 rw を物理サイズ (pt) に変換"""
+        return (rw / sap._SCAN_A4_W) * sap._A4_W
+
+    def test_wide_region_single_col(self):
+        """A4の80%幅(476px) → 1列でscale=1.17 ∈ [1.0, 1.3]"""
+        cols, rows, iw, ih = sap._compute_grid([0, 0, 476, 200])
         assert cols == 1
-        assert rows >= 1
+        scale = iw / self._natural_w(476)
+        assert 1.0 <= scale <= sap._SCALE_UPPER + 0.01
+
+    def test_half_width_two_cols(self):
+        """A4の50%幅(298px) → 1列scale≈1.88 > 1.3 なので2列"""
+        cols, rows, iw, ih = sap._compute_grid([0, 0, 298, 200])
+        assert cols == 2
+
+    def test_narrow_region_three_cols(self):
+        """A4の30%幅(178px) → 3列でscale≈1.02 ∈ [1.0, 1.3]"""
+        cols, rows, iw, ih = sap._compute_grid([0, 0, 178, 200])
+        assert cols == 3
+        scale = iw / self._natural_w(178)
+        assert 1.0 <= scale <= sap._SCALE_UPPER + 0.01
+
+    def test_very_narrow_four_cols(self):
+        """A4の20%幅(119px) → 4列でscale≈1.14 ∈ [1.0, 1.3]"""
+        cols, rows, iw, ih = sap._compute_grid([0, 0, 119, 200])
+        assert cols == 4
+        scale = iw / self._natural_w(119)
+        assert 1.0 <= scale <= sap._SCALE_UPPER + 0.01
+
+    def test_scale_never_exceeds_upper(self):
+        """通常の記述欄サイズ（A4の14%以上）ではスケールが _SCALE_UPPER を超えない
+        ※ _MAX_COLS=6 の上限に当たる極小領域（A4の13%未満）は対象外
+        """
+        for rw in [100, 119, 150, 178, 200, 250, 298, 350, 400, 476, 559]:
+            cols, rows, iw, ih = sap._compute_grid([0, 0, rw, 200])
+            scale = iw / self._natural_w(rw)
+            assert scale <= sap._SCALE_UPPER + 0.01, (
+                f"rw={rw}: cols={cols}, scale={scale:.3f} > SCALE_UPPER={sap._SCALE_UPPER}"
+            )
+
+    def test_scale_ge1_when_possible(self):
+        """scale ≥ 1.0 が実現できる領域では実際に ≥ 1.0 になる"""
+        # 80%幅と30%幅はどちらも [1.0, 1.3] に収まるはず
+        for rw in [476, 178, 119]:
+            cols, rows, iw, ih = sap._compute_grid([0, 0, rw, 200])
+            scale = iw / self._natural_w(rw)
+            assert scale >= 1.0 - 0.01, (
+                f"rw={rw}: cols={cols}, scale={scale:.3f} < 1.0"
+            )
+
+    def test_width_fills_usable_area(self):
+        """cols × img_w + (cols-1) × GAP ≈ usable_w（幅いっぱいに配置）"""
+        usable_w = sap._A4_W - 2 * sap._MARGIN
+        for rw in [100, 119, 150, 178, 250, 298, 400, 476]:
+            cols, rows, iw, ih = sap._compute_grid([0, 0, rw, 200])
+            total_w = cols * iw + (cols - 1) * sap._GAP
+            assert abs(total_w - usable_w) < 0.5, (
+                f"rw={rw}: cols={cols}, total_w={total_w:.1f} ≠ usable_w={usable_w:.1f}"
+            )
 
     def test_zero_region(self):
         """ゼロサイズ領域でもクラッシュしない"""
@@ -106,13 +160,12 @@ class TestComputeGrid:
         assert rows >= 1
 
     def test_aspect_ratio_maintained(self):
-        """A4に対する相対サイズ比が維持される"""
-        # 領域が A4 の半分の幅
-        region = [0, 0, 297, 421]  # 約半幅, 約半高
-        cols, rows, iw, ih = sap._compute_grid(region)
-        ratio_w = iw / sap._A4_W
-        expected_ratio_w = 297 / 595
-        assert abs(ratio_w - expected_ratio_w) < 0.01
+        """img_w / img_h が物理サイズのアスペクト比と一致する"""
+        rw, rh = 200, 100
+        _, _, iw, ih = sap._compute_grid([0, 0, rw, rh])
+        img_w_natural = self._natural_w(rw)
+        img_h_natural = (rh / sap._SCAN_A4_H) * sap._A4_H
+        assert abs(iw / ih - img_w_natural / img_h_natural) < 0.01
 
 
 # ================================================================

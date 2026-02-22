@@ -35,13 +35,17 @@ POST_SCORING_SUBFOLDER = "020_post_scoring"
 _A4_W = 595.28   # A4 横幅 (pt)
 _A4_H = 841.89   # A4 縦幅 (pt)
 _MARGIN = 18      # 上下左右マージン (pt)
-_GAP = 6          # 画像間の隙間 (pt)
+_GAP = 8          # 画像間の隙間 (pt) — 見やすさのため少し広め
 _HEADER_H = 20    # ヘッダー高さ (pt)
 _FOOTER_H = 14    # フッター高さ (pt)
 _CAPTION_H = 12   # キャプション高さ (pt)
 _CAPTION_FONT_SIZE = 7
 _HEADER_FONT_SIZE = 10
 _FOOTER_FONT_SIZE = 7
+
+# グリッドレイアウトの制約
+_SCALE_UPPER = 1.3  # 表示スケールの軟上限（これを超えたら列数を増やす）
+_MAX_COLS = 6       # 列数の上限
 
 # スキャン原稿の元サイズ (px) — A4 前提
 _SCAN_A4_W = 595   # 基準幅 (72dpi 換算, 元画像はこれの倍率)
@@ -162,36 +166,71 @@ def _compute_grid(
     scan_height: int = _SCAN_A4_H,
 ) -> Tuple[int, int, float, float]:
     """
-    領域サイズから A4 ページに収まるグリッド (cols, rows) と
-    各セルの画像表示サイズ (cell_w, cell_h) を計算する。
+    領域サイズから最適な列数 (cols) と表示サイズ (img_w, img_h) を返す。
 
-    スキャン原稿が A4 である前提で、元画像に対する相対サイズを維持する。
+    <決定方針>
+    スキャン原稿 (A4) における記述欄の「物理サイズ」を基準とし、
+    次の優先順位で列数を決定する:
+
+      ① scale ∈ [1.0, _SCALE_UPPER] を満たす最大列数を採用する
+         → 1枚当たりの画像を最大化しつつ, 自然サイズ以上を確保
+
+      ② ①を満たす整数が存在しない（物理サイズが大きく1列でも上限超え）場合:
+         _SCALE_UPPER を軟上限として守り, scale < 1.0 をやむなく許容する
+         （2倍超えを避けることを優先）
+
+    <サイジング>
+      img_w = (usable_w - (cols-1) * GAP) / cols  ← 横いっぱいに均等配置
+      img_h = img_h_natural * (img_w / img_w_natural)  ← アスペクト比維持
     """
     rw = abs(region[2] - region[0])
     rh = abs(region[3] - region[1])
     if rw <= 0 or rh <= 0:
         return 1, 1, 100.0, 100.0
 
-    # 領域の A4 に対する比率
-    ratio_w = rw / scan_width
-    ratio_h = rh / scan_height
+    # 物理 1:1 サイズ (pt) — スキャン画像の A4 比率を PDF ポイントに写像
+    img_w_natural = (rw / scan_width)  * _A4_W
+    img_h_natural = (rh / scan_height) * _A4_H
 
-    # PDF 上のサイズ (pt) — A4 に対する相対比率を維持
-    img_w_pt = ratio_w * _A4_W
-    img_h_pt = ratio_h * _A4_H
-
-    # 使用可能領域
     usable_w = _A4_W - 2 * _MARGIN
     usable_h = _A4_H - 2 * _MARGIN - _HEADER_H - _FOOTER_H
 
-    # 幅方向の最大列数
-    cols = max(1, int((usable_w + _GAP) / (img_w_pt + _GAP)))
+    # ① scale ≥ 1.0 を保てる最大列数
+    #    cell_w(c) = (usable_w - (c-1)*GAP) / c  ≥  img_w_natural
+    #    → c ≤ (usable_w + GAP) / (img_w_natural + GAP)
+    max_cols_ge1 = max(1, int((usable_w + _GAP) / (img_w_natural + _GAP)))
 
-    # 高さ方向の最大行数 (キャプション分を含む)
-    cell_total_h = img_h_pt + _CAPTION_H + _GAP
+    # ② scale ≤ _SCALE_UPPER を保てる最小列数
+    #    cell_w(c) ≤ img_w_natural * _SCALE_UPPER
+    #    → c ≥ (usable_w + GAP) / (img_w_natural * _SCALE_UPPER + GAP)
+    min_cols_le_upper = math.ceil(
+        (usable_w + _GAP) / (img_w_natural * _SCALE_UPPER + _GAP)
+    )
+
+    # ③ 選択
+    #    有効範囲 [min_cols_le_upper, max_cols_ge1] が存在する
+    #      → max_cols_ge1 を採用（最大列数, scale は [1.0, _SCALE_UPPER] 内）
+    #    存在しない（max_cols_ge1 < min_cols_le_upper のとき scale<1.0不可避）
+    #      → min_cols_le_upper を採用（_SCALE_UPPER を守り, scale<1.0を許容）
+    if max_cols_ge1 >= min_cols_le_upper:
+        cols = max_cols_ge1
+    else:
+        cols = min_cols_le_upper
+
+    cols = max(1, min(cols, _MAX_COLS))
+
+    # ④ 幅を列数で均等分割（列間に _GAP を確保）
+    img_w = (usable_w - (cols - 1) * _GAP) / cols
+
+    # ⑤ アスペクト比を維持して高さを決定
+    scale_factor = img_w / img_w_natural
+    img_h = img_h_natural * scale_factor
+
+    # ⑥ 高さ方向の最大行数（キャプション分を含む）
+    cell_total_h = img_h + _CAPTION_H + _GAP
     rows = max(1, int((usable_h + _GAP) / cell_total_h))
 
-    return cols, rows, img_w_pt, img_h_pt
+    return cols, rows, img_w, img_h
 
 
 # ── PDF 生成 ────────────────────────────────────────────

@@ -85,6 +85,36 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
     logger.info("✓ Mark2結果読込: %d件", len(mark2_results))
     
     original_df = pd.read_excel(mark2_result_path, header=None)
+
+    # 学籍番号を「ファイル名キー」で引けるdictを構築する。
+    # OMR結果xlsxの行順はマルチスレッド読込の完了順（as_completed）で、ファイル名の
+    # 自然順とは一致しない。一方この後 mark2_results はファイル名で再ソートするため、
+    # 行の位置インデックスで original_df を参照すると学籍番号だけが別の生徒の行とズレる
+    # （得点は result_data['answers'] 由来なので正しい）。File列を動的検出して
+    # {File値: [学籍番号セル...]} を作り、image_name で引くことで順序非依存にする。
+    # 学籍番号の桁数（列数）は skip_questions で可変。
+    student_id_by_file = {}
+    if skip_questions > 0 and len(original_df) > 2:
+        header_row = original_df.iloc[0]
+        file_col_idx = next(
+            (i for i, v in enumerate(header_row) if str(v).strip().lower() == 'file'),
+            1,
+        )
+        id_cols = [file_col_idx + 1 + k for k in range(skip_questions)]
+        n_cols = original_df.shape[1]
+        for r in range(2, len(original_df)):
+            file_val = original_df.iloc[r, file_col_idx]
+            if pd.isna(file_val):
+                continue
+            key = str(file_val).strip()
+            if not key:
+                continue
+            student_id_by_file[key] = [
+                ('' if c >= n_cols or pd.isna(original_df.iloc[r, c])
+                 else original_df.iloc[r, c])
+                for c in id_cols
+            ]
+
     aspects = sorted(set(data['観点'] for data in template_dict.values()))
     
     # 記述問題の観点をマージ
@@ -115,13 +145,12 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
         scoring_result = score_answers(student_answers, template_dict)
         
         row = {'No': idx, 'File': image_name}
-        
+
+        # 学籍番号はファイル名キーで引く（行順に依存しない）
+        student_ids = student_id_by_file.get(image_name, [])
         for skip_idx in range(skip_questions):
             col_name = f'学籍番号{skip_idx + 1}'
-            if idx + 1 < len(original_df):
-                row[col_name] = original_df.iloc[idx + 1, skip_idx + 2]
-            else:
-                row[col_name] = ''
+            row[col_name] = student_ids[skip_idx] if skip_idx < len(student_ids) else ''
         
         row['合計得点'] = scoring_result['total_score']
         

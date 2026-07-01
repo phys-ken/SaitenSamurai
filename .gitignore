@@ -62,6 +62,7 @@ tests/test_realdata_*.py
 *.log
 saitensamurai_crash.log
 build_log.txt
+smoke_test_result.txt
 
 # --- Application output (grading results) ---
 _saiten_grading_results/

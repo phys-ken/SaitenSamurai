@@ -928,19 +928,19 @@ class SaitenSamuraiGUI:
         """枠描画結果フォルダを開く"""
         if self.last_boxed_folder and Path(self.last_boxed_folder).exists():
             import subprocess
-            subprocess.Popen(f'explorer "{self.last_boxed_folder}"')
+            subprocess.Popen(['explorer', str(self.last_boxed_folder)])
     
     def open_scored_folder(self):
         """採点結果フォルダを開く"""
         if self.last_scored_folder and Path(self.last_scored_folder).exists():
             import subprocess
-            subprocess.Popen(f'explorer "{self.last_scored_folder}"')
+            subprocess.Popen(['explorer', str(self.last_scored_folder)])
     
     def open_results_folder(self):
         """集計結果フォルダ(_saiten_grading_results)を開く"""
         if self.last_results_folder and Path(self.last_results_folder).exists():
             import subprocess
-            subprocess.Popen(f'explorer "{self.last_results_folder}"')
+            subprocess.Popen(['explorer', str(self.last_results_folder)])
     
     def log_message(self, message, replace_last=False):
         """
@@ -1193,12 +1193,16 @@ class SaitenSamuraiGUI:
         self.log_message("=" * 60)
 
         self._set_processing_state(True)
+        # メインスレッドでStringVar値をキャプチャ（スレッドセーフ）
+        params = {
+            'image_folder': self.image_folder_path.get(),
+        }
         thread = threading.Thread(
-            target=self._run_descriptive_only_thread, daemon=True,
+            target=self._run_descriptive_only_thread, args=(params,), daemon=True,
         )
         thread.start()
 
-    def _run_descriptive_only_thread(self):
+    def _run_descriptive_only_thread(self, params):
         """記述のみモード: 採点済み答案の生成スレッド"""
         try:
             from descriptive_scorer import (
@@ -1207,7 +1211,7 @@ class SaitenSamuraiGUI:
                 load_total_display_config, TOTAL_DISPLAY_CONFIG_FILE,
             )
 
-            results_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER
+            results_folder = Path(params['image_folder']) / RESULTS_FOLDER
             results_data = results_folder / RESULTS_DATA_FOLDER
             boxed_folder = results_folder / BOXED_FOLDER
             output_folder = results_folder / SCORED_FOLDER
@@ -1499,14 +1503,25 @@ class SaitenSamuraiGUI:
         import datetime
         backup_suffix = datetime.datetime.now().strftime("_%Y%m%d_%H%M%S.bak")
         backed_up = []
+        backup_failed = []
         for path in [config_path, scores_path, total_pos_path]:
             if path.exists():
                 try:
                     bak_path = path.with_suffix(path.suffix + backup_suffix)
                     shutil.copy2(str(path), str(bak_path))
                     backed_up.append(bak_path.name)
-                except Exception:
-                    pass
+                except Exception as e:
+                    backup_failed.append(f"{path.name}: {e}")
+
+        if backup_failed:
+            self.log_message(f"✗ バックアップに失敗したため初期化を中止しました: {', '.join(backup_failed)}")
+            messagebox.showerror(
+                "エラー",
+                "以下のファイルのバックアップに失敗したため、初期化を中止しました。\n"
+                "データを失わないよう、削除は行っていません。\n\n"
+                + "\n".join(backup_failed)
+            )
+            return
 
         if backed_up:
             self.log_message(f"ℹ バックアップを作成しました: {', '.join(backed_up)}")
@@ -2301,12 +2316,20 @@ class SaitenSamuraiGUI:
             return
 
         self._set_processing_state(True)
+        # メインスレッドでStringVar値をキャプチャ（スレッドセーフ）
+        params = {
+            'image_folder': self.image_folder_path.get(),
+            'coord_excel': self.coord_excel_path.get(),
+            'template_path': self.template_path.get(),
+            'mark2_result_path': self.mark2_result_path.get(),
+            'skip_questions': int(self.skip_questions.get()),
+        }
         thread = threading.Thread(
-            target=self._run_return_sheets_thread, daemon=True
+            target=self._run_return_sheets_thread, args=(params,), daemon=True
         )
         thread.start()
 
-    def _run_return_sheets_thread(self):
+    def _run_return_sheets_thread(self, params):
         """返却答案生成の実行（別スレッド）"""
         try:
             from descriptive_scorer import (
@@ -2314,7 +2337,7 @@ class SaitenSamuraiGUI:
                 generate_return_sheets,
             )
 
-            results_data_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
+            results_data_folder = Path(params['image_folder']) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
             config = load_descriptive_config(
                 str(results_data_folder / "descriptive_config.json")
             )
@@ -2329,16 +2352,16 @@ class SaitenSamuraiGUI:
                 return
 
             scores = scores_data.get("scores", {})
-            output_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / SCORED_FOLDER
+            output_folder = Path(params['image_folder']) / RESULTS_FOLDER / SCORED_FOLDER
 
             result = generate_return_sheets(
-                image_folder=self.image_folder_path.get(),
+                image_folder=params['image_folder'],
                 config=config,
                 descriptive_scores=scores,
-                coord_excel_path=self.coord_excel_path.get(),
-                template_path=self.template_path.get(),
-                mark2_result_path=self.mark2_result_path.get(),
-                skip_questions=int(self.skip_questions.get()),
+                coord_excel_path=params['coord_excel'],
+                template_path=params['template_path'],
+                mark2_result_path=params['mark2_result_path'],
+                skip_questions=params['skip_questions'],
                 output_folder=str(output_folder),
                 log_callback=self.log_message,
             )
@@ -2683,7 +2706,7 @@ class SaitenSamuraiGUI:
             import subprocess
             try:
                 folder_path = str(Path(results_data_folder).resolve())
-                subprocess.Popen(f'explorer "{folder_path}"')
+                subprocess.Popen(['explorer', folder_path])
             except Exception as e:
                 self.log_message(f"フォルダを開けませんでした: {e}")
             # フォルダを開く → テンプレートパスを自動設定
@@ -3192,9 +3215,19 @@ class SaitenSamuraiGUI:
                         return
 
         self._set_processing_state(True)
+        # メインスレッドでStringVar値をキャプチャ（スレッドセーフ）
+        params = {
+            'image_folder': self.image_folder_path.get(),
+            'coord_excel': self.coord_excel_path.get(),
+            'template_path': self.template_path.get(),
+            'mark2_result_path': self.mark2_result_path.get(),
+            'skip_questions': int(self.skip_questions.get()),
+            'descriptive_enabled': self.descriptive_enabled.get(),
+            'include_descriptive_in_analysis': self.include_descriptive_in_analysis.get(),
+        }
         thread = threading.Thread(
             target=self._run_summary_generation_thread,
-            args=(name_images,),
+            args=(params, name_images),
             daemon=True
         )
         thread.start()
@@ -3275,14 +3308,18 @@ class SaitenSamuraiGUI:
                     name_images = None
 
         self._set_processing_state(True)
+        # メインスレッドでStringVar値をキャプチャ（スレッドセーフ）
+        params = {
+            'image_folder': self.image_folder_path.get(),
+        }
         thread = threading.Thread(
             target=self._run_summary_descriptive_only_thread,
-            args=(name_images,),
+            args=(params, name_images),
             daemon=True,
         )
         thread.start()
 
-    def _run_summary_descriptive_only_thread(self, name_images=None):
+    def _run_summary_descriptive_only_thread(self, params, name_images=None):
         """記述のみモード: サマリー生成スレッド"""
         try:
             self.log_message("")
@@ -3292,7 +3329,7 @@ class SaitenSamuraiGUI:
 
             from descriptive_scorer import load_descriptive_config, load_descriptive_scores
 
-            results_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER
+            results_folder = Path(params['image_folder']) / RESULTS_FOLDER
             results_data = results_folder / RESULTS_DATA_FOLDER
             final_report = results_folder / FINAL_REPORT_FOLDER
             final_report.mkdir(exist_ok=True)
@@ -3305,7 +3342,7 @@ class SaitenSamuraiGUI:
             gui_handler, suppressed = self._attach_gui_log_handler()
             try:
                 result = process_descriptive_only_summary(
-                    image_folder=self.image_folder_path.get(),
+                    image_folder=params['image_folder'],
                     descriptive_config=desc_config,
                     descriptive_scores=desc_scores,
                     name_images=name_images,
@@ -3357,30 +3394,30 @@ class SaitenSamuraiGUI:
                 self._name_trimmer = None
             self.root.after(0, self._set_processing_state, False)
     
-    def _run_summary_generation_thread(self, name_images=None):
+    def _run_summary_generation_thread(self, params, name_images=None):
         """サマリー生成処理の実際の実行（別スレッド）"""
         try:
             self.log_message("")
             self.log_message("=" * 60)
             self.log_message("サマリー生成を開始します...")
             self.log_message("=" * 60)
-            self.log_message(f"画像フォルダ: {self.image_folder_path.get()}")
-            self.log_message(f"座標ファイル: {self.coord_excel_path.get()}")
-            self.log_message(f"正答データ: {self.template_path.get()}")
-            self.log_message(f"OMR読取結果: {self.mark2_result_path.get()}")
-            self.log_message(f"スキップ問題数: {self.skip_questions.get()}")
+            self.log_message(f"画像フォルダ: {params['image_folder']}")
+            self.log_message(f"座標ファイル: {params['coord_excel']}")
+            self.log_message(f"正答データ: {params['template_path']}")
+            self.log_message(f"OMR読取結果: {params['mark2_result_path']}")
+            self.log_message(f"スキップ問題数: {params['skip_questions']}")
             if name_images:
                 self.log_message(f"氏名欄画像: {len(name_images)}枚")
-            
+
             # 記述問題データの読み込み
             # 記述が有効でも、ファイルが見つからない場合は
             # マーク採点のみでサマリーを生成する（フォールバック動作）。
             desc_config = None
             desc_scores = None
-            if self.descriptive_enabled.get():
+            if params['descriptive_enabled']:
                 try:
                     from descriptive_scorer import load_descriptive_config, load_descriptive_scores
-                    results_data_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
+                    results_data_folder = Path(params['image_folder']) / RESULTS_FOLDER / RESULTS_DATA_FOLDER
                     config_path = results_data_folder / "descriptive_config.json"
                     scores_path = results_data_folder / "descriptive_scores.json"
                     if config_path.exists() and scores_path.exists():
@@ -3392,25 +3429,25 @@ class SaitenSamuraiGUI:
                             self.log_message(f"記述問題: {len(desc_config.get('questions', []))}問")
                 except Exception as e:
                     self.log_message(f"記述問題データ読み込み警告: {e}")
-            
+
             self.log_message("")
-            
+
             # ロガー出力をGUIログに転送するハンドラを一時的に追加
             gui_handler, suppressed = self._attach_gui_log_handler()
             try:
                 result = process_summary_generation(
-                    image_folder=self.image_folder_path.get(),
-                    coord_excel_path=self.coord_excel_path.get(),
-                    template_path=self.template_path.get(),
-                    mark2_result_path=self.mark2_result_path.get(),
-                    skip_questions=int(self.skip_questions.get()),
+                    image_folder=params['image_folder'],
+                    coord_excel_path=params['coord_excel'],
+                    template_path=params['template_path'],
+                    mark2_result_path=params['mark2_result_path'],
+                    skip_questions=params['skip_questions'],
                     output_base_folder=None,
                     name_images=name_images,
                     descriptive_config=desc_config,
                     descriptive_scores=desc_scores,
                     include_descriptive_in_analysis=(
-                        self.descriptive_enabled.get()
-                        and self.include_descriptive_in_analysis.get()
+                        params['descriptive_enabled']
+                        and params['include_descriptive_in_analysis']
                     ),
                     progress_callback=self._update_progress,
                     cancel_event=self._cancel_event,

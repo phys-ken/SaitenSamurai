@@ -36,6 +36,7 @@ from constants import (
     CTT_ANALYSIS_PDF_FILE,
     SCORED_PDF_FILE,
     R_EXPORT_FOLDER,
+    escape_excel_formula,
 )
 
 from scoring_engine import (
@@ -206,11 +207,11 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
     
     # --- データ行 ---
     for row in rows:
-        data_row = [row['No'], row['File']]
+        data_row = [row['No'], escape_excel_formula(row['File'])]
         if has_name_images:
             data_row.append('')  # 氏名欄画像用のプレースホルダ
         for skip_idx in range(skip_questions):
-            data_row.append(row.get(f'学籍番号{skip_idx + 1}', ''))
+            data_row.append(escape_excel_formula(row.get(f'学籍番号{skip_idx + 1}', '')))
         data_row.append(row['合計得点'])
         for aspect in all_aspects:
             aspect_name = f'観点{number_to_circled(aspect)}'
@@ -1070,7 +1071,7 @@ def process_descriptive_only_summary(
             col = 1
             ws.cell(row=row_idx, column=col, value=row_idx - 1).border = thin_border
             col += 1
-            ws.cell(row=row_idx, column=col, value=fname).border = thin_border
+            ws.cell(row=row_idx, column=col, value=escape_excel_formula(fname)).border = thin_border
             col += 1
 
             if name_images:

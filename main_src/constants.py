@@ -349,6 +349,22 @@ def safe_print(*args, **kwargs):
             pass
 
 
+_FORMULA_TRIGGER_CHARS = ('=', '+', '-', '@', '\t', '\r')
+
+
+def escape_excel_formula(value):
+    """Excelフォーミュラインジェクション対策: 値が =+-@ 等で始まる場合、
+    先頭にシングルクォートを付与して文字列として書き込まれるようにする。
+
+    採点補正CSVや生徒データ由来の値をopenpyxlのセルにそのまま書き込むと、
+    先頭が '=' 等の文字列は開いた際に数式として評価されてしまうため、
+    セル書き込み前に必ずこの関数を通す。
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
+        return "'" + value
+    return value
+
+
 def extract_pdf_to_images(pdf_path, output_folder=None, dpi=200):
     """
     PDFファイルの各ページを画像（PNG）に変換して保存する。

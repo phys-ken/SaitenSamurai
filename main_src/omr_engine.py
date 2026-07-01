@@ -48,6 +48,7 @@ from constants import (
     OMR_MODE_KMEANS,
     KMEANS_N_CLUSTERS,
     KMEANS_MIN_SAMPLES,
+    escape_excel_formula,
 )
 
 logger = logging.getLogger(__name__)
@@ -831,7 +832,7 @@ def save_recognition_results(output_path, recognition_results, all_questions, qu
 
     # --- データ行 ---
     for idx, res in enumerate(recognition_results):
-        row_values = [idx + 1, res['image']]
+        row_values = [idx + 1, escape_excel_formula(res['image'])]
         marks = res['marks']
 
         for q_no in all_questions:
@@ -964,8 +965,8 @@ def _process_single_image(args: tuple) -> dict:
             str(int(q)): round(_q_brightness[q] / _q_counts[q], 2)
             for q in _q_brightness if _q_counts[q] > 0
         }
-    except Exception:
-        pass  # 白さ計算失敗は許容（MarkCheckerでフォールバック計算される）
+    except Exception as e:
+        logger.warning("白さ計算に失敗しました（MarkCheckerでフォールバック計算されます）: %s", e)
 
     # 枠描画
     result_image, _mark_count, _group_count = draw_all_areas(
@@ -1447,8 +1448,8 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
         with open(str(marker_cache_path), 'w', encoding='utf-8') as f:
             json.dump(marker_cache, f)
         logger.info("マーカーキャッシュ保存: %d件", len(marker_cache))
-    except Exception:
-        pass  # キャッシュ保存失敗は許容（Step2は再検出にフォールバック）
+    except Exception as e:
+        logger.warning("マーカーキャッシュの保存に失敗しました（Step2は再検出にフォールバックします）: %s", e)
 
     # 白さキャッシュをJSON保存（MarkCheckerでの白さ順ソート高速化用）
     try:
@@ -1456,8 +1457,8 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
         with open(str(whiteness_path), 'w', encoding='utf-8') as f:
             json.dump(whiteness_all, f, ensure_ascii=False)
         logger.info("白さキャッシュ保存: %d件", len(whiteness_all))
-    except Exception:
-        pass  # 白さキャッシュ保存失敗は許容（MarkCheckerでフォールバック計算される）
+    except Exception as e:
+        logger.warning("白さキャッシュの保存に失敗しました（MarkCheckerでフォールバック計算されます）: %s", e)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     area_str = f"{int(area_threshold * 100):03d}"

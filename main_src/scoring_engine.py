@@ -196,6 +196,14 @@ def load_mark2_results(mark2_result_path, skip_questions=0):
                 if original_q > skip_questions:
                     col_mapping[idx] = original_q - skip_questions
 
+    # 両方のヘッダー解析が失敗した場合、空のcol_mappingのまま処理を続けると
+    # 全生徒が空白・0点として扱われてしまうため、ここで明示的に停止する。
+    if not col_mapping:
+        raise ValueError(
+            f"OMR読取結果ファイルの設問列を認識できませんでした: {mark2_result_path}\n"
+            "ヘッダー行（1行目・2行目）が想定外の形式になっている可能性があります。"
+        )
+
     # データを抽出
     results = []
     # データ行はRow 2から

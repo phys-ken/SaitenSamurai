@@ -37,6 +37,7 @@ from constants import (
     ERROR_TYPE_NO_MARK,
     ERROR_TYPE_DOUBLE_MARK,
     ERROR_TYPE_INVALID,
+    escape_excel_formula,
 )
 from omr_engine import detect_corner_markers
 
@@ -130,7 +131,11 @@ def _load_and_correct_image(image_path):
         
         transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
         corrected_img = cv2.warpPerspective(img, transform_matrix, (img_width, img_height))
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "射影補正に失敗したため無補正画像を使用します（座標がズレる可能性があります）: %s — %s",
+            image_path, e,
+        )
         corrected_img = img
     
     return corrected_img
@@ -279,7 +284,7 @@ def update_xlsx_from_csv_checker(xlsx_path, error_csv_path):
             try:
                 cell.value = int(after_value)
             except ValueError:
-                cell.value = after_value
+                cell.value = escape_excel_formula(after_value)
         
         cell.font = correction_font  # 修正セル: 太字+濃い紫
         

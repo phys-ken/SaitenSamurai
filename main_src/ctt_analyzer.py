@@ -66,7 +66,7 @@ try:
 except ImportError:
     HAS_REPORTLAB = False
 
-from constants import safe_print
+from constants import safe_print, escape_excel_formula
 from scoring_engine import (
     number_to_circled,
     normalize_value,
@@ -707,7 +707,7 @@ class CTTExcelExporter:
         self.a_w = Alignment(wrap_text=True, vertical='top')
 
     def _c(self, ws, r, c, val, font=None, fill=None, fmt=None, align=None, border=None):
-        cell = ws.cell(row=r, column=c, value=val)
+        cell = ws.cell(row=r, column=c, value=escape_excel_formula(val))
         cell.font = font or self.f_n
         cell.border = border or self.b_thin
         cell.alignment = align or self.a_c
@@ -719,7 +719,7 @@ class CTTExcelExporter:
 
     def _merge_h(self, ws, r, c1, c2, val, font=None, fill=None):
         ws.merge_cells(start_row=r, start_column=c1, end_row=r, end_column=c2)
-        cell = ws.cell(row=r, column=c1, value=val)
+        cell = ws.cell(row=r, column=c1, value=escape_excel_formula(val))
         cell.font = font or self.f_h2w
         cell.fill = fill or self.bg_hdr
         cell.alignment = self.a_c
@@ -730,7 +730,7 @@ class CTTExcelExporter:
     def _note(self, ws, r, c, text, end_c=None):
         ec = end_c or c + 8
         ws.merge_cells(start_row=r, start_column=c, end_row=r, end_column=ec)
-        cell = ws.cell(row=r, column=c, value=text)
+        cell = ws.cell(row=r, column=c, value=escape_excel_formula(text))
         cell.font = self.f_s
         cell.alignment = self.a_w
         cell.border = self.b_none

@@ -132,7 +132,7 @@ flowchart LR
     Raw["📷 スキャン画像"] --> Correct["射影変換"]
     Correct --> Clean["💾 Clean 画像<br><small>00_Processing_Clean/</small>"]
     Correct --> Draw["マーク枠描画"]
-    Draw --> Boxed["💾 Boxed 画像<br><small>00_Processing_Boxed/</small>"]
+    Draw --> Boxed["💾 Boxed 画像<br><small>00_Processing/</small>"]
 ```
 
 !!! warning "並列処理制約"
@@ -176,21 +176,6 @@ mark_coords (ベース座標系: 595×842)
   → DEFAULT_SCALE_FACTOR で拡大
   → PIL ImageDraw で赤色点線矩形を描画
 ```
-
-!!! danger "先読み画像との二重描画に注意"
-    `_do_prefetch()` で生成した先読み画像には **既にオーバーレイ描画と `fit_image_to_display` が適用済み** です。
-    `show_current()` で先読み画像を使用する場合、重ねてオーバーレイ描画や fit を行うと
-    **二重描画** や **座標ズレ** が発生します。
-
-    ```python
-    # ✅ 正しいパターン（show_current 内）
-    if self._prefetched_pil_img is not None:
-        pil_img = self._prefetched_pil_img  # そのまま使用
-    else:
-        pil_img = get_display_image_checker(...)
-        pil_img = self._draw_answer_overlay(pil_img, ...)  # ここでのみ描画
-        pil_img = fit_image_to_display(pil_img)             # ここでのみ fit
-    ```
 
 #### 問題番号のオフセット
 

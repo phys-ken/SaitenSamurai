@@ -137,7 +137,7 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 
 | フォルダ | 定数 | 内容 |
 |---|---|---|
-| `00_Processing_Boxed/` | `BOXED_FOLDER` | マーク認識枠を描画した画像（マークチェック用） |
+| `00_Processing/` | `BOXED_FOLDER` | マーク認識枠を描画した画像（マークチェック用） |
 | `00_Processing_Clean/` | `CLEAN_FOLDER` | 射影変換のみ適用したクリーン画像（記述式採点プレビュー用） |
 
 > **並列処理制約**: `_process_single_image()` は `ProcessPoolExecutor` で並列実行されます。
@@ -147,11 +147,6 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 ### マークチェック正答オーバーレイ (`gui_components.py`)
 
 `MarkCheckerGUI` は正答枠（赤色点線）をプレビュー画像に描画します。
-
-**先読み画像との二重描画に注意**: `_do_prefetch()` で生成した先読み画像には
-既にオーバーレイ描画と `fit_image_to_display` が適用済みです。
-`show_current()` で先読み画像を使用する場合、重ねてオーバーレイ描画や fit を行うと
-二重描画や座標ズレが発生します。
 
 **問題番号のオフセット**:
 

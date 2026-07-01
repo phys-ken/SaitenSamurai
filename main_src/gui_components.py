@@ -1240,7 +1240,9 @@ class MarkCheckerGUI:
             brightness = float(np.mean(gray))
             self._whiteness_cache[df_idx] = brightness
             return brightness
-        except Exception:
+        except Exception as e:
+            logger.debug("白さ指標の計算に失敗したため0.0にフォールバック: %s Q%s — %s",
+                         filename, question_no, e)
             self._whiteness_cache[df_idx] = 0.0
             return 0.0
 
@@ -1284,7 +1286,8 @@ class MarkCheckerGUI:
                     try:
                         corrected_img = _load_and_correct_image(img_path)
                         self._image_cache.put(filename, corrected_img)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("画像の読込・補正に失敗: %s — %s", filename, e)
                         corrected_img = None
 
             for idx in idx_list:
@@ -1313,7 +1316,9 @@ class MarkCheckerGUI:
                         else:
                             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
                             self._whiteness_cache[idx] = float(np.mean(gray))
-                except Exception:
+                except Exception as e:
+                    logger.debug("白さ指標の一括計算に失敗したため0.0にフォールバック: %s idx=%s — %s",
+                                 filename, idx, e)
                     self._whiteness_cache[idx] = 0.0
 
                 processed += 1

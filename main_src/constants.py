@@ -354,8 +354,9 @@ def safe_print(*args, **kwargs):
         try:
             encoded_args = [str(arg).encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding) for arg in args]
             print(*encoded_args, **kwargs)
-        except Exception:
-            pass
+        except Exception as e:
+            # コンソール出力は諦めるが、ログには痕跡を残す
+            logger.debug("safe_print の出力に失敗: %s", e)
 
 
 _FORMULA_TRIGGER_CHARS = ('=', '+', '-', '@', '\t', '\r')

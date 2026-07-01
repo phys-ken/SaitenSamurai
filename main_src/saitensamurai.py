@@ -3,7 +3,7 @@
 """
 採点侍 (SaitenSamurai) — マークシート解析・採点・チェック統合アプリケーション
 
-バージョン: 4.5.1
+バージョン: 4.5.2
 
 モジュール構成:
   constants.py          : 共通定数・ユーティリティ
@@ -46,6 +46,34 @@ if getattr(_sys, 'frozen', False):
     #    loky が EXE を再実行してウィンドウが大量に開くのを防止する。
     _os.environ['LOKY_MAX_CPU_COUNT'] = '1'
     _os.environ['JOBLIB_START_METHOD'] = 'loky'
+
+# ========================================
+# ビルド検証用スモークテスト（CI専用・通常起動には影響しない）
+# ========================================
+# 環境変数 SAITENSAMURAI_SMOKE_TEST=1 が設定されている場合のみ実行。
+# sklearn/joblib が exe に正しく同梱されているかを GUI を開かずに検証し、
+# 結果を smoke_test_result.txt に書き出して終了する。
+# console=False の GUI exe では stdout が devnull になるため、
+# 結果はファイル経由で外部（CI）に伝える。
+if _os.environ.get('SAITENSAMURAI_SMOKE_TEST') == '1':
+    if getattr(_sys, 'frozen', False):
+        _result_dir = _os.path.dirname(_sys.executable)
+    else:
+        _result_dir = _os.path.dirname(_os.path.abspath(__file__))
+    _result_path = _os.path.join(_result_dir, 'smoke_test_result.txt')
+    try:
+        import numpy as _np
+        from sklearn.cluster import KMeans as _KMeans
+        import joblib as _joblib
+        _KMeans(n_clusters=2, n_init=10, random_state=0).fit(
+            _np.array([[0, 0], [1, 1], [0, 1], [1, 0]])
+        )
+        with open(_result_path, 'w', encoding='utf-8') as _f:
+            _f.write('OK')
+    except Exception as _e:
+        with open(_result_path, 'w', encoding='utf-8') as _f:
+            _f.write(f'FAIL: {type(_e).__name__}: {_e}')
+    _sys.exit(0)
 
 # ========================================
 # 後方互換 re-export

@@ -58,6 +58,41 @@ jobs:
           "EXE_NAME=$($exe.Name)" >> $env:GITHUB_OUTPUT
           "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
 
+      # 一時的な検証ステップ: scikit-learn/joblib が exe に正しく同梱されているかを
+      # 実際に exe を起動して確認する（過去にビルドが「成功」した状態のまま
+      # sklearn が未同梱になっていたことがあるため）。
+      # 確認後はこのステップを削除する。スニペットは DEVELOPMENT.md に保存済み。
+      - name: Smoke test (sklearn/joblib bundling)
+        run: |
+          $exePath = "${{ steps.exe-name.outputs.EXE_PATH }}"
+          $resultPath = Join-Path (Split-Path $exePath) "smoke_test_result.txt"
+          if (Test-Path $resultPath) { Remove-Item $resultPath -Force }
+
+          $env:SAITENSAMURAI_SMOKE_TEST = "1"
+          $proc = Start-Process -FilePath $exePath -PassThru
+
+          $waited = 0
+          while (-not (Test-Path $resultPath) -and $waited -lt 60) {
+            Start-Sleep -Seconds 1
+            $waited++
+          }
+
+          if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          if (-not (Test-Path $resultPath)) {
+            Write-Error "スモークテスト結果ファイルが生成されませんでした（${waited}秒待機）。exeの起動に失敗した可能性があります。"
+            exit 1
+          }
+
+          $result = Get-Content $resultPath -Raw
+          Write-Host "Smoke test result: $result"
+          if ($result -notmatch "^OK") {
+            Write-Error "スモークテスト失敗: $result"
+            exit 1
+          }
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:

@@ -2,6 +2,19 @@
 
 ---
 
+## v4.5.2（2026年7月）— exeビルドのsklearn同梱不具合修正
+
+`.github/workflows/release.yml` の依存インストールリストに `scikit-learn` が
+記載されておらず、GitHub Actions経由でビルドされた配布用exe（v4.5.1含む）に
+scikit-learn / joblib が実際には同梱されないままリリースされていたことが判明しました。
+K-meansクラスタリングを用いるマーク認識モードが動作しない状態でした。
+
+### 重要修正
+
+- **release.yml に scikit-learn を追加**: exeビルド時の依存インストールリストに漏れていた `scikit-learn` を追加し、`saitensamurai.spec` の `collect_all('sklearn')` が正しく解決されるように修正
+- **CI（pytest自動実行）を新規導入**: これまでpush/PRでテストが自動実行される仕組みが存在せず、上記のような不具合が検出されないままリリースされていたため、`.github/workflows/test.yml` を新設
+- 上記のほか、Excelフォーミュラインジェクション対策・スレッド安全性・データロスト防止など、コードベース全体の監査で見つかった緊急度の高い不具合を修正
+
 ## v4.5.1（2026年2月）— 安定化・性能改善・レポート整合性修正
 
 v4.5.0 の K-means 認識とマークチェック機能を運用しながら見つかった、

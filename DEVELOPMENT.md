@@ -461,3 +461,73 @@ build_exe.bat
 - Pillow の未使用フォーマットプラグインを除外
 - 不要な標準ライブラリ (`sqlite3`, `xmlrpc`, `ftplib` 等) を除外
 - ネットワーク系パッケージ (`certifi`, `urllib3`, `requests`) を除外
+
+### リリースビルドの依存関係に関する注意（重要）
+
+`.github/workflows/release.yml` の `Install dependencies` ステップに列挙する
+パッケージは **`requirements.txt` と手動で同期**させる必要がある。
+
+過去に `scikit-learn` がこのリストから漏れていたことがあり、
+`saitensamurai.spec` の `collect_all('sklearn')` が「パッケージが
+インストールされていない」ため全て `not found` を返しているにも関わらず
+**PyInstaller のビルド自体は正常終了してしまい**、K-means クラスタリング
+機能が同梱されない壊れた exe がそのまま GitHub Release として公開される
+という事故が起きた（v4.5.1 で発生、v4.5.2 で修正）。
+
+ビルドの exit code だけでは検知できないため、新しい依存を追加した際や
+sklearn 関連の不具合を疑うときは、以下の手順で **exe を実際に起動して
+確認する**こと。
+
+**1. `main_src/saitensamurai.py` に組み込み済みの自己診断フック**
+
+環境変数 `SAITENSAMURAI_SMOKE_TEST=1` を設定して exe を起動すると、
+GUI を開かずに `sklearn.cluster.KMeans` を実際に fit し、結果を
+exe と同じフォルダの `smoke_test_result.txt` に書き出して終了する
+（`OK` または `FAIL: <例外内容>`）。console=False ビルドのため
+標準出力ではなくファイル経由で結果を返す。
+
+**2. release.yml に一時的に追加して使う検証ステップ（v4.5.2 で実際に使用・動作確認済み）**
+
+```powershell
+- name: Smoke test (sklearn/joblib bundling)
+  run: |
+    $exePath = "${{ steps.exe-name.outputs.EXE_PATH }}"
+    $resultPath = Join-Path (Split-Path $exePath) "smoke_test_result.txt"
+    if (Test-Path $resultPath) { Remove-Item $resultPath -Force }
+
+    $env:SAITENSAMURAI_SMOKE_TEST = "1"
+    $proc = Start-Process -FilePath $exePath -PassThru
+
+    $waited = 0
+    while (-not (Test-Path $resultPath) -and $waited -lt 60) {
+      Start-Sleep -Seconds 1
+      $waited++
+    }
+
+    if (-not $proc.HasExited) {
+      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-not (Test-Path $resultPath)) {
+      Write-Error "スモークテスト結果ファイルが生成されませんでした（${waited}秒待機）。exeの起動に失敗した可能性があります。"
+      exit 1
+    }
+
+    $result = Get-Content $resultPath -Raw
+    Write-Host "Smoke test result: $result"
+    if ($result -notmatch "^OK") {
+      Write-Error "スモークテスト失敗: $result"
+      exit 1
+    }
+```
+
+`Detect exe name` ステップの直後・`Create Release` ステップの直前に挿入する
+（失敗時は exit 1 で job が止まり、Release が作成されないようにするため）。
+恒久的には release.yml に含めず、疑わしいときだけ一時的に追加して確認し、
+確認後は削除する運用とする。
+
+**3. ビルドログでの簡易確認**
+
+exe を起動できない環境では、`Build exe` ステップのログで
+`Hidden import 'sklearn...' not found` が出ていないかを grep するだけでも
+一次確認になる（ただし exe が実際に動作することの保証にはならない）。

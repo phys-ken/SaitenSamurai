@@ -13,6 +13,7 @@ v3.9 高速化:
 import logging
 import re
 import shutil
+import threading
 from pathlib import Path
 from datetime import datetime
 
@@ -52,49 +53,59 @@ from omr_engine import detect_corner_markers
 
 class CorrectedImageCache:
     """同一画像に対するディスクI/O・マーカー検出・射影変換を1回に削減するキャッシュ。
-    
+
     マークチェック時、同じ画像ファイルに複数のエラーがある場合、
     補正済み画像をメモリに保持して再利用する。
     max_size=2 で現在の画像+先読み画像を保持。
+
+    現状の呼び出しはメインスレッドのみだが、LRUの順序リストと辞書を
+    非アトミックに更新するため、将来バックグラウンドプリフェッチ等で
+    複数スレッドから触れても壊れないようロックで保護している。
     """
-    
+
     def __init__(self, max_size=2):
         self._cache = {}  # {filename: corrected_img (numpy)}
         self._order = []  # LRU 順序管理
         self._max_size = max_size
-    
+        self._lock = threading.Lock()
+
     def get(self, filename):
         """キャッシュから補正済み画像を取得。なければNone。"""
-        if filename in self._cache:
-            # LRU更新
-            self._order.remove(filename)
-            self._order.append(filename)
-            return self._cache[filename]
-        return None
-    
+        with self._lock:
+            if filename in self._cache:
+                # LRU更新
+                self._order.remove(filename)
+                self._order.append(filename)
+                return self._cache[filename]
+            return None
+
     def put(self, filename, corrected_img):
         """補正済み画像をキャッシュに格納。"""
-        if filename in self._cache:
-            self._order.remove(filename)
-        elif len(self._cache) >= self._max_size:
-            # 最も古いエントリを削除
-            oldest = self._order.pop(0)
-            del self._cache[oldest]
-        self._cache[filename] = corrected_img
-        self._order.append(filename)
-    
+        with self._lock:
+            if filename in self._cache:
+                self._order.remove(filename)
+            elif len(self._cache) >= self._max_size:
+                # 最も古いエントリを削除
+                oldest = self._order.pop(0)
+                del self._cache[oldest]
+            self._cache[filename] = corrected_img
+            self._order.append(filename)
+
     def has(self, filename):
         """キャッシュに指定ファイルがあるか"""
-        return filename in self._cache
-    
+        with self._lock:
+            return filename in self._cache
+
     def clear(self):
         """キャッシュをクリア"""
-        self._cache.clear()
-        self._order.clear()
-    
+        with self._lock:
+            self._cache.clear()
+            self._order.clear()
+
     @property
     def size(self):
-        return len(self._cache)
+        with self._lock:
+            return len(self._cache)
 
 
 def _load_and_correct_image(image_path):

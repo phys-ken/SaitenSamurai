@@ -49,6 +49,26 @@ def normalize_value(value):
     return str(value).strip()
 
 
+def normalize_zero_ten(value):
+    """マークシート選択肢の "10" を "0" に正規化する。
+
+    マークシートは最大10択(1,2,...,9,0)で、10番目のマーク位置は選択肢"0"。
+    旧データ形式では同じ位置が"10"と記録されていたため、
+    正誤比較の前に必ずこの関数で両辺を正規化する(後方互換)。
+    採点(score_answers)とCTT分析(ctt_analyzer)は必ずこのヘルパーを
+    経由し、0⇔10の扱いが食い違わないようにする。
+    """
+    s = str(value).strip()
+    return '0' if s == '10' else s
+
+
+def normalize_answer_set(answer_str):
+    """複数正答文字列("3;10" / "3|10")を0⇔10正規化済みの集合に変換する。"""
+    if not answer_str:
+        return set()
+    return {normalize_zero_ten(p) for p in str(answer_str).replace('|', ';').split(';')}
+
+
 def load_template(template_path):
     """
     採点用テンプレートを読み込み
@@ -272,23 +292,16 @@ def score_answers(student_answers, template_dict):
         is_correct = False
         earned_points = 0
         
+        # 後方互換性: かつてload_mark2_resultsが0→10変換していた時代の
+        # 既存データとの互換のため、0⇔10の等価判定を維持する。
+        # 現在のパイプラインでは raw_choice ベースで出力しており、
+        # 10列テンプレートの最終列は raw_choice=0 として記録される。
         if ';' in correct_answer or '|' in correct_answer:
-            # 複数正答の場合
-            correct_set = set(correct_answer.replace('|', ';').split(';'))
-            student_set = set(student_answer.replace('|', ';').split(';')) if student_answer else set()
-            is_correct = correct_set == student_set
+            # 複数正答: 0⇔10正規化済みの集合同士で比較
+            is_correct = normalize_answer_set(correct_answer) == normalize_answer_set(student_answer)
         else:
-            # 単一正答
-            # 後方互換性: かつてload_mark2_resultsが0→10変換していた時代の
-            # 既存データとの互換のため、0⇔10の等価判定を維持する。
-            # 現在のパイプラインでは raw_choice ベースで出力しており、
-            # 10列テンプレートの最終列は raw_choice=0 として記録される。
-            if correct_answer == '0' and student_answer == '10':
-                is_correct = True
-            elif correct_answer == '10' and student_answer == '0':
-                is_correct = True
-            else:
-                is_correct = (student_answer == correct_answer)
+            # 単一正答: 両辺を0⇔10正規化して比較
+            is_correct = normalize_zero_ten(student_answer) == normalize_zero_ten(correct_answer)
         
         if is_correct:
             earned_points = points

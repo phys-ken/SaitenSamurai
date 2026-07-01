@@ -118,6 +118,7 @@ except ImportError:
 # 採点コアロジック
 from scoring_engine import (
     number_to_circled, normalize_value,
+    normalize_zero_ten, normalize_answer_set,
     load_template, load_mark2_results, score_answers,
 )
 

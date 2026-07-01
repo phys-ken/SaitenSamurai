@@ -70,6 +70,8 @@ from constants import safe_print, escape_excel_formula
 from scoring_engine import (
     number_to_circled,
     normalize_value,
+    normalize_zero_ten,
+    normalize_answer_set,
     load_template,
     load_mark2_results,
     score_answers,
@@ -126,14 +128,12 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
         keys = []
         for q in question_numbers:
             raw_key = normalize_value(template_dict[q]['正答'])
-            # 単一正答の "10" → "0" 変換
-            if raw_key == '10':
-                raw_key = '0'
-            # 複数正答の各要素も正規化
-            elif ';' in raw_key or '|' in raw_key:
+            if ';' in raw_key or '|' in raw_key:
+                # 複数正答の各要素を正規化(表示順は元の記載順を維持)
                 parts = raw_key.replace('|', ';').split(';')
-                parts = ['0' if p.strip() == '10' else p.strip() for p in parts]
-                raw_key = ';'.join(parts)
+                raw_key = ';'.join(normalize_zero_ten(p) for p in parts)
+            else:
+                raw_key = normalize_zero_ten(raw_key)
             keys.append(raw_key)
         
         # key_df: 設問IDと正答のペア
@@ -247,8 +247,9 @@ def _sort_choices(choices):
             continue
         try:
             v = int(cs)
-            if v == 0 or v == 10:
+            if v in (0, 10):
                 # "0" = 10番目のマーク位置。"10" は後方互換で "0" と同義
+                # (normalize_zero_ten と同じルールの整数版)
                 zero.append('0')
             else:
                 regular.append((v, cs))
@@ -319,27 +320,18 @@ class CTTAnalyzer:
             student_ans = self.ans_df[q].astype(str).str.strip()
             
             if ';' in correct_key or '|' in correct_key:
-                # 複数正答: 集合比較 (score_answers と同一)
-                correct_set = set(correct_key.replace('|', ';').split(';'))
-                # 0⇔10正規化を集合内でも行う
-                correct_set = {'0' if v == '10' else v for v in correct_set}
+                # 複数正答: 0⇔10正規化済みの集合比較 (score_answers と同一)
+                correct_set = normalize_answer_set(correct_key)
                 def check_multi(ans):
                     if not ans or ans == 'nan' or ans == '':
                         return 0
-                    ans_set = set(ans.replace('|', ';').split(';'))
-                    ans_set = {'0' if v == '10' else v for v in ans_set}
-                    return 1 if correct_set == ans_set else 0
+                    return 1 if normalize_answer_set(ans) == correct_set else 0
                 matrix[q] = student_ans.apply(check_multi)
             else:
-                # 単一正答: 0⇔10等価判定付き
-                def check_single(ans, key=correct_key):
-                    ans = str(ans).strip()
-                    if ans == key:
-                        return 1
-                    # 0⇔10等価判定 (後方互換性)
-                    if (key == '0' and ans == '10') or (key == '10' and ans == '0'):
-                        return 1
-                    return 0
+                # 単一正答: 0⇔10等価判定付き (score_answers と同一)
+                key_norm = normalize_zero_ten(correct_key)
+                def check_single(ans):
+                    return 1 if normalize_zero_ten(ans) == key_norm else 0
                 matrix[q] = student_ans.apply(check_single)
         return matrix
 

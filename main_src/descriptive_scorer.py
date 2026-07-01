@@ -21,7 +21,10 @@ import numpy as np
 from PIL import Image, ImageTk
 
 from name_trimmer import select_region_on_image, get_image_files
-from constants import get_app_temp_dir, atomic_json_save, load_json_safe
+from constants import (
+    get_app_temp_dir, atomic_json_save, load_json_safe,
+    MARKER_X_FRAC_LEFT, MARKER_X_FRAC_RIGHT, MARKER_Y_FRAC_BOTTOM,
+)
 from scoring_engine import number_to_circled
 
 from descriptive_renderer import (
@@ -82,11 +85,8 @@ def save_total_display_config(config_path: str, region: list):
 # マーカー基準座標
 # ============================================================
 
-# apply_perspective_transform で使われるマーカー基準座標（画像幅高に対する比率）
-# omr_engine.py の dst_points と同じ値
-_MARKER_LEFT_X_FRAC = 0.14 + 0.015     # 左マーカー中心 X / 幅 = 0.155
-_MARKER_RIGHT_X_FRAC = 0.83 + 0.015    # 右マーカー中心 X / 幅 = 0.845
-_MARKER_BOTTOM_Y_FRAC = 0.95 + 0.01    # 下部マーカー中心 Y / 高さ = 0.96
+# マーカー基準座標は constants.py の共有定数を使用
+# (apply_perspective_transform の dst_points と同一の値であることが保証される)
 _MARKER_HALF_SIZE_FRAC = 0.013         # マーカー半幅 / 幅（約納）
 
 
@@ -115,9 +115,9 @@ def _calculate_marker_default_region(
         (x, y, w, h) ボックスの左上座標と幅・高さ（元画像座標系）
     """
     margin_frac = 0.005  # マーカー内側からの余白
-    left_inner = (_MARKER_LEFT_X_FRAC + _MARKER_HALF_SIZE_FRAC + margin_frac) * orig_w
-    right_inner = (_MARKER_RIGHT_X_FRAC - _MARKER_HALF_SIZE_FRAC - margin_frac) * orig_w
-    marker_cy = _MARKER_BOTTOM_Y_FRAC * orig_h
+    left_inner = (MARKER_X_FRAC_LEFT + _MARKER_HALF_SIZE_FRAC + margin_frac) * orig_w
+    right_inner = (MARKER_X_FRAC_RIGHT - _MARKER_HALF_SIZE_FRAC - margin_frac) * orig_w
+    marker_cy = MARKER_Y_FRAC_BOTTOM * orig_h
 
     x = int(left_inner)
     w = int(right_inner - left_inner)

@@ -35,6 +35,10 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from constants import (
     MARK2_WIDTH,
     MARK2_HEIGHT,
+    MARKER_X_FRAC_LEFT,
+    MARKER_X_FRAC_RIGHT,
+    MARKER_Y_FRAC_TOP,
+    MARKER_Y_FRAC_BOTTOM,
     OUTPUT_SCALE_MAX,
     RESULTS_FOLDER,
     BOXED_FOLDER,
@@ -296,14 +300,14 @@ def apply_perspective_transform(image, markers, output_scale=1.0):
     h = int(842 * output_scale)
     
     # Mark2のマーカー位置（基準座標系、スケール適用後）
-    xp1 = w * (0.14 + 0.015)  # 左上 X
-    yp1 = h * (0.03 + 0.01)   # 左上 Y
-    xp2 = w * (0.83 + 0.015)  # 右上 X
-    yp2 = h * (0.03 + 0.01)   # 右上 Y
-    xp3 = w * (0.83 + 0.015)  # 右下 X
-    yp3 = h * (0.95 + 0.01)   # 右下 Y
-    xp4 = w * (0.14 + 0.015)  # 左下 X
-    yp4 = h * (0.95 + 0.01)   # 左下 Y
+    xp1 = w * MARKER_X_FRAC_LEFT    # 左上 X
+    yp1 = h * MARKER_Y_FRAC_TOP     # 左上 Y
+    xp2 = w * MARKER_X_FRAC_RIGHT   # 右上 X
+    yp2 = h * MARKER_Y_FRAC_TOP     # 右上 Y
+    xp3 = w * MARKER_X_FRAC_RIGHT   # 右下 X
+    yp3 = h * MARKER_Y_FRAC_BOTTOM  # 右下 Y
+    xp4 = w * MARKER_X_FRAC_LEFT    # 左下 X
+    yp4 = h * MARKER_Y_FRAC_BOTTOM  # 左下 Y
     
     src_points = np.float32(markers)
     

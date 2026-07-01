@@ -34,6 +34,10 @@ from constants import (
     MAX_DISPLAY_HEIGHT,
     MARK2_BASE_WIDTH,
     MARK2_BASE_HEIGHT,
+    MARKER_X_FRAC_LEFT,
+    MARKER_X_FRAC_RIGHT,
+    MARKER_Y_FRAC_TOP,
+    MARKER_Y_FRAC_BOTTOM,
     ERROR_TYPE_NO_MARK,
     ERROR_TYPE_DOUBLE_MARK,
     ERROR_TYPE_INVALID,
@@ -112,14 +116,14 @@ def _load_and_correct_image(image_path):
     try:
         markers = detect_corner_markers(img, debug=False)
         
-        xp1 = MARK2_BASE_WIDTH * (0.14 + 0.015)
-        yp1 = MARK2_BASE_HEIGHT * (0.03 + 0.01)
-        xp2 = MARK2_BASE_WIDTH * (0.83 + 0.015)
-        yp2 = MARK2_BASE_HEIGHT * (0.03 + 0.01)
-        xp3 = MARK2_BASE_WIDTH * (0.83 + 0.015)
-        yp3 = MARK2_BASE_HEIGHT * (0.95 + 0.01)
-        xp4 = MARK2_BASE_WIDTH * (0.14 + 0.015)
-        yp4 = MARK2_BASE_HEIGHT * (0.95 + 0.01)
+        xp1 = MARK2_BASE_WIDTH * MARKER_X_FRAC_LEFT
+        yp1 = MARK2_BASE_HEIGHT * MARKER_Y_FRAC_TOP
+        xp2 = MARK2_BASE_WIDTH * MARKER_X_FRAC_RIGHT
+        yp2 = MARK2_BASE_HEIGHT * MARKER_Y_FRAC_TOP
+        xp3 = MARK2_BASE_WIDTH * MARKER_X_FRAC_RIGHT
+        yp3 = MARK2_BASE_HEIGHT * MARKER_Y_FRAC_BOTTOM
+        xp4 = MARK2_BASE_WIDTH * MARKER_X_FRAC_LEFT
+        yp4 = MARK2_BASE_HEIGHT * MARKER_Y_FRAC_BOTTOM
         
         src_points = np.float32(markers)
         dst_points = np.float32([

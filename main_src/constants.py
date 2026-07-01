@@ -39,6 +39,15 @@ APP_VERSION = "4.5.2"
 MARK2_WIDTH = 595
 MARK2_HEIGHT = 842
 
+# コーナーマーカーの基準位置（用紙の幅・高さに対する比率）
+# Mark2様式の四隅マーカー中心位置。射影補正(omr_engine/mark_checker)と
+# 記述採点の合計欄配置(descriptive_scorer)が共有する。
+# この値がズレると全採点の座標系に影響するため、必ずここだけで管理する。
+MARKER_X_FRAC_LEFT = 0.14 + 0.015    # 左マーカー中心 X / 幅 = 0.155
+MARKER_X_FRAC_RIGHT = 0.83 + 0.015   # 右マーカー中心 X / 幅 = 0.845
+MARKER_Y_FRAC_TOP = 0.03 + 0.01      # 上マーカー中心 Y / 高さ = 0.04
+MARKER_Y_FRAC_BOTTOM = 0.95 + 0.01   # 下マーカー中心 Y / 高さ = 0.96
+
 # 出力画像の高解像度スケール倍率
 # output_scale を計算: 元画像解像度を基準に高画質で出力する
 # 実行時に元画像サイズから動的に決定するが、上限を設定

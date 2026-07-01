@@ -12,6 +12,7 @@ test_kmeans_omr.py — K-means OMR エンジン単体テスト (v4.5)
   - constants.py の K-means 定数
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -86,7 +87,9 @@ def _fill_mark(gray, coord, intensity=30):
 
 class TestConstants:
     def test_app_version(self):
-        assert APP_VERSION == "4.5.0"
+        # バージョン番号を厳密固定すると、リリースの度にCIが壊れるため
+        # 「X.Y.Z」形式であることのみを検証する。
+        assert re.match(r"^\d+\.\d+\.\d+$", APP_VERSION)
 
     def test_omr_modes(self):
         assert OMR_MODE_THRESHOLD == "threshold"

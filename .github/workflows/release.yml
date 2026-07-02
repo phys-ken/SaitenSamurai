@@ -92,5 +92,7 @@ jobs:
 
             :book: [ドキュメント](https://phys-ken.github.io/SaitenSamurai/) | :beetle: [バグ報告](https://github.com/phys-ken/SaitenSamurai/issues)
           draft: false
-          prerelease: false
+          # タグ名にハイフンを含む場合(例: v4.6.0-beta.1)はPre-releaseとして公開する。
+          # Pre-releaseは /releases/latest に含まれず、一般ユーザーの導線に影響しない
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: dist/${{ steps.exe-name.outputs.EXE_NAME }}

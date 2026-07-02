@@ -88,8 +88,8 @@ def _fill_mark(gray, coord, intensity=30):
 class TestConstants:
     def test_app_version(self):
         # バージョン番号を厳密固定すると、リリースの度にCIが壊れるため
-        # 「X.Y.Z」形式であることのみを検証する。
-        assert re.match(r"^\d+\.\d+\.\d+$", APP_VERSION)
+        # 「X.Y.Z」または「X.Y.Z-プレリリース識別子」(semver)形式のみ検証する。
+        assert re.match(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$", APP_VERSION)
 
     def test_omr_modes(self):
         assert OMR_MODE_THRESHOLD == "threshold"

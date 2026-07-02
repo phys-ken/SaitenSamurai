@@ -177,6 +177,8 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
     offset = float(rs['mark_result_offset'])
     base_font = _get_cached_font(base_font_size)
 
+    bg_white = bool(rs.get('mark_result_bg_white', False))
+
     def _draw_text_pil(text, x, y, font_size, color_bgr, center_in_box=None):
         """PIL上で直接テキスト描画 (draw_text_on_image 相当)"""
         try:
@@ -194,6 +196,16 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
             # 水平・垂直中央揃え（フォントのベアリングオフセットを補正）
             draw_x = x + (box_width - text_width) // 2 - bbox[0]
             draw_y = y + (box_height - text_height) // 2 - bbox[1]
+        if bg_white:
+            # マークシートの印字(選択肢9/0等)と重なっても読めるよう、
+            # 文字の背景を白塗りしてから描画する。パディングは小さめに抑え、
+            # 隣接するマス目や他の印字を隠しすぎないようにする
+            pad = max(1, int(2 * s))
+            tb = draw.textbbox((draw_x, draw_y), text, font=font)
+            draw.rectangle(
+                (tb[0] - pad, tb[1] - pad, tb[2] + pad, tb[3] + pad),
+                fill=(255, 255, 255),
+            )
         draw.text((draw_x, draw_y), text, font=font, fill=rgb_color)
 
     for question_no, result_data in results.items():

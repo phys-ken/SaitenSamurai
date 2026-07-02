@@ -264,6 +264,60 @@ class TestDrawScoringResultsSettings(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+class TestMarkResultBgWhite(unittest.TestCase):
+    """mark_result_bg_white(文字背景の白塗り)オプション"""
+
+    def setUp(self):
+        # 灰色画像: 白塗りの有無がピクセル値で判別できる
+        self.image = np.zeros((500, 500, 3), dtype=np.uint8) + 128
+        self.coordinates = [
+            {'question_no': 5, 'choice': i + 1,
+             'x': 50 + i * 60, 'y': 100, 'width': 40, 'height': 30}
+            for i in range(6)
+        ]
+        self.scoring_result = {
+            'results': {
+                1: {'correct': False, 'correct_answer': 2,
+                    'student_answer': 4, 'points': 0, 'aspect': 1}
+            }
+        }
+
+    def test_default_is_off(self):
+        from constants import DEFAULT_RENDERING_SETTINGS
+        self.assertFalse(DEFAULT_RENDERING_SETTINGS['mark_result_bg_white'])
+
+    def test_off_identical_to_default(self):
+        """OFF指定は設定未指定(デフォルト)と完全にピクセル一致する"""
+        from image_renderer import draw_scoring_results
+        result_default = draw_scoring_results(
+            self.image.copy(), self.coordinates, self.scoring_result,
+            skip_questions=4, rendering_settings=None)
+        result_off = draw_scoring_results(
+            self.image.copy(), self.coordinates, self.scoring_result,
+            skip_questions=4,
+            rendering_settings={'mark_result_bg_white': False})
+        self.assertTrue(np.array_equal(result_default, result_off),
+                        "OFF時の出力がデフォルト出力とピクセル一致しない")
+
+    def test_on_adds_white_background(self):
+        """ONにすると文字背景に白ピクセルが現れる(灰色画像上)"""
+        from image_renderer import draw_scoring_results
+        result_off = draw_scoring_results(
+            self.image.copy(), self.coordinates, self.scoring_result,
+            skip_questions=4,
+            rendering_settings={'mark_result_bg_white': False})
+        result_on = draw_scoring_results(
+            self.image.copy(), self.coordinates, self.scoring_result,
+            skip_questions=4,
+            rendering_settings={'mark_result_bg_white': True})
+
+        white_off = int(np.sum(np.all(result_off == 255, axis=2)))
+        white_on = int(np.sum(np.all(result_on == 255, axis=2)))
+        self.assertGreater(white_on, white_off,
+                           "ONにしても白背景ピクセルが増えていない")
+        self.assertFalse(np.array_equal(result_off, result_on))
+
+
 # ========================================
 # 3. process_scoring の設定パススルー
 # ========================================

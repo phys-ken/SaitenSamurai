@@ -106,6 +106,9 @@ DEFAULT_RENDERING_SETTINGS = {
     'show_ox_mark': True,          # ○×△マーク
     'show_score': True,            # 得点
     'show_aspect': True,           # 観点番号
+    # ○×・得点・観点・正答番号の文字背景を白塗りする
+    # (マークシートの選択肢9/0の印字と文字が重なって読みづらい場合に有効化)
+    'mark_result_bg_white': False,
     # --- 記述式採点結果 ---
     'descriptive_opacity': 0.50,   # 透過率
     'descriptive_show_mark': True,  # ○×△マーク

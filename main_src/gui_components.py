@@ -2756,6 +2756,7 @@ class RenderingSettingsGUI:
         self.var_show_ox = tk.BooleanVar(value=s['show_ox_mark'])
         self.var_show_score = tk.BooleanVar(value=s['show_score'])
         self.var_show_aspect = tk.BooleanVar(value=s['show_aspect'])
+        self.var_bg_white = tk.BooleanVar(value=s['mark_result_bg_white'])
         self.var_offset = tk.DoubleVar(value=float(s['mark_result_offset']))
         self.var_desc_opacity = tk.DoubleVar(value=s['descriptive_opacity'])
         self.var_desc_show_mark = tk.BooleanVar(value=s['descriptive_show_mark'])
@@ -2794,6 +2795,7 @@ class RenderingSettingsGUI:
             ("○×△マークを表示", self.var_show_ox),
             ("得点を表示", self.var_show_score),
             ("観点を表示", self.var_show_aspect),
+            ("文字の背景を白塗りする（9/0マークの印字と重なる場合に有効）", self.var_bg_white),
         ]:
             tk.Checkbutton(chk_frame, text=text, variable=var,
                            font=FONT_S, bg=SEC_BG, anchor=tk.W,
@@ -2925,6 +2927,7 @@ class RenderingSettingsGUI:
         self.var_show_ox.set(d['show_ox_mark'])
         self.var_show_score.set(d['show_score'])
         self.var_show_aspect.set(d['show_aspect'])
+        self.var_bg_white.set(d['mark_result_bg_white'])
         self.var_offset.set(d['mark_result_offset'])
         self.var_desc_opacity.set(d['descriptive_opacity'])
         self.var_desc_show_mark.set(d['descriptive_show_mark'])
@@ -2938,6 +2941,7 @@ class RenderingSettingsGUI:
             'show_ox_mark': self.var_show_ox.get(),
             'show_score': self.var_show_score.get(),
             'show_aspect': self.var_show_aspect.get(),
+            'mark_result_bg_white': self.var_bg_white.get(),
             'mark_result_offset': self.var_offset.get(),
             'descriptive_opacity': self.var_desc_opacity.get(),
             'descriptive_show_mark': self.var_desc_show_mark.get(),

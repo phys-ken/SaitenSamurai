@@ -843,26 +843,43 @@ class SaitenSamuraiGUI:
                 )
             return
         
-        pdf_file = filedialog.askopenfilename(
-            title="PDFファイルを選択",
+        pdf_files = filedialog.askopenfilenames(
+            title="PDFファイルを選択（複数選択可）",
             filetypes=[("PDFファイル", "*.pdf"), ("すべてのファイル", "*.*")]
         )
-        if not pdf_file:
+        if not pdf_files:
             return
-        
-        self.log_message(f"PDF展開中: {pdf_file}")
+
+        pdf_files = list(pdf_files)
+        if len(pdf_files) == 1:
+            self.log_message(f"PDF展開中: {pdf_files[0]}")
+        else:
+            self.log_message(f"PDF展開中: {len(pdf_files)}ファイル")
         self._set_processing_state(True)
         thread = threading.Thread(
-            target=self._run_pdf_extract_thread, args=(pdf_file,), daemon=True
+            target=self._run_pdf_extract_thread, args=(pdf_files,), daemon=True
         )
         thread.start()
 
-    def _run_pdf_extract_thread(self, pdf_file):
-        """別スレッドでPDF展開を実行"""
+    def _run_pdf_extract_thread(self, pdf_files):
+        """別スレッドでPDF展開を実行（複数PDFは共通フォルダへ展開）
+
+        画像ファイル名は {PDF名}_pNNN.png 形式のため、
+        複数PDFを同一フォルダに展開しても衝突しない。
+        """
         try:
-            output_folder = extract_pdf_to_images(pdf_file)
+            first = Path(pdf_files[0])
+            if len(pdf_files) == 1:
+                # 単一PDF: 従来どおり {PDF名}_images/ へ展開
+                output_folder = extract_pdf_to_images(pdf_files[0])
+            else:
+                # 複数PDF: 1件目のPDFと同じ場所の共通フォルダへまとめて展開
+                output_folder = first.parent / "pdf_import_images"
+                for pdf_file in pdf_files:
+                    extract_pdf_to_images(pdf_file, output_folder=output_folder)
+                    self.log_message(f"  ✓ 展開: {Path(pdf_file).name}")
             self.root.after(0, lambda: self.image_folder_path.set(str(output_folder)))
-            self.log_message(f"✓ PDF展開完了 → {output_folder}")
+            self.log_message(f"✓ PDF展開完了 ({len(pdf_files)}ファイル) → {output_folder}")
             self.root.after(0, self._try_auto_restore)
             self.root.after(0, self.auto_detect_template)
             self.root.after(0, self._update_step1_availability)

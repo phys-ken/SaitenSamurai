@@ -119,9 +119,9 @@ class TestPdfExtraction(unittest.TestCase):
         self.assertTrue(output_folder.exists())
         png_files = sorted(output_folder.glob("*.png"))
         self.assertEqual(len(png_files), 3)
-        # ファイル名がソート順を保つこと
-        self.assertEqual(png_files[0].name, "page_001.png")
-        self.assertEqual(png_files[2].name, "page_003.png")
+        # ファイル名が {PDF名}_pNNN 形式でソート順を保つこと
+        self.assertEqual(png_files[0].name, "test_input_p001.png")
+        self.assertEqual(png_files[2].name, "test_input_p003.png")
     
     def test_02_extract_to_custom_folder(self):
         """カスタム出力先フォルダにも展開できること"""
@@ -149,14 +149,38 @@ class TestPdfExtraction(unittest.TestCase):
         """既にある展開画像を再展開で上書きできること"""
         pdf_path = self._create_dummy_pdf(page_count=2)
         output_folder = extract_pdf_to_images(pdf_path)
-        first_mtime = (output_folder / "page_001.png").stat().st_mtime
-        
+        first_mtime = (output_folder / "test_input_p001.png").stat().st_mtime
+
         import time
         time.sleep(0.1)
-        
+
         extract_pdf_to_images(pdf_path, output_folder=output_folder)
-        second_mtime = (output_folder / "page_001.png").stat().st_mtime
+        second_mtime = (output_folder / "test_input_p001.png").stat().st_mtime
         self.assertGreater(second_mtime, first_mtime)
+
+    def test_06_multiple_pdfs_no_collision(self):
+        """複数PDFを同一フォルダへ展開してもファイル名が衝突しないこと"""
+        import fitz
+        paths = []
+        for name in ("classA", "classB"):
+            pdf_path = Path(self.test_dir) / f"{name}.pdf"
+            doc = fitz.open()
+            for i in range(2):
+                page = doc.new_page(width=595, height=842)
+                page.insert_text((100, 100), f"{name} Page {i+1}", fontsize=20)
+            doc.save(str(pdf_path))
+            doc.close()
+            paths.append(pdf_path)
+
+        common = Path(self.test_dir) / "pdf_import_images"
+        for p in paths:
+            extract_pdf_to_images(p, output_folder=common)
+
+        png_names = sorted(f.name for f in common.glob("*.png"))
+        self.assertEqual(png_names, [
+            "classA_p001.png", "classA_p002.png",
+            "classB_p001.png", "classB_p002.png",
+        ])
 
 
 class TestCombineImagesToPdf(unittest.TestCase):

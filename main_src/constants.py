@@ -413,8 +413,10 @@ def extract_pdf_to_images(pdf_path, output_folder=None, dpi=200):
     for page_num in range(len(doc)):
         page = doc[page_num]
         pix = page.get_pixmap(matrix=matrix)
-        # ページ番号を3桁ゼロ埋め（ソート順を保証）
-        output_path = output_folder / f"page_{page_num + 1:03d}.png"
+        # ファイル名に元PDF名を含める（複数PDFを同一フォルダへ展開しても
+        # 衝突せず、画像がどのPDFの何ページ目か後から特定できる）
+        # ページ番号は3桁ゼロ埋め（ソート順を保証）
+        output_path = output_folder / f"{pdf_path.stem}_p{page_num + 1:03d}.png"
         pix.save(str(output_path))
         extracted_count += 1
     

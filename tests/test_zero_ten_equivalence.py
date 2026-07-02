@@ -22,7 +22,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "main_src"))
 
-from scoring_engine import score_answers
+from scoring_engine import score_answers, choice_to_position_index
 
 
 def _template(q_no, correct_answer, points=2, aspect=1):
@@ -86,6 +86,62 @@ class TestMultiAnswerZeroTen:
         """0⇔10が絡まない複数正答の既存挙動は不変"""
         assert _is_correct('2;5', '5;2') is True
         assert _is_correct('2;5', '2;4') is False
+
+
+class TestChoiceToPositionIndex:
+    """選択肢の値→マーク位置インデックス変換の共通ヘルパー
+
+    正答位置の赤字表示(image_renderer)と正答枠オーバーレイ(gui_components)
+    が同じ変換ルールを共有することを保証する。
+    """
+
+    @pytest.mark.parametrize("choice,num_choices,expected", [
+        ('3', 6, 2),       # 通常の選択肢
+        ('1', 6, 0),       # 先頭
+        ('6', 6, 5),       # 末尾ちょうど
+        ('7', 6, None),    # 範囲外
+        ('0', 10, 9),      # 選択肢"0" = 10番目の位置
+        ('10', 10, 9),     # レガシー"10"表記も同じ位置
+        ('0', 6, None),    # 10番目の位置が存在しない
+        ('10', 6, None),   # 同上(レガシー表記)
+        (3, 6, 2),         # int型も受け付ける
+        (3.0, 6, 2),       # float型(Excel由来)も受け付ける
+        ('3.5', 6, None),  # 非整数は無効
+        ('abc', 6, None),  # 非数値は無効
+        ('', 6, None),     # 空文字は無効
+        ('-1', 6, None),   # 負数は無効
+    ])
+    def test_mapping(self, choice, num_choices, expected):
+        assert choice_to_position_index(choice, num_choices) == expected
+
+
+class TestDistractorLegacyTenAggregation:
+    """選択肢分析: レガシー"10"表記の解答が"0"行に集約されること
+
+    旧バージョンの読み取り結果("10"表記)を再分析した場合でも、
+    該当生徒が選択肢分析表から消えない(正答率とレポートが一致する)。
+    """
+
+    def test_legacy_ten_counted_in_zero_row(self):
+        from ctt_analyzer import CTTAnalyzer
+
+        # 4人中2人がレガシー表記"10"(=選択肢"0")、1人が現行表記"0"、1人が誤答"3"
+        ans_df = pd.DataFrame({
+            'StudentID': ['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg'],
+            '1': ['10', '10', '0', '3'],
+        })
+        key_df = pd.DataFrame({'QuestionID': ['1'], 'Key': ['0']})
+        az = CTTAnalyzer(ans_df, key_df)
+        ds = az.calculate_distractor_analysis()
+
+        zero_rows = ds[(ds['QuestionID'] == '1') & (ds['Choice'] == '0')]
+        # "0"行は1行だけ(二重生成されない)
+        assert len(zero_rows) == 1
+        # "10"の2人と"0"の1人が合算されて3人
+        assert zero_rows.iloc[0]['Count_全体'] == 3
+        assert zero_rows.iloc[0]['IsKey']
+        # 正答率(score_matrix)と選択肢分析が一致する
+        assert az.score_matrix['1'].sum() == 3
 
 
 class TestScoringCttConsistency:

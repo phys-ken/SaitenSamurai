@@ -119,6 +119,7 @@ except ImportError:
 from scoring_engine import (
     number_to_circled, normalize_value,
     normalize_zero_ten, normalize_answer_set,
+    choice_to_position_index,
     load_template, load_mark2_results, score_answers,
 )
 

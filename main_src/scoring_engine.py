@@ -69,6 +69,42 @@ def normalize_answer_set(answer_str):
     return {normalize_zero_ten(p) for p in str(answer_str).replace('|', ';').split(';')}
 
 
+def choice_to_position_index(choice, num_choices):
+    """選択肢の値をマーク位置のインデックス(0始まり)に変換する。
+
+    マークシートの並びは 1,2,...,9,0 で、選択肢"0"は10番目の位置
+    ("10"はレガシー表記で"0"と同義)。数値でない・位置が存在しない
+    場合は None を返す。
+
+    正答位置の赤字表示(image_renderer)・正答枠オーバーレイ(gui_components)
+    など「選択肢の値→物理的なマーク位置」の解決は必ずこの関数を経由し、
+    箇所ごとに変換ルールがズレないようにする。
+    将来の複数桁設問モード(1問=複数のマーク列で "-24" 等を表現)でも、
+    各列の値解決はこの関数を唯一の入口とする想定。
+
+    Args:
+        choice: 選択肢の値(str/int。"3", "0", "10", 3.0 など)
+        num_choices: その設問のマーク位置の数
+
+    Returns:
+        0始まりの位置インデックス、または None
+    """
+    try:
+        f = float(normalize_zero_ten(choice))
+    except (ValueError, TypeError):
+        return None
+    if not f.is_integer():
+        return None
+    v = int(f)
+    if v == 0:
+        index = 9  # 選択肢"0" = 10番目のマーク位置
+    elif 1 <= v <= 9:
+        index = v - 1
+    else:
+        return None
+    return index if index < num_choices else None
+
+
 def load_template(template_path):
     """
     採点用テンプレートを読み込み

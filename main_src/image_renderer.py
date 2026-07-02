@@ -22,6 +22,7 @@ from constants import (
 )
 from scoring_engine import (
     number_to_circled,
+    choice_to_position_index,
     load_template,
     load_mark2_results,
     score_answers,
@@ -278,24 +279,18 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
                 )
 
         # ×の場合、正答の選択肢位置に赤字で正答番号を表示
+        # (選択肢"0"=10番目の位置の解決を含め、位置変換は共通ヘルパーに委譲)
         if not result_data['correct'] and rs['show_correct_answer']:
             correct_answer = result_data['correct_answer']
-            num_answer_choices = num_choices
-            try:
-                correct_answer_int = int(correct_answer)
-                target_index = -1
-                if 1 <= correct_answer_int <= num_answer_choices:
-                    target_index = correct_answer_int - 1
-                if target_index != -1 and 0 <= target_index < len(question_coords):
-                    correct_mark = question_coords[target_index]
-                    _draw_text_pil(
-                        str(correct_answer),
-                        int(correct_mark['x'] * s), int(correct_mark['y'] * s),
-                        font_size=base_font_size, color_bgr=(0, 0, 255),
-                        center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
-                    )
-            except (ValueError, IndexError):
-                pass
+            target_index = choice_to_position_index(correct_answer, num_choices)
+            if target_index is not None and target_index < len(question_coords):
+                correct_mark = question_coords[target_index]
+                _draw_text_pil(
+                    str(correct_answer),
+                    int(correct_mark['x'] * s), int(correct_mark['y'] * s),
+                    font_size=base_font_size, color_bgr=(0, 0, 255),
+                    center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
+                )
 
 
 def draw_scoring_results(image, coordinates, scoring_result, skip_questions=0, output_scale=1.0, rendering_settings=None):

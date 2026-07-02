@@ -445,18 +445,22 @@ class CTTAnalyzer:
         }
 
         for i, q in enumerate(self.questions):
-            found_choices = self.ans_df[q].astype(str).unique()
+            # レガシー"10"表記の解答も選択肢"0"に集約してから集計する
+            # (キー側は正規化済みのため、正規化しないと該当生徒がどの
+            #  選択肢行にもカウントされず選択肢分析から消えてしまう)
+            col_norm = self.ans_df[q].astype(str).map(normalize_zero_ten)
+            found_choices = col_norm.unique()
             raw_set = set(found_choices) | {str(self.keys[i])}
             # 無効回答相当の値を除去（「無効回答」カテゴリに集約して集計）
             raw_set = {v for v in raw_set if not _is_invalid_response(v)}
             all_choices = _sort_choices(list(raw_set) + ["無効回答"])
-            
+
             for choice in all_choices:
                 is_key = (str(choice) == str(self.keys[i]))
                 row = {'QuestionID': q, 'Choice': choice, 'IsKey': is_key}
-                
+
                 for grp_name, grp_idx in groups.items():
-                    subset = self.ans_df.loc[grp_idx, q].astype(str)
+                    subset = col_norm.loc[grp_idx]
                     if choice == "無効回答":
                         count = sum(1 for v in subset if _is_invalid_response(v))
                     else:
@@ -464,7 +468,7 @@ class CTTAnalyzer:
                     ratio = count / len(subset) if len(subset) > 0 else 0
                     row[f'Count_{grp_name}'] = count
                     row[f'Ratio_{grp_name}'] = ratio
-                
+
                 distractor_data.append(row)
         return pd.DataFrame(distractor_data)
 

@@ -264,6 +264,65 @@ class TestDrawScoringResultsSettings(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+class TestCorrectAnswerZeroPosition(unittest.TestCase):
+    """正答が"0"(10番目のマーク位置)でも赤字の正答表示が描画されること
+
+    従来は範囲チェック(1〜選択肢数)で弾かれ何も描かれなかった。
+    choice_to_position_index への一元化により10番目の位置に描画される。
+    """
+
+    def setUp(self):
+        self.image = np.zeros((500, 800, 3), dtype=np.uint8) + 255
+        # 10択の問題(選択肢"0"=10番目の位置が存在する)
+        self.coordinates = [
+            {'question_no': 5, 'choice': i + 1,
+             'x': 30 + i * 70, 'y': 100, 'width': 40, 'height': 30}
+            for i in range(10)
+        ]
+        self.scoring_result = {
+            'results': {
+                1: {'correct': False, 'correct_answer': '0',
+                    'student_answer': '3', 'points': 0, 'aspect': 1}
+            }
+        }
+
+    def test_zero_answer_draws_indicator(self):
+        from image_renderer import draw_scoring_results
+        result_shown = draw_scoring_results(
+            self.image.copy(), self.coordinates, self.scoring_result,
+            skip_questions=4,
+            rendering_settings={'show_ox_mark': False, 'show_score': False,
+                                'show_aspect': False, 'show_correct_answer': True})
+        result_hidden = draw_scoring_results(
+            self.image.copy(), self.coordinates, self.scoring_result,
+            skip_questions=4,
+            rendering_settings={'show_ox_mark': False, 'show_score': False,
+                                'show_aspect': False, 'show_correct_answer': False})
+        self.assertFalse(np.array_equal(result_shown, result_hidden),
+                         "正答'0'の赤字表示が描画されていない")
+
+    def test_legacy_ten_answer_still_draws(self):
+        """レガシー表記'10'でも従来どおり描画される(回帰ガード)"""
+        from image_renderer import draw_scoring_results
+        scoring = {
+            'results': {
+                1: {'correct': False, 'correct_answer': '10',
+                    'student_answer': '3', 'points': 0, 'aspect': 1}
+            }
+        }
+        result_shown = draw_scoring_results(
+            self.image.copy(), self.coordinates, scoring,
+            skip_questions=4,
+            rendering_settings={'show_ox_mark': False, 'show_score': False,
+                                'show_aspect': False, 'show_correct_answer': True})
+        result_hidden = draw_scoring_results(
+            self.image.copy(), self.coordinates, scoring,
+            skip_questions=4,
+            rendering_settings={'show_ox_mark': False, 'show_score': False,
+                                'show_aspect': False, 'show_correct_answer': False})
+        self.assertFalse(np.array_equal(result_shown, result_hidden))
+
+
 class TestMarkResultBgWhite(unittest.TestCase):
     """mark_result_bg_white(文字背景の白塗り)オプション"""
 

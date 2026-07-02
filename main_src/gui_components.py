@@ -182,38 +182,35 @@ class MarkCheckerGUI:
         """
         if not self._answer_key or question_no not in self._answer_key:
             return pil_img
-        
+
         correct_answer_str = self._answer_key[question_no]['正答']
-        try:
-            correct_choice = int(float(correct_answer_str))
-        except (ValueError, TypeError):
-            return pil_img
-        
-        if correct_choice < 1:
-            return pil_img
-        
+
         # 座標CSVは元の問題番号（skip込み）で記録されている
         original_q_no = question_no + self.skip_questions
         if self.coords_df is None:
             return pil_img
-        
+
         row = self.coords_df[
-            (self.coords_df['image_path'] == filename) & 
+            (self.coords_df['image_path'] == filename) &
             (self.coords_df['question_no'] == original_q_no)
         ]
         if row.empty:
             return pil_img
-        
+
         # mark_coords をパース: choice0_x;y;w;h|choice1_x;y;w;h|...
         mark_coords_str = row.iloc[0].get('mark_coords', '')
         if pd.isna(mark_coords_str) or not mark_coords_str:
             return pil_img
-        
+
         parts = str(mark_coords_str).split('|')
-        if correct_choice > len(parts):
+        # 正答の値→マーク位置の解決は共通ヘルパーに委譲
+        # (選択肢"0"=10番目の位置、レガシー"10"表記も同じルールで扱う)
+        from scoring_engine import choice_to_position_index
+        target_index = choice_to_position_index(correct_answer_str, len(parts))
+        if target_index is None:
             return pil_img
-        
-        choice_str = parts[correct_choice - 1]  # 1-indexed → 0-indexed
+
+        choice_str = parts[target_index]
         try:
             mx, my, mw, mh = map(int, choice_str.split(';'))
         except (ValueError, IndexError):

@@ -17,6 +17,7 @@ import sys
 import re
 from pathlib import Path
 from datetime import datetime
+from xml.sax.saxutils import escape as xml_escape
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +137,9 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
                 raw_key = normalize_zero_ten(raw_key)
             keys.append(raw_key)
         
-        # key_df: 設問IDと正答のペア
-        key_df = pd.DataFrame({'QuestionID': questions, 'Key': keys})
+        # key_df: 設問IDと正答のペア(+任意の問題概要)
+        summaries = [str(template_dict[q].get('問題概要', '') or '') for q in question_numbers]
+        key_df = pd.DataFrame({'QuestionID': questions, 'Key': keys, 'Summary': summaries})
         
         # ans_df: 各学生の解答マトリクス
         rows = []
@@ -153,7 +155,7 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
         ans_df = pd.DataFrame(rows)
     else:
         # 記述のみモード: マーク解答なし、空の DataFrame から開始
-        key_df = pd.DataFrame(columns=['QuestionID', 'Key'])
+        key_df = pd.DataFrame(columns=['QuestionID', 'Key', 'Summary'])
         if descriptive_scores:
             student_ids = sorted(descriptive_scores.keys())
             ans_df = pd.DataFrame({'StudentID': student_ids})
@@ -168,8 +170,9 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
             q_id = dq['id']       # "D1", "D2", ...
             max_score = dq['max_score']
             
-            # key_df に記述問題を追加（正答キー = "1"）
-            new_key = pd.DataFrame({'QuestionID': [q_id], 'Key': ['1']})
+            # key_df に記述問題を追加（正答キー = "1"、概要は設問名があれば流用）
+            desc_summary = str(dq.get('name', '') or '')
+            new_key = pd.DataFrame({'QuestionID': [q_id], 'Key': ['1'], 'Summary': [desc_summary]})
             key_df = pd.concat([key_df, new_key], ignore_index=True)
             
             # ans_df に記述問題のバイナリ解答を追加
@@ -276,6 +279,14 @@ class CTTAnalyzer:
         self.key_df = key_df
         self.questions = [str(q) for q in key_df['QuestionID'].tolist()]
         self.keys = [str(k) for k in key_df['Key'].tolist()]
+        # 問題概要(任意)。旧形式のkey_dfにはSummary列が無い
+        if 'Summary' in key_df.columns:
+            self.summaries = {
+                str(q): ('' if pd.isna(s) else str(s))
+                for q, s in zip(key_df['QuestionID'], key_df['Summary'])
+            }
+        else:
+            self.summaries = {}
         self.n_students = len(ans_df)
         self.n_questions = len(self.questions)
         
@@ -407,6 +418,7 @@ class CTTAnalyzer:
             stats_list.append({
                 'QuestionID': q,
                 'Key': self.keys[i],
+                'Summary': self.summaries.get(str(q), ''),
                 '正答率 (P)': p_val,
                 '識別指数 (D)': d_val,
                 'I-T相関': it_cor,
@@ -939,7 +951,7 @@ class CTTExcelExporter:
 
         uq = _sort_choices([c for c in distractor_stats['Choice'].unique() if c != '無効回答'])
         alpha = self.az._calculate_cronbach_alpha()
-        n_base = 8
+        n_base = 9
         ch_list = list(uq) + ['無効回答']
         n_ch = len(ch_list)
         total_cols = n_base + n_ch
@@ -947,7 +959,7 @@ class CTTExcelExporter:
         self._merge_h(ws, 1, 1, n_base, '項目統計')
         self._merge_h(ws, 1, n_base + 1, total_cols, '全体選択率', fill=self.bg_hdr2)
 
-        for c, h in enumerate(['項目', '受験者数', '正答率', 'D値', 'I-T相関',
+        for c, h in enumerate(['項目', '概要', '受験者数', '正答率', 'D値', 'I-T相関',
                                 'α係数', '削除α', '正答'], 1):
             self._c(ws, 2, c, h, font=self.f_h3, fill=self.bg_sub, border=self.b_med)
         for i, ch in enumerate(ch_list):
@@ -963,19 +975,20 @@ class CTTExcelExporter:
 
             cell = self._c(ws, ri, 1, qid, font=self.f_link)
             cell.hyperlink = f"#'{qid}'!A1"
-            self._c(ws, ri, 2, self.az.n_students)
-            self._c(ws, ri, 3, round(pv * 100), fmt='0"%"',
+            self._c(ws, ri, 2, escape_excel_formula(str(row.get('Summary', '') or '')))
+            self._c(ws, ri, 3, self.az.n_students)
+            self._c(ws, ri, 4, round(pv * 100), fmt='0"%"',
                     fill=self.bg_grn if pv >= 0.8 else (self.bg_red if pv <= 0.2 else None))
-            self._c(ws, ri, 4, round(dv * 100), fmt='0"%"',
+            self._c(ws, ri, 5, round(dv * 100), fmt='0"%"',
                     font=self.f_red if dv < 0 else self.f_n,
                     fill=self.bg_red if dv < 0 else (self.bg_org if dv < 0.2 else None))
-            self._c(ws, ri, 5, round(iv, 2), fmt='0.00',
+            self._c(ws, ri, 6, round(iv, 2), fmt='0.00',
                     font=self.f_red if iv < 0 else self.f_n,
                     fill=self.bg_red if iv < 0 else None)
-            self._c(ws, ri, 6, round(alpha, 2), fmt='0.00')
-            self._c(ws, ri, 7, round(da, 2), fmt='0.00',
+            self._c(ws, ri, 7, round(alpha, 2), fmt='0.00')
+            self._c(ws, ri, 8, round(da, 2), fmt='0.00',
                     fill=self.bg_org if da > alpha else None)
-            self._c(ws, ri, 8, kv, font=self.f_h3)
+            self._c(ws, ri, 9, kv, font=self.f_h3)
 
             d_sub = distractor_stats[distractor_stats['QuestionID'] == qid]
             cm = {r2['Choice']: r2['Ratio_全体'] for _, r2 in d_sub.iterrows()}
@@ -995,8 +1008,8 @@ class CTTExcelExporter:
             '【凡例】 緑=正答率高(≧80%) / 赤=正答率低(≦20%)・D値負・I-T相関負 / '
             '橙=D値低(<20%)・削除αがαより大 / 水色=正答選択肢', total_cols)
 
-        widths = {'A': 8}
-        for i in range(2, total_cols + 1):
+        widths = {'A': 8, 'B': 24}  # B=概要(20字程度の日本語を想定)
+        for i in range(3, total_cols + 1):
             widths[get_column_letter(i)] = 9
         self._widths(ws, widths)
         ws.freeze_panes = 'B3'
@@ -1340,6 +1353,8 @@ class CTTPDFReporter:
                                        textColor=rl_colors.HexColor('#CC0000')))
         self.styles.add(ParagraphStyle('TOC_Item',   fontName=fn, fontSize=11, leading=16, leftIndent=20,
                                        textColor=rl_colors.HexColor('#0563C1')))
+        # 項目統計テーブルの「項目」セル用(設問ID+問題概要の2行表示、中央揃え)
+        self.styles.add(ParagraphStyle('JP_Cell',    fontName=fn, fontSize=9, leading=11, alignment=1))
 
     CLR_HDR  = rl_colors.HexColor('#4472C4')
     CLR_HDR2 = rl_colors.HexColor('#5B9BD5')
@@ -1646,13 +1661,25 @@ class CTTPDFReporter:
                 judge = '✅ 優良'
             else:
                 judge = '○ 良好'
-            r = [str(row['QuestionID']), str(row['Key']),
+            # 項目セル: 問題概要があれば設問IDの下に小さく2行目表示
+            # (RLParagraphは固定列幅内で自動折返しされるため長文でも欠けない)
+            # 概要はユーザー自由入力のため、Paragraphのミニマークアップとして
+            # 解釈されないよう必ずXMLエスケープする("x<5" 等の数式で壊れる)
+            summary = str(row.get('Summary', '') or '')
+            if summary:
+                item_cell = RLParagraph(
+                    f"<b>{xml_escape(str(row['QuestionID']))}</b>"
+                    f"<br/><font size=7>{xml_escape(summary)}</font>",
+                    self.styles['JP_Cell'])
+            else:
+                item_cell = str(row['QuestionID'])
+            r = [item_cell, str(row['Key']),
                  f"{round(row['正答率 (P)'] * 100)}%", f"{round(d_val * 100)}%",
                  f"{it_val:.2f}", f"{row['削除α']:.2f}", judge]
             row_flags.append(d_val < 0 or it_val < 0)
             data.append(r)
 
-        t = RLTable(data, colWidths=[0.7*inch, 0.5*inch, 0.8*inch, 0.7*inch, 0.8*inch, 0.7*inch, 1*inch],
+        t = RLTable(data, colWidths=[1.5*inch, 0.5*inch, 0.7*inch, 0.6*inch, 0.7*inch, 0.6*inch, 0.9*inch],
                     repeatRows=1)
         cmds = [
             ('FONTNAME', (0,0), (-1,-1), self.fn),
@@ -1687,8 +1714,11 @@ class CTTPDFReporter:
         else:
             judge = '○ 良好'
 
+        # 概要はユーザー自由入力のためXMLエスケープ必須("x<5" 等で壊れる)
+        summary = str(row.get('Summary', '') or '')
+        summary_part = f"（{xml_escape(summary)}）" if summary else ""
         self.elements.append(RLParagraph(
-            f"<b>● 項目 {qid}</b>　正答: {key_val}　正答率: {round(p_val*100)}%　"
+            f"<b>● 項目 {qid}</b>{summary_part}　正答: {key_val}　正答率: {round(p_val*100)}%　"
             f"D値: {round(d_val*100)}%　I-T: {it_val:.2f}　<b>{judge}</b>",
             self.styles['JP_H2']))
 

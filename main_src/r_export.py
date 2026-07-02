@@ -25,6 +25,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from constants import escape_excel_formula
+
 logger = logging.getLogger(__name__)
 
 
@@ -140,7 +142,7 @@ def export_r_analysis_kit(
         _export_scored_data(score_matrix, data_csv_path)
 
         item_info_path = kit_folder / R_ITEM_INFO_CSV
-        _export_item_info(score_matrix, key_df, item_info_path)
+        _export_item_info(score_matrix, key_df, item_info_path, col_map=col_map)
 
         # 4. Rスクリプト生成
         r_script_path = kit_folder / R_SCRIPT_FILE
@@ -182,17 +184,36 @@ def _export_scored_data(score_matrix, output_path):
     logger.info("  ✓ 正誤データ出力: %s", output_path.name)
 
 
-def _export_item_info(score_matrix, key_df, output_path):
+def _export_item_info(score_matrix, key_df, output_path, col_map=None):
     """設問情報CSVを出力する。
-    
+
     score_matrixは既にQ001形式のカラム名・定数列削除済み。
     元のkey_dfとの対応を保ちつつ、残っている列のみ出力する。
+    key_dfにSummary列(問題概要、任意入力)がある場合はCSVにも含める。
+
+    Args:
+        col_map: {元QuestionID: "Q001"形式} の対応辞書(Summary引き当てに使用)
     """
     # score_matrixに残っている列の情報を出力
     item_info = pd.DataFrame({
         "ItemID": score_matrix.columns.tolist(),
         "MeanScore": score_matrix.mean().values,
     })
+
+    # 問題概要: Q001形式 → 元QuestionID → key_df['Summary'] の順に引き当てる
+    if col_map and 'Summary' in key_df.columns:
+        inv_map = {v: k for k, v in col_map.items()}
+        summary_by_qid = {
+            str(q): ('' if pd.isna(s) else str(s))
+            for q, s in zip(key_df['QuestionID'], key_df['Summary'])
+        }
+        # 概要はユーザー自由入力のため、CSVをExcelで直接開いた際の
+        # フォーミュラインジェクション('='始まり等)を防ぐエスケープを通す
+        item_info["Summary"] = [
+            escape_excel_formula(summary_by_qid.get(str(inv_map.get(item_id, '')), ''))
+            for item_id in item_info["ItemID"]
+        ]
+
     item_info.to_csv(str(output_path), index=False, encoding="utf-8-sig")
     logger.info("  ✓ 設問情報出力: %s", output_path.name)
 

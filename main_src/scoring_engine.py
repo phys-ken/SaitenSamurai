@@ -111,7 +111,9 @@ def load_template(template_path):
         template_dict[q_no] = {
             '正答': normalize_value(answer_val),
             '配点': int(float(points_val)),
-            '観点': int(float(row['観点'])) if not pd.isna(row['観点']) else 1  # type: ignore[arg-type]
+            '観点': int(float(row['観点'])) if not pd.isna(row['観点']) else 1,  # type: ignore[arg-type]
+            # 問題概要は任意列(古いテンプレートには存在しない)
+            '問題概要': normalize_value(row['問題概要']) if '問題概要' in df.columns else ''
         }
     
     if skipped_questions:

@@ -758,8 +758,9 @@ class TestDescriptiveQuestionExcel:
             ws = ex.wb["項目全体"]
 
             # ヘッダー行(row=2)から選択肢列を取得
+            # (基本統計は9列: 項目/概要/受験者数/正答率/D値/I-T相関/α係数/削除α/正答。選択率は10列目から)
             headers = []
-            for col_idx in range(9, ws.max_column + 1):
+            for col_idx in range(10, ws.max_column + 1):
                 h = ws.cell(row=2, column=col_idx).value
                 if h is not None:
                     headers.append((col_idx, str(h)))

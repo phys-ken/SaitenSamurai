@@ -412,9 +412,10 @@ def generate_template(coord_excel_path, output_folder, skip_questions=0):
         
         template_data.append({
             '問題番号': question_no,
-            '正答': '',  # 空欄（ユーザーが入力）
-            '配点': '',  # 空欄（ユーザーが入力）
-            '観点': ''   # 空欄（ユーザーが入力）
+            '正答': '',    # 空欄（ユーザーが入力）
+            '配点': '',    # 空欄（ユーザーが入力）
+            '観点': '',    # 空欄（ユーザーが入力）
+            '問題概要': ''  # 任意入力（20字程度。CTT/R連携レポートに表示される）
         })
     
     # DataFrameに変換

@@ -179,6 +179,10 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
     base_font = _get_cached_font(base_font_size)
 
     bg_white = bool(rs.get('mark_result_bg_white', False))
+    # 白塗りON時の描画キュー。○→得点→観点の順に即時描画すると、
+    # 後から描く文字の白背景が直前の文字を上書きして潰してしまうため、
+    # いったん全文字を溜めて「全白背景→全文字」の2パスで描画する
+    pending_texts = []  # (text, draw_x, draw_y, font, rgb_color)
 
     def _draw_text_pil(text, x, y, font_size, color_bgr, center_in_box=None):
         """PIL上で直接テキスト描画 (draw_text_on_image 相当)"""
@@ -198,16 +202,27 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
             draw_x = x + (box_width - text_width) // 2 - bbox[0]
             draw_y = y + (box_height - text_height) // 2 - bbox[1]
         if bg_white:
-            # マークシートの印字(選択肢9/0等)と重なっても読めるよう、
-            # 文字の背景を白塗りしてから描画する。パディングは小さめに抑え、
-            # 隣接するマス目や他の印字を隠しすぎないようにする
-            pad = max(1, int(2 * s))
-            tb = draw.textbbox((draw_x, draw_y), text, font=font)
+            pending_texts.append((text, draw_x, draw_y, font, rgb_color))
+        else:
+            draw.text((draw_x, draw_y), text, font=font, fill=rgb_color)
+
+    def _flush_pending_texts():
+        """白塗りON時: 全文字の白背景を先に塗り、その後に全文字を描画する。
+
+        マークシートの印字(選択肢9/0等)と重なっても読めるよう白塗りしつつ、
+        白背景同士・白背景と文字の上下関係で文字が潰れないことを保証する。
+        パディングは小さめに抑え、隣接するマス目や他の印字を隠しすぎない。
+        """
+        pad = max(1, int(2 * s))
+        for text, dx, dy, font, _color in pending_texts:
+            tb = draw.textbbox((dx, dy), text, font=font)
             draw.rectangle(
                 (tb[0] - pad, tb[1] - pad, tb[2] + pad, tb[3] + pad),
                 fill=(255, 255, 255),
             )
-        draw.text((draw_x, draw_y), text, font=font, fill=rgb_color)
+        for text, dx, dy, font, color in pending_texts:
+            draw.text((dx, dy), text, font=font, fill=color)
+        pending_texts.clear()
 
     for question_no, result_data in results.items():
         target_q_no = question_no + skip_questions
@@ -291,6 +306,9 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
                     font_size=base_font_size, color_bgr=(0, 0, 255),
                     center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
                 )
+
+    if bg_white:
+        _flush_pending_texts()
 
 
 def draw_scoring_results(image, coordinates, scoring_result, skip_questions=0, output_scale=1.0, rendering_settings=None):

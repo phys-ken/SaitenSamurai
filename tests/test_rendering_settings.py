@@ -376,6 +376,40 @@ class TestMarkResultBgWhite(unittest.TestCase):
                            "ONにしても白背景ピクセルが増えていない")
         self.assertFalse(np.array_equal(result_off, result_on))
 
+    def test_score_not_erased_by_adjacent_bg(self):
+        """隣接して描かれる観点①の白背景が得点の文字を潰さない
+
+        ○→得点→観点の順に「白塗り→文字」を繰り返す実装だと、
+        観点の白背景が直前の得点数字を上書きして消してしまう
+        (β1で実運用報告のあった不具合)。全白背景→全文字の
+        2パス描画により、得点表示ON/OFFで黒文字量が明確に差が出る
+        (=得点の数字が描画後も残っている)ことを固定する。
+        """
+        from image_renderer import draw_scoring_results
+        scoring = {
+            'results': {
+                1: {'correct': True, 'correct_answer': '3',
+                    'student_answer': '3', 'points': 2, 'aspect': 1}
+            }
+        }
+        base = {'mark_result_bg_white': True, 'show_ox_mark': True,
+                'show_aspect': True, 'show_correct_answer': False}
+        result_with_score = draw_scoring_results(
+            self.image.copy(), self.coordinates, scoring,
+            skip_questions=4,
+            rendering_settings={**base, 'show_score': True})
+        result_no_score = draw_scoring_results(
+            self.image.copy(), self.coordinates, scoring,
+            skip_questions=4,
+            rendering_settings={**base, 'show_score': False})
+
+        # 黒文字(得点・観点)のピクセル数を比較。得点"2"が観点①の
+        # 白背景に潰されていなければ、数字1文字分の黒ピクセルが確実に増える
+        dark_with = int(np.sum(np.all(result_with_score < 80, axis=2)))
+        dark_without = int(np.sum(np.all(result_no_score < 80, axis=2)))
+        self.assertGreater(dark_with - dark_without, 10,
+                           "得点の数字が白背景に潰されて残っていない")
+
 
 # ========================================
 # 3. process_scoring の設定パススルー

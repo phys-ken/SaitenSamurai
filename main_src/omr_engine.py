@@ -419,20 +419,77 @@ def generate_template(coord_excel_path, output_folder, skip_questions=0):
     
     # DataFrameに変換
     df_template = pd.DataFrame(template_data)
-    
+
     # Excelファイルとして出力
     output_folder = Path(output_folder)
     output_folder.mkdir(exist_ok=True)
     template_path = output_folder / ANSWER_KEY_FILE
-    
+
     # ⚠ 既存のanswer_key.xlsxがある場合は上書きしない（ユーザー入力済みの正答・配点を保護）
     if template_path.exists():
         logger.info("テンプレートが既に存在します。上書きしません: %s", template_path.name)
         return template_path
-    
-    df_template.to_excel(template_path, index=False)
-    
+
+    _write_styled_template(df_template, template_path)
+
     return template_path
+
+
+def _write_styled_template(df_template, template_path):
+    """answer_key.xlsx を装飾付きで書き出す。
+
+    ユーザーがExcelで直接開いて正答・配点・観点を手入力するファイルのため、
+    summary_generator.py と同じハウススタイル(青ヘッダー・罫線・交互背景色・
+    ヘッダー行固定)を適用して視認性を上げる。
+    列構成・行位置は従来の to_excel 出力と同一(1行目ヘッダー、2行目以降データ)。
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    from openpyxl.utils import get_column_letter
+
+    header_font = Font(name='Yu Gothic UI', bold=True, size=10, color='FFFFFF')
+    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+    data_font = Font(name='Yu Gothic UI', size=10)
+    thin_border = Border(
+        left=Side(style='thin', color='BFBFBF'),
+        right=Side(style='thin', color='BFBFBF'),
+        top=Side(style='thin', color='BFBFBF'),
+        bottom=Side(style='thin', color='BFBFBF'),
+    )
+    light_fill = PatternFill(start_color='F2F7FB', end_color='F2F7FB', fill_type='solid')
+    alt_fill = PatternFill(start_color='E9EFF5', end_color='E9EFF5', fill_type='solid')
+    center = Alignment(horizontal='center', vertical='center')
+
+    wb = Workbook()
+    ws = wb.active
+
+    columns = list(df_template.columns)
+    for ci, col_name in enumerate(columns, 1):
+        cell = ws.cell(row=1, column=ci, value=col_name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = thin_border
+
+    for ri, (_, row) in enumerate(df_template.iterrows(), 2):
+        fill = light_fill if ri % 2 == 0 else alt_fill
+        for ci, col_name in enumerate(columns, 1):
+            value = row[col_name]
+            if value == '':
+                value = None  # 空欄は空セルとして出力(従来のto_excelと同じ読み込み挙動)
+            cell = ws.cell(row=ri, column=ci, value=value)
+            cell.font = data_font
+            cell.fill = fill
+            cell.border = thin_border
+            if col_name in ('問題番号', '配点', '観点'):
+                cell.alignment = center
+
+    column_widths = {'問題番号': 10, '正答': 12, '配点': 8, '観点': 8, '問題概要': 30}
+    for ci, col_name in enumerate(columns, 1):
+        ws.column_dimensions[get_column_letter(ci)].width = column_widths.get(col_name, 12)
+
+    ws.freeze_panes = 'A2'
+    wb.save(str(template_path))
 
 
 def save_coordinates_to_csv(csv_path, all_data):

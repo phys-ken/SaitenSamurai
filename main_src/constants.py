@@ -35,7 +35,7 @@ except ImportError:
 # アプリケーションバージョン（一元管理）
 # ※ saitensamurai.py 冒頭docstringの「バージョン:」も合わせて更新すること
 #   (saitensamurai.spec がそこから exe 名を生成する)
-APP_VERSION = "4.6.0-beta.2"
+APP_VERSION = "4.6.0-beta.3"
 
 # Mark2の基準サイズ (A4: 595x842ポイント)
 MARK2_WIDTH = 595

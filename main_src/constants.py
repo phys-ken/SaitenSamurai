@@ -108,6 +108,8 @@ DEFAULT_RENDERING_SETTINGS = {
     'show_ox_mark': True,          # ○×△マーク
     'show_score': True,            # 得点
     'show_aspect': True,           # 観点番号
+    # 特例(全員正解)の設問: 正答位置に★を表示（正答未登録なら左端の選択肢位置）
+    'show_all_correct_star': True,
     # ○×・得点・観点・正答番号の文字背景を白塗りする
     # (マークシートの選択肢9/0の印字と文字が重なって読みづらい場合に有効化)
     'mark_result_bg_white': False,

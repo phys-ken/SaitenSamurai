@@ -105,26 +105,36 @@ def choice_to_position_index(choice, num_choices):
     return index if index < num_choices else None
 
 
+SPECIAL_ALL_CORRECT = '全員正解'
+# 特例列に入力可能な値。これ以外の値は警告を出して通常採点にフォールバックする
+VALID_SPECIAL_VALUES = (SPECIAL_ALL_CORRECT,)
+
+
 def load_template(template_path):
     """
     採点用テンプレートを読み込み
-    
+
     正答が未登録（空欄・NaN）の問題は採点対象外としてスキップする。
-    
+    ただし特例列が「全員正解」の問題は、正答が空欄でも採点対象に含める
+    （不適切問題の救済措置。配点は必須のまま）。
+
     Args:
         template_path: 正答データExcelファイルのパス
-    
+
     Returns:
         問題番号をキーとした辞書（正答登録済みの問題のみ）
     """
     df = pd.read_excel(template_path)
-    
+
     # 必要な列をチェック
     required_columns = ['問題番号', '正答', '配点', '観点']
     for col in required_columns:
         if col not in df.columns:
             raise ValueError(f"テンプレートに列'{col}'が見つかりません")
-    
+
+    # 特例は任意列(古いテンプレートには存在しない)
+    has_special_col = '特例' in df.columns
+
     # 辞書形式に変換（正答未登録の行はスキップ）
     template_dict = {}
     skipped_questions = []
@@ -134,9 +144,20 @@ def load_template(template_path):
         if pd.isna(q_no_raw) or str(q_no_raw).strip() == '':  # type: ignore[arg-type]
             continue
         q_no = int(float(q_no_raw))
-        # 正答が空欄・NaNの場合は採点対象外
+        # 特例区分の読み取り（想定外の値は警告して通常扱い）
+        special = ''
+        if has_special_col:
+            special_raw = normalize_value(row['特例'])
+            if special_raw:
+                if special_raw in VALID_SPECIAL_VALUES:
+                    special = special_raw
+                else:
+                    logger.warning("問題%d: 特例列の値'%s'は未対応のため通常採点します（対応値: %s）",
+                                   q_no, special_raw, '/'.join(VALID_SPECIAL_VALUES))
+        # 正答が空欄・NaNの場合は採点対象外（全員正解の特例問題は正答空欄を許容）
         answer_val = row['正答']
-        if pd.isna(answer_val) or str(answer_val).strip() == '':  # type: ignore[arg-type]
+        answer_empty = bool(pd.isna(answer_val)) or str(answer_val).strip() == ''  # type: ignore[arg-type]
+        if answer_empty and special != SPECIAL_ALL_CORRECT:
             skipped_questions.append(q_no)
             continue
         # 配点が空欄・NaNの場合も採点対象外
@@ -149,7 +170,8 @@ def load_template(template_path):
             '配点': int(float(points_val)),
             '観点': int(float(row['観点'])) if not pd.isna(row['観点']) else 1,  # type: ignore[arg-type]
             # 問題概要は任意列(古いテンプレートには存在しない)
-            '問題概要': normalize_value(row['問題概要']) if '問題概要' in df.columns else ''
+            '問題概要': normalize_value(row['問題概要']) if '問題概要' in df.columns else '',
+            '特例': special
         }
     
     if skipped_questions:
@@ -157,7 +179,11 @@ def load_template(template_path):
         registered = len(template_dict)
         logger.info("テンプレート: %d問中%d問が採点対象、%d問スキップ（正答未登録）", total, registered, len(skipped_questions))
         logger.info("スキップされた問題: %s", skipped_questions)
-    
+
+    special_questions = [q for q, t in template_dict.items() if t.get('特例')]
+    if special_questions:
+        logger.info("特例（%s）が設定された問題: %s", SPECIAL_ALL_CORRECT, special_questions)
+
     return template_dict
 
 
@@ -313,50 +339,55 @@ def score_answers(student_answers, template_dict):
         correct_answer = template_data['正答']
         points = template_data['配点']
         aspect = template_data['観点']
-        
+        special = template_data.get('特例', '')
+
         max_score += points
-        
+
         # 観点別満点・得点を初期化
         if aspect not in aspect_max_scores:
             aspect_max_scores[aspect] = 0
         if aspect not in aspect_scores:
             aspect_scores[aspect] = 0
         aspect_max_scores[aspect] += points
-        
+
         # 学生の解答を取得
         student_answer = student_answers.get(q_no, '')
-        
+
         # 採点
         is_correct = False
         earned_points = 0
-        
+
         # 後方互換性: かつてload_mark2_resultsが0→10変換していた時代の
         # 既存データとの互換のため、0⇔10の等価判定を維持する。
         # 現在のパイプラインでは raw_choice ベースで出力しており、
         # 10列テンプレートの最終列は raw_choice=0 として記録される。
-        if ';' in correct_answer or '|' in correct_answer:
+        if special == SPECIAL_ALL_CORRECT:
+            # 特例(全員正解): 無回答・誤答を問わず全員に満点を与える
+            is_correct = True
+        elif ';' in correct_answer or '|' in correct_answer:
             # 複数正答: 0⇔10正規化済みの集合同士で比較
             is_correct = normalize_answer_set(correct_answer) == normalize_answer_set(student_answer)
         else:
             # 単一正答: 両辺を0⇔10正規化して比較
             is_correct = normalize_zero_ten(student_answer) == normalize_zero_ten(correct_answer)
-        
+
         if is_correct:
             earned_points = points
             total_score += points
-            
+
             # 観点別得点を加算
             if aspect not in aspect_scores:
                 aspect_scores[aspect] = 0
             aspect_scores[aspect] += points
-        
+
         results[q_no] = {
             'correct': is_correct,
             'points': earned_points,
             'max_points': points,
             'student_answer': student_answer,
             'correct_answer': correct_answer,
-            'aspect': aspect
+            'aspect': aspect,
+            'special': special
         }
     
     return {

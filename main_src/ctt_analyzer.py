@@ -137,9 +137,13 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
                 raw_key = normalize_zero_ten(raw_key)
             keys.append(raw_key)
         
-        # key_df: 設問IDと正答のペア(+任意の問題概要)
+        # key_df: 設問IDと正答のペア(+任意の問題概要・特例フラグ)
         summaries = [str(template_dict[q].get('問題概要', '') or '') for q in question_numbers]
-        key_df = pd.DataFrame({'QuestionID': questions, 'Key': keys, 'Summary': summaries})
+        # 特例(全員正解): score_answers と同様に全員正答として扱う。
+        # 正誤マトリクス上は分散ゼロの列になるため、項目分析統計からは除外される
+        all_correct = [template_dict[q].get('特例', '') == '全員正解' for q in question_numbers]
+        key_df = pd.DataFrame({'QuestionID': questions, 'Key': keys, 'Summary': summaries,
+                               'AllCorrect': all_correct})
         
         # ans_df: 各学生の解答マトリクス
         rows = []
@@ -155,7 +159,7 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
         ans_df = pd.DataFrame(rows)
     else:
         # 記述のみモード: マーク解答なし、空の DataFrame から開始
-        key_df = pd.DataFrame(columns=['QuestionID', 'Key', 'Summary'])
+        key_df = pd.DataFrame(columns=['QuestionID', 'Key', 'Summary', 'AllCorrect'])
         if descriptive_scores:
             student_ids = sorted(descriptive_scores.keys())
             ans_df = pd.DataFrame({'StudentID': student_ids})
@@ -171,8 +175,11 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
             max_score = dq['max_score']
             
             # key_df に記述問題を追加（正答キー = "1"、概要は設問名があれば流用）
+            # AllCorrectを明示しないとconcatでNaNになり、bool(NaN)=Trueで
+            # 記述問題が誤って項目分析から除外されてしまう
             desc_summary = str(dq.get('name', '') or '')
-            new_key = pd.DataFrame({'QuestionID': [q_id], 'Key': ['1'], 'Summary': [desc_summary]})
+            new_key = pd.DataFrame({'QuestionID': [q_id], 'Key': ['1'], 'Summary': [desc_summary],
+                                    'AllCorrect': [False]})
             key_df = pd.concat([key_df, new_key], ignore_index=True)
             
             # ans_df に記述問題のバイナリ解答を追加
@@ -287,8 +294,24 @@ class CTTAnalyzer:
             }
         else:
             self.summaries = {}
+        # 特例(全員正解)フラグ(任意列)。該当設問は全員正答=分散ゼロとなるため、
+        # 得点(score_matrix/total_scores)には含めるが項目分析統計からは除外する
+        if 'AllCorrect' in key_df.columns:
+            # NaN(列を持たない行のconcat由来など)はFalse扱い(bool(NaN)=Trueに注意)
+            self.all_correct_flags = {
+                str(q): (not pd.isna(f)) and bool(f)
+                for q, f in zip(key_df['QuestionID'], key_df['AllCorrect'])
+            }
+        else:
+            self.all_correct_flags = {}
+        # 項目分析(P値/D値/I-T相関/α/選択肢分析)の対象設問(特例を除く)
+        self.analysis_questions = [q for q in self.questions
+                                   if not self.all_correct_flags.get(q, False)]
         self.n_students = len(ans_df)
         self.n_questions = len(self.questions)
+        if len(self.analysis_questions) < len(self.questions):
+            excluded = [q for q in self.questions if q not in self.analysis_questions]
+            logger.info("特例(全員正解)につき項目分析から除外: %s", excluded)
         
         self.score_matrix = self._calculate_score_matrix()
         self._validate_binary_matrix()
@@ -325,6 +348,10 @@ class CTTAnalyzer:
         matrix = pd.DataFrame(index=self.ans_df.index, columns=self.questions)
         for i, q in enumerate(self.questions):
             correct_key = str(self.keys[i]).strip()
+            if self.all_correct_flags.get(q, False):
+                # 特例(全員正解): 無回答含め全員を正答扱い (score_answers と同一ルール)
+                matrix[q] = 1
+                continue
             if q not in self.ans_df.columns:
                 matrix[q] = 0
                 continue
@@ -372,9 +399,12 @@ class CTTAnalyzer:
         }
 
     def _calculate_cronbach_alpha(self):
-        item_vars = self.score_matrix.var(axis=0, ddof=1).sum()
-        total_var = self.total_scores.var(ddof=1)
-        k = self.n_questions
+        # 特例(全員正解)の設問は分散ゼロの定数項目のため、α計算から除外する
+        # (含めると項目数kだけが増えてαが不当に変化する)
+        analysis_matrix = self.score_matrix[self.analysis_questions]
+        item_vars = analysis_matrix.var(axis=0, ddof=1).sum()
+        total_var = analysis_matrix.sum(axis=1).var(ddof=1)
+        k = len(self.analysis_questions)
         if total_var == 0 or k <= 1:
             return 0
         return (k / (k - 1)) * (1 - (item_vars / total_var))
@@ -387,29 +417,34 @@ class CTTAnalyzer:
         lower_idx = sorted_df.index[-n_grp:]
         upper_matrix = self.score_matrix.loc[upper_idx]
         lower_matrix = self.score_matrix.loc[lower_idx]
+        keys_by_q = dict(zip(self.questions, self.keys))
+        # 特例(全員正解)を除いた項目のみで統計を計算する
+        # (定数列はP=1/D=0/相関0で意味を成さず、削除αのkにも影響するため)
+        analysis_matrix = self.score_matrix[self.analysis_questions]
+        n_analysis = len(self.analysis_questions)
 
-        for i, q in enumerate(self.questions):
+        for q in self.analysis_questions:
             p_val = self.score_matrix[q].mean()
-            
+
             rest_scores = self.total_scores - self.score_matrix[q]
             if self.score_matrix[q].std() == 0 or rest_scores.std() == 0:
                 it_cor = 0
             else:
                 it_cor = self.score_matrix[q].corr(rest_scores)
-            
+
             if self.score_matrix[q].std() == 0 or self.total_scores.std() == 0:
                 it_cor_incl = 0
             else:
                 it_cor_incl = self.score_matrix[q].corr(self.total_scores)
-            
+
             p_upper = upper_matrix[q].mean()
             p_lower = lower_matrix[q].mean()
             d_val = p_upper - p_lower
-            
-            idx_dropped = self.score_matrix.drop(columns=[q])
+
+            idx_dropped = analysis_matrix.drop(columns=[q])
             total_var_dropped = idx_dropped.sum(axis=1).var(ddof=1)
             item_vars_dropped = idx_dropped.var(axis=0, ddof=1).sum()
-            k_dropped = self.n_questions - 1
+            k_dropped = n_analysis - 1
             if total_var_dropped == 0 or k_dropped <= 1:
                 alpha_dropped = 0
             else:
@@ -417,7 +452,7 @@ class CTTAnalyzer:
 
             stats_list.append({
                 'QuestionID': q,
-                'Key': self.keys[i],
+                'Key': keys_by_q.get(q, ''),
                 'Summary': self.summaries.get(str(q), ''),
                 '正答率 (P)': p_val,
                 '識別指数 (D)': d_val,
@@ -443,20 +478,22 @@ class CTTAnalyzer:
             '中群': middle_idx,
             '低群': lower_idx
         }
+        keys_by_q = dict(zip(self.questions, self.keys))
 
-        for i, q in enumerate(self.questions):
+        # 特例(全員正解)の設問は選択肢分析の対象外(項目分析統計と同じ扱い)
+        for q in self.analysis_questions:
             # レガシー"10"表記の解答も選択肢"0"に集約してから集計する
             # (キー側は正規化済みのため、正規化しないと該当生徒がどの
             #  選択肢行にもカウントされず選択肢分析から消えてしまう)
             col_norm = self.ans_df[q].astype(str).map(normalize_zero_ten)
             found_choices = col_norm.unique()
-            raw_set = set(found_choices) | {str(self.keys[i])}
+            raw_set = set(found_choices) | {str(keys_by_q.get(q, ''))}
             # 無効回答相当の値を除去（「無効回答」カテゴリに集約して集計）
             raw_set = {v for v in raw_set if not _is_invalid_response(v)}
             all_choices = _sort_choices(list(raw_set) + ["無効回答"])
 
             for choice in all_choices:
-                is_key = (str(choice) == str(self.keys[i]))
+                is_key = (str(choice) == str(keys_by_q.get(q, '')))
                 row = {'QuestionID': q, 'Choice': choice, 'IsKey': is_key}
 
                 for grp_name, grp_idx in groups.items():
@@ -1011,6 +1048,12 @@ class CTTExcelExporter:
         r = self._note(ws, r, 1,
             '【凡例】 緑=正答率高(≧80%) / 赤=正答率低(≦20%)・D値負・I-T相関負 / '
             '橙=D値低(<20%)・削除αがαより大 / 水色=正答選択肢', total_cols)
+        # 特例(全員正解)の設問がある場合は除外した旨を明記する
+        excluded = [q for q in self.az.questions if q not in self.az.analysis_questions]
+        if excluded:
+            r = self._note(ws, r, 1,
+                f"【特例】 設問 {', '.join(excluded)} は「全員正解」特例のため"
+                '項目分析から除外しています（得点・正誤データには全員正答として反映）', total_cols)
 
         widths = {'A': 8, 'B': 24}  # B=概要(20字程度の日本語を想定)
         for i in range(3, total_cols + 1):
@@ -1070,11 +1113,13 @@ class CTTExcelExporter:
                         cv = rv
                     cell = self._c(ws, ri, ci, cv, fill=rbg)
                     try:
-                        pv = ip.get(cn, 0)
-                        if cv == 1 and (cb - dm) > pv:
-                            cell.fill = self.bg_sp_b
-                        elif cv == 0 and (cb + dm) < pv:
-                            cell.fill = self.bg_sp_y
+                        # 特例(全員正解)等で項目分析対象外の設問はS-P強調しない
+                        if cn in ip:
+                            pv = ip[cn]
+                            if cv == 1 and (cb - dm) > pv:
+                                cell.fill = self.bg_sp_b
+                            elif cv == 0 and (cb + dm) < pv:
+                                cell.fill = self.bg_sp_y
                     except Exception:
                         pass
                 elif cn == '得点率':
@@ -1911,9 +1956,11 @@ def generate_ctt_analysis(template_path, mark2_result_path, excel_output_path,
             logger.info("  PDFレポート生成中...")
             try:
                 reporter = CTTPDFReporter(str(pdf_output_path))
+                # トレースライン一覧・相関行列は項目分析対象の設問のみ
+                # (特例(全員正解)は分散ゼロで相関が定義できないため除外)
                 reporter.generate_report(
                     test_stats, item_stats, distractor_stats,
-                    analyzer.total_scores, analyzer.questions, analyzer.score_matrix)
+                    analyzer.total_scores, analyzer.analysis_questions, analyzer.score_matrix)
                 pdf_success = True
             except Exception as e:
                 logger.warning("  ⚠ PDF生成エラー: %s", e)

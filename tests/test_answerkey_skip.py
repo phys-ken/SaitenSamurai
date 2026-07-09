@@ -150,8 +150,8 @@ class TestLoadTemplateSkip:
             {'問題番号': 3, '正答': '5', '配点': 3, '観点': 2},
         ])
         td = load_template(path)
-        assert td[1] == {'正答': '3', '配点': 2, '観点': 1, '問題概要': ''}
-        assert td[3] == {'正答': '5', '配点': 3, '観点': 2, '問題概要': ''}
+        assert td[1] == {'正答': '3', '配点': 2, '観点': 1, '問題概要': '', '特例': ''}
+        assert td[3] == {'正答': '5', '配点': 3, '観点': 2, '問題概要': '', '特例': ''}
 
     def test_no_crash_on_nan_points(self, tmp_path):
         """NaN配点でクラッシュしない（以前はint(NaN)でValueError）"""

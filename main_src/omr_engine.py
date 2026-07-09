@@ -415,6 +415,7 @@ def generate_template(coord_excel_path, output_folder, skip_questions=0):
             '正答': '',    # 空欄（ユーザーが入力）
             '配点': '',    # 空欄（ユーザーが入力）
             '観点': '',    # 空欄（ユーザーが入力）
+            '特例': '',    # 任意入力（ドロップダウン: 全員正解。不適切問題の救済措置）
             '問題概要': ''  # 任意入力（20字程度。CTT/R連携レポートに表示される）
         })
     
@@ -447,6 +448,7 @@ def _write_styled_template(df_template, template_path):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
     from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
 
     header_font = Font(name='Yu Gothic UI', bold=True, size=10, color='FFFFFF')
     header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
@@ -482,12 +484,24 @@ def _write_styled_template(df_template, template_path):
             cell.font = data_font
             cell.fill = fill
             cell.border = thin_border
-            if col_name in ('問題番号', '配点', '観点'):
+            if col_name in ('問題番号', '配点', '観点', '特例'):
                 cell.alignment = center
 
-    column_widths = {'問題番号': 10, '正答': 12, '配点': 8, '観点': 8, '問題概要': 30}
+    column_widths = {'問題番号': 10, '正答': 12, '配点': 8, '観点': 8, '特例': 12, '問題概要': 30}
     for ci, col_name in enumerate(columns, 1):
         ws.column_dimensions[get_column_letter(ci)].width = column_widths.get(col_name, 12)
+
+    # 特例列にドロップダウン（空欄 or 全員正解）を設定する。
+    # 不適切問題の救済措置として使う想定のため、自由入力は許可しない
+    if '特例' in columns and len(df_template) > 0:
+        special_col_letter = get_column_letter(columns.index('特例') + 1)
+        dv = DataValidation(type='list', formula1='"全員正解"', allow_blank=True)
+        dv.error = '「全員正解」または空欄のみ入力できます'
+        dv.errorTitle = '特例区分'
+        dv.prompt = '不適切問題を全員正解として救済する場合に選択（配点は必須のまま。正答は空欄でも可）'
+        dv.promptTitle = '特例区分'
+        ws.add_data_validation(dv)
+        dv.add(f'{special_col_letter}2:{special_col_letter}{len(df_template) + 1}')
 
     ws.freeze_panes = 'A2'
     wb.save(str(template_path))

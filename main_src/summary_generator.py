@@ -686,7 +686,9 @@ def generate_exam_summary(template_path, mark2_result_path, output_path, skip_qu
         evaluation = _evaluate_correct_rate(correct_rate)
 
         ws2.cell(row=q_row, column=1, value=q_no)
-        ws2.cell(row=q_row, column=2, value='マーク')
+        # 特例(全員正解)の設問は種別欄で明示する(正答率100%の理由が分かるように)
+        q_type = 'マーク(全員正解)' if tpl.get('特例') else 'マーク'
+        ws2.cell(row=q_row, column=2, value=q_type)
         ws2.cell(row=q_row, column=3, value=tpl['配点'])
         ws2.cell(row=q_row, column=4, value=f'観点{number_to_circled(tpl["観点"])}')
         ws2.cell(row=q_row, column=5, value=correct_count)

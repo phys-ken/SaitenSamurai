@@ -307,6 +307,20 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
                     center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
                 )
 
+        # 特例(全員正解)の設問: 正答位置に★を表示して特例適用を視認できるようにする。
+        # 正答が未登録(空欄)の場合は左端の選択肢位置に★を置く(特例適用のしるし)
+        if result_data.get('special') == '全員正解' and rs.get('show_all_correct_star', True):
+            star_index = choice_to_position_index(result_data['correct_answer'], num_choices)
+            if star_index is None or star_index >= len(question_coords):
+                star_index = 0
+            star_mark = question_coords[star_index]
+            _draw_text_pil(
+                "★",
+                int(star_mark['x'] * s), int(star_mark['y'] * s),
+                font_size=base_font_size, color_bgr=(0, 0, 255),
+                center_in_box=(int(star_mark['width'] * s), int(star_mark['height'] * s))
+            )
+
     if bg_white:
         _flush_pending_texts()
 

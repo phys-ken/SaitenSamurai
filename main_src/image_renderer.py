@@ -19,6 +19,8 @@ from constants import (
     SCORED_FOLDER,
     RESULTS_DATA_FOLDER,
     MARKER_CACHE_FILE,
+    MARK_FORMAT_STANDARD,
+    MARK_FORMAT_MULTI_DIGIT,
 )
 from scoring_engine import (
     number_to_circled,
@@ -164,10 +166,15 @@ def draw_mixed_text_on_image(image, text1, font_size1, text2, font_size2, x, y, 
 
 
 def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
-                         output_scale=1.0, rendering_settings=None):
+                         output_scale=1.0, rendering_settings=None,
+                         mark_format=MARK_FORMAT_STANDARD):
     """PIL DrawオブジェクトにO/X・得点・正答を直接描画（in-place）。
 
     cv2↔PIL変換を行わない内部関数。draw_scoring_results / draw_all_results から呼ばれる。
+
+    複数桁モード(mark_format=MARK_FORMAT_MULTI_DIGIT)では、resultsの'span'に従い
+    ○×・得点はグループ先頭行に1つだけ、誤答時の正答赤表示はグループ各行の
+    正しいマーク位置に1文字ずつ描画する。
     """
     from constants import get_rendering_settings
     rs = get_rendering_settings(rendering_settings)
@@ -297,20 +304,42 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
         # (選択肢"0"=10番目の位置の解決を含め、位置変換は共通ヘルパーに委譲)
         if not result_data['correct'] and rs['show_correct_answer']:
             correct_answer = result_data['correct_answer']
-            target_index = choice_to_position_index(correct_answer, num_choices)
-            if target_index is not None and target_index < len(question_coords):
-                correct_mark = question_coords[target_index]
-                _draw_text_pil(
-                    str(correct_answer),
-                    int(correct_mark['x'] * s), int(correct_mark['y'] * s),
-                    font_size=base_font_size, color_bgr=(0, 0, 255),
-                    center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
-                )
+            if mark_format == MARK_FORMAT_MULTI_DIGIT:
+                # 複数桁グループ: 各行の正答記号を、その行の正しいマーク位置に赤描画
+                span = result_data.get('span', 1)
+                for i, char in enumerate(str(correct_answer)[:span]):
+                    row_coords = [c for c in coordinates if c['question_no'] == target_q_no + i]
+                    row_coords.sort(key=lambda c: c['choice'])
+                    target_index = choice_to_position_index(char, len(row_coords), mark_format)
+                    if target_index is None or target_index >= len(row_coords):
+                        continue
+                    correct_mark = row_coords[target_index]
+                    _draw_text_pil(
+                        char,
+                        int(correct_mark['x'] * s), int(correct_mark['y'] * s),
+                        font_size=base_font_size, color_bgr=(0, 0, 255),
+                        center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
+                    )
+            else:
+                target_index = choice_to_position_index(correct_answer, num_choices)
+                if target_index is not None and target_index < len(question_coords):
+                    correct_mark = question_coords[target_index]
+                    _draw_text_pil(
+                        str(correct_answer),
+                        int(correct_mark['x'] * s), int(correct_mark['y'] * s),
+                        font_size=base_font_size, color_bgr=(0, 0, 255),
+                        center_in_box=(int(correct_mark['width'] * s), int(correct_mark['height'] * s))
+                    )
 
         # 特例(全員正解)の設問: 正答位置に★を表示して特例適用を視認できるようにする。
         # 正答が未登録(空欄)の場合は左端の選択肢位置に★を置く(特例適用のしるし)
+        # 複数桁グループでは先頭行の正答1文字目の位置に★を1つ表示する
         if result_data.get('special') == '全員正解' and rs.get('show_all_correct_star', True):
-            star_index = choice_to_position_index(result_data['correct_answer'], num_choices)
+            correct_answer = str(result_data['correct_answer'])
+            if mark_format == MARK_FORMAT_MULTI_DIGIT:
+                star_index = choice_to_position_index(correct_answer[:1], num_choices, mark_format)
+            else:
+                star_index = choice_to_position_index(correct_answer, num_choices)
             if star_index is None or star_index >= len(question_coords):
                 star_index = 0
             star_mark = question_coords[star_index]
@@ -325,24 +354,25 @@ def _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions=0,
         _flush_pending_texts()
 
 
-def draw_scoring_results(image, coordinates, scoring_result, skip_questions=0, output_scale=1.0, rendering_settings=None):
+def draw_scoring_results(image, coordinates, scoring_result, skip_questions=0, output_scale=1.0, rendering_settings=None, mark_format=MARK_FORMAT_STANDARD):
     """
     採点結果を画像に描画
-    
+
     ○×マークのデフォルト位置は後ろから2番目のマークエリア（インデックス -2）。
     rendering_settings の mark_result_offset でオフセット調整が可能。
-    
+
     全ての選択肢エリアが模範解答の対象となる。
     不正解時の正答位置表示は correct_answer_int - 1 のインデックスに描画される。
-    
+
     Args:
         output_scale: 座標・フォントのスケール倍率（高解像度出力用）
         rendering_settings: 描画設定辞書（Noneならデフォルト）
+        mark_format: マーク形式（MARK_FORMAT_MULTI_DIGIT でグループ描画）
     """
     result_image = image.copy()
     pil_img = Image.fromarray(cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
-    _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions, output_scale, rendering_settings)
+    _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions, output_scale, rendering_settings, mark_format)
     return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
 
@@ -541,7 +571,8 @@ def _draw_total_score_fallback(image, line1, line2, coordinates, output_scale=1.
 
 
 def draw_all_results(image, coordinates, scoring_result, skip_questions=0,
-                     output_scale=1.0, rendering_settings=None, total_display_config=None):
+                     output_scale=1.0, rendering_settings=None, total_display_config=None,
+                     mark_format=MARK_FORMAT_STANDARD):
     """○×描画 + 合計得点描画を PIL 変換1回で完了する統合関数。
 
     process_scoring のイメージ処理ループで draw_scoring_results ＋ draw_total_score を
@@ -565,7 +596,7 @@ def draw_all_results(image, coordinates, scoring_result, skip_questions=0,
     draw = ImageDraw.Draw(pil_img)
 
     # ○×・得点・正答の描画
-    _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions, s, rendering_settings)
+    _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions, s, rendering_settings, mark_format)
 
     # 合計得点の描画
     layout = _prepare_total_score_layout(result_image, scoring_result, total_display_config, s)
@@ -577,15 +608,17 @@ def draw_all_results(image, coordinates, scoring_result, skip_questions=0,
     return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
 
-def process_scoring(image_folder, coord_excel_path, template_path, mark2_result_path, 
+def process_scoring(image_folder, coord_excel_path, template_path, mark2_result_path,
                    skip_questions=0, output_base_folder=None, log_callback=None,
-                   rendering_settings=None, progress_callback=None, cancel_event=None):
+                   rendering_settings=None, progress_callback=None, cancel_event=None,
+                   mark_format=MARK_FORMAT_STANDARD):
     """採点処理を実行
-    
+
     Args:
         rendering_settings: 描画設定辞書（Noneならデフォルト）
         progress_callback: 進捗コールバック(current, total)（オプション、GUIプログレスバー用）
         cancel_event: threading.Event — set()されると処理を中断
+        mark_format: マーク形式（MARK_FORMAT_MULTI_DIGIT で複数桁グループ採点）
     """
     
     # ログ出力用関数
@@ -622,17 +655,28 @@ def process_scoring(image_folder, coord_excel_path, template_path, mark2_result_
     log("")
     
     # テンプレート読み込み
-    template_dict = load_template(template_path)
+    template_dict = load_template(template_path, mark_format=mark_format)
     log(f"✓ テンプレート読込: {len(template_dict)}問")
-    
+
     # Mark2結果読み込み
     mark2_results = load_mark2_results(mark2_result_path, skip_questions)
     log(f"✓ Mark2結果読込: {len(mark2_results)}件")
-    
+
     # 座標データ読み込み（Excelから直接）
     # coordinates.csvではなく、Excelから詳細な座標を取得する
     coordinates, _ = parse_excel_coordinates(coord_excel_path, skip_questions)
     log(f"✓ 座標データ読込: {len(coordinates)}個")
+
+    # 複数桁モード: answer_keyの範囲が座標定義のマーク行数を超えていないか検証
+    if mark_format == MARK_FORMAT_MULTI_DIGIT:
+        coord_q_nos = {c['question_no'] for c in coordinates}
+        max_row = max((q - skip_questions) for q in coord_q_nos if isinstance(q, (int, float))) if coord_q_nos else 0
+        overruns = [t.get('group_label', str(q)) for q, t in template_dict.items()
+                    if q + t.get('span', 1) - 1 > max_row]
+        if overruns:
+            raise ValueError(
+                f"answer_keyの問題番号範囲が座標定義のマーク行数({int(max_row)}行)を超えています: "
+                f"{', '.join(overruns)}")
     
     # 合計点表示位置の設定を読み込み
     total_display_config = None
@@ -694,12 +738,13 @@ def process_scoring(image_folder, coord_excel_path, template_path, mark2_result_
             corrected_image, _ = apply_perspective_transform(image, markers, output_scale=output_scale)
             
             # 採点
-            scoring_result = score_answers(student_answers, template_dict)
-            
+            scoring_result = score_answers(student_answers, template_dict, mark_format=mark_format)
+
             # 補正済み画像に採点結果 + 合計得点をPIL変換1回で描画
             result_image = draw_all_results(corrected_image, coordinates, scoring_result, skip_questions,
                                             output_scale=output_scale, rendering_settings=rendering_settings,
-                                            total_display_config=total_display_config)
+                                            total_display_config=total_display_config,
+                                            mark_format=mark_format)
             
             # 保存 (JPEG品質85: 画質と容量のバランス)
             output_path = scored_folder / image_name

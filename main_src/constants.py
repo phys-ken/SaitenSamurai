@@ -149,6 +149,28 @@ MODE_MARK_AND_DESCRIPTIVE = "mark_and_descriptive"  # マーク採点 ＋ 記述
 MODE_DESCRIPTIVE_ONLY = "descriptive_only"      # 記述採点のみ
 
 # ========================================
+# v4.7 マーク形式 (app_mode に直交するフラグ)
+# ========================================
+# standard: 従来の1問=1マーク列(10択、並びは 1..9,0)
+# multi_digit: 複数桁設問モード(共通テスト数学式)。連続する複数のマーク行で
+#   1つの値("-24" 等)を構成し、完答のみ得点。紙面の各行は
+#   -, 0〜9, a, b, c, d の15マーク(M2-03-008 座標ファイルの値ヘッダは -1, 0〜13)
+MARK_FORMAT_STANDARD = "standard"
+MARK_FORMAT_MULTI_DIGIT = "multi_digit"
+
+# 複数桁モードの「座標ファイルヘッダ値 ⇔ 紙面上の記号」対応表。
+# mark2結果Excel・answer_keyの正答・描画はすべて記号側で表記する。
+MULTI_DIGIT_VALUE_TO_SYMBOL = {
+    -1: '-',
+    0: '0', 1: '1', 2: '2', 3: '3', 4: '4',
+    5: '5', 6: '6', 7: '7', 8: '8', 9: '9',
+    10: 'a', 11: 'b', 12: 'c', 13: 'd',
+}
+MULTI_DIGIT_SYMBOL_TO_VALUE = {v: k for k, v in MULTI_DIGIT_VALUE_TO_SYMBOL.items()}
+# answer_key の正答に使用できる文字集合
+MULTI_DIGIT_VALID_SYMBOLS = set(MULTI_DIGIT_SYMBOL_TO_VALUE.keys())
+
+# ========================================
 # v4.5 OMR 認識モード
 # ========================================
 OMR_MODE_THRESHOLD = "threshold"   # 従来の閾値方式

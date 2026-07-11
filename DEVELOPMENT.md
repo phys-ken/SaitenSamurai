@@ -157,7 +157,11 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 
 ### OMR 値変換パイプライン
 
-座標 Excel の列ヘッダ値 (`raw_choice`) をそのまま表示値として使用します。
+座標 Excel の row0 の値ヘッダ (`raw_choice`) をそのまま表示値として使用します。
+`parse_excel_coordinates()` が row0 のヘッダセル（base_col=4,8,...）を読み取って
+`raw_choice` に格納します（ヘッダ欠損時は列グループの出現順にフォールバック）。
+標準テンプレート（ヘッダ 0〜9）ではヘッダ＝出現順のため従来と同一の値になりますが、
+複数桁モードのテンプレート（ヘッダ -1〜13）ではヘッダ値が正となります。
 
 ```mermaid
 flowchart TD
@@ -216,14 +220,65 @@ flowchart TD
 MODE_MARK_ONLY = "mark_only"
 MODE_MARK_AND_DESCRIPTIVE = "mark_and_descriptive"
 MODE_DESCRIPTIVE_ONLY = "descriptive_only"
+
+# app_mode に直交するマーク形式フラグ（v4.7 複数桁設問モード）
+MARK_FORMAT_STANDARD = "standard"
+MARK_FORMAT_MULTI_DIGIT = "multi_digit"
 ```
 
 ### 起動フロー（`saitensamurai.py`）
 
 ```
-main() → StartupModeDialog(root) → mode, session_path を取得
-       → SaitenSamuraiGUI(root, mode=mode, restore_session_path=session_path)
+main() → StartupModeDialog(root) → mode, mark_format, session_path を取得
+       → SaitenSamuraiGUI(root, mode=mode, mark_format=mark_format,
+                          restore_session_path=session_path)
 ```
+
+### 複数桁設問モード（mark_format=multi_digit）
+
+共通テスト数学式の紙面（各解答番号行に `-, 0〜9, a, b, c, d` の15マーク。
+座標ファイルの値ヘッダは `-1, 0〜13`。配付物 M2-03-008 が対応テンプレート）向けのモードです。
+トップ画面の「🔢 数学マーク採点のみ」「🔢✏ 数学マーク採点＋記述採点」から起動します。
+
+- **answer_key.xlsx**: 問題番号列に範囲表記「1-3」を書くと、連続する3つのマーク行を
+  1つの採点単位（グループ）に束ねます。正答は「-24」のような記号列（1文字=1行）。
+  範囲長=正答文字数がバリデーションされます（先頭ゼロはセルを文字列書式で入力）。
+  単独行は従来どおり「5」。列構成（問題番号/正答/配点/観点/特例/問題概要）は共通です。
+- **自動割付**: 単独表記の行に複数文字の正答を書くと、正答の文字数ぶん連続行を
+  自動消費します（問題番号「1」＋正答「-24」→ 1〜3行、group_label="1-3"）。
+  範囲の手計算は不要です。各行の問題番号は固定なのでズレは起きず、消費先に
+  別の登録があれば重複エラーになります。特例「全員正解」で正答空欄の複数行
+  グループのみ範囲表記が必須です（消費行数を推論できないため）。
+- **採点**: グループ全行の解答連結が正答と完全一致した場合のみ満点（完答）。
+  無マーク・ダブルマークが1行でもあれば0点。0⇔10等価判定は**適用しません**
+  （'1'+'0'→"10" が "0" に正規化される事故を防ぐため）。特例「全員正解」はグループ単位で有効。
+- **値→位置解決**: `scoring_engine.choice_to_position_index(choice, num_choices, mark_format)`
+  が唯一の入口。multi_digit では位置 = ヘッダ値+1（"-"=位置0、"d"=位置14）。
+- **記号対応表**: `constants.MULTI_DIGIT_VALUE_TO_SYMBOL`（-1→"-"、10〜13→a〜d）。
+  mark2結果Excelのセル・正答表記・描画はすべて記号側で統一。
+- **データモデル**: `load_template` は先頭行intキーのまま `'span'`（消費行数）と
+  `'group_label'`（"1-3"）を付与。グループ2行目以降のエントリは作られません。
+- **CTT/R**: グループ=1項目（項目ID=範囲表記）。key_df の `ExactMatch` 列が True の項目は
+  正答文字列との完全一致で0/1化されます（ctt_analyzer / r_export 共通）。
+- **セッション**: `session_state.json` に `mark_format` を保存。
+  形式が一致しないセッションの復元はエラーで中止されます。
+
+### 正答チェックとMarkdown書き出し（`answer_key_checker.py`）
+
+登録ミスの早期発見のため、answer_key を採点前に検証して Markdown 2ファイルを
+書き出します（標準・複数桁の両モード対応）。
+
+- **起動**: 正答データの選択/自動検出時に自動実行（要約をGUIログに表示）。
+  正答データ行の「📋」ボタンでいつでも再実行できます。
+- **出力先**: answer_key と同じフォルダに
+  `<ファイル名>_check.md`（検証結果・行割当表・集計）と
+  `<ファイル名>_模範解答.md`（問/解答番号/正答/配点/観点の配布用表。エラー時は
+  書き出されない）。
+- **チェック内容**: `load_template` のバリデーション（範囲重複・範囲長≠正答文字数・
+  不正記号等）に加え、使用行の中抜け警告・未登録行（正答/配点空欄）警告・
+  座標ファイルのマーク行数超過エラー（座標ファイル選択時）。
+- 生成直後の空 answer_key（正答未入力）では自動チェックは案内メッセージのみを出します。
+- API: `answer_key_checker.run_answer_key_check(template_path, mark_format, coord_excel_path, skip_questions)`
 
 ### モードごとの UI 差分
 

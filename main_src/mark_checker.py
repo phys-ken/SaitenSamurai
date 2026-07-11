@@ -299,7 +299,14 @@ def update_xlsx_from_csv_checker(xlsx_path, error_csv_path):
             try:
                 cell.value = int(after_value)
             except ValueError:
-                cell.value = escape_excel_formula(after_value)
+                s = str(after_value)
+                if s == '-':
+                    # 複数桁モードのマイナス記号。escape_excel_formulaを通すと
+                    # 「'-」の2文字になり採点時に正答と一致しなくなるため、
+                    # そのまま文字列として書き込む(単独の'-'は数式にならず安全)
+                    cell.value = s
+                else:
+                    cell.value = escape_excel_formula(s)
         
         cell.font = correction_font  # 修正セル: 太字+濃い紫
         

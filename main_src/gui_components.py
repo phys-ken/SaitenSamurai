@@ -43,6 +43,7 @@ from constants import (
     MARK2_BASE_WIDTH, MARK2_BASE_HEIGHT,
     WHITENESS_CACHE_FILE,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
+    MARK_FORMAT_STANDARD, MARK_FORMAT_MULTI_DIGIT,
 )
 
 # Checker機能（mark_checker.pyから）
@@ -76,7 +77,8 @@ from threshold_calibrator import (
 
 class MarkCheckerGUI:
     """マークエラーチェックGUIクラス"""
-    def __init__(self, parent_window, image_folder, coords_csv_path, xlsx_path, skip_questions=0, template_path=None):
+    def __init__(self, parent_window, image_folder, coords_csv_path, xlsx_path, skip_questions=0, template_path=None,
+                 mark_format=MARK_FORMAT_STANDARD):
         self._original_stdout_ref = None  # stdout復帰用（SaitenSamuraiGUIから設定される）
         
         self.window = tk.Toplevel(parent_window)
@@ -107,6 +109,7 @@ class MarkCheckerGUI:
         self.xlsx_path = Path(xlsx_path)
         self.skip_questions = skip_questions
         self.template_path = template_path
+        self.mark_format = mark_format  # v4.7: 複数桁設問モード対応
         self.error_csv_path = self.xlsx_path.parent / "tmp_checking_dm_nm.csv"
 
         # v4.5 安定化: グリッド描画のページング
@@ -145,8 +148,14 @@ class MarkCheckerGUI:
             return None
         try:
             from scoring_engine import load_template
-            template_dict = load_template(self.template_path)
-            return set(template_dict.keys())
+            template_dict = load_template(self.template_path, mark_format=self.mark_format)
+            # 複数桁グループは先頭行のみがキーのため、グループ全行に展開する
+            # (2行目以降の無マーク・ダブルマークもチェック対象に含める)
+            questions = set()
+            for q_no, data in template_dict.items():
+                span = data.get('span', 1)
+                questions.update(range(q_no, q_no + span))
+            return questions
         except Exception as e:
             logger.warning("テンプレート読み込みエラー（全問チェックにフォールバック）: %s", e)
             return None
@@ -161,7 +170,7 @@ class MarkCheckerGUI:
             return {}
         try:
             from scoring_engine import load_template
-            return load_template(self.template_path)
+            return load_template(self.template_path, mark_format=self.mark_format)
         except Exception as e:
             logger.warning("正答データ読み込みエラー: %s", e)
             return {}
@@ -180,10 +189,31 @@ class MarkCheckerGUI:
         Returns:
             オーバーレイ描画済みの PIL.Image
         """
-        if not self._answer_key or question_no not in self._answer_key:
+        if not self._answer_key:
             return pil_img
 
-        correct_answer_str = self._answer_key[question_no]['正答']
+        if question_no in self._answer_key:
+            entry = self._answer_key[question_no]
+            correct_answer_str = entry['正答']
+            if self.mark_format == MARK_FORMAT_MULTI_DIGIT:
+                # グループ先頭行: 正答の1文字目がこの行の正答記号
+                correct_answer_str = str(correct_answer_str)[:1]
+        elif self.mark_format == MARK_FORMAT_MULTI_DIGIT:
+            # 複数桁グループの2行目以降: question_no を含むグループを検索し、
+            # 該当行の正答記号(1文字)を取り出す
+            correct_answer_str = None
+            for q_start, entry in self._answer_key.items():
+                span = entry.get('span', 1)
+                if q_start < question_no < q_start + span:
+                    offset = question_no - q_start
+                    ans = str(entry['正答'])
+                    if offset < len(ans):
+                        correct_answer_str = ans[offset]
+                    break
+            if not correct_answer_str:
+                return pil_img
+        else:
+            return pil_img
 
         # 座標CSVは元の問題番号（skip込み）で記録されている
         original_q_no = question_no + self.skip_questions
@@ -204,9 +234,10 @@ class MarkCheckerGUI:
 
         parts = str(mark_coords_str).split('|')
         # 正答の値→マーク位置の解決は共通ヘルパーに委譲
-        # (選択肢"0"=10番目の位置、レガシー"10"表記も同じルールで扱う)
+        # (選択肢"0"=10番目の位置、レガシー"10"表記も同じルールで扱う。
+        #  複数桁モードでは -,0..9,a-d の並びで解決する)
         from scoring_engine import choice_to_position_index
-        target_index = choice_to_position_index(correct_answer_str, len(parts))
+        target_index = choice_to_position_index(correct_answer_str, len(parts), self.mark_format)
         if target_index is None:
             return pil_img
 
@@ -305,6 +336,23 @@ class MarkCheckerGUI:
 
     def on_close(self):
         """ウィンドウが閉じられるときの処理"""
+        # 「xlsxに反映」していない訂正が残っている場合は確認する
+        # (訂正はCSVに保存されるため失われないが、反映せずにStep2採点を
+        #  実行すると訂正前のデータで採点されてしまうため)
+        try:
+            pending = self._count_pending_corrections()
+            if pending > 0:
+                if not messagebox.askyesno(
+                    "確認",
+                    f"「xlsxに反映」していない訂正が {pending}件 あります。\n\n"
+                    "反映せずに閉じると、採点(Step2)には訂正が反映されません。\n"
+                    "（訂正内容は保存されており、次回チェッカーを開くと復元されます）\n\n"
+                    "このまま閉じますか？",
+                    parent=self.window,
+                ):
+                    return
+        except Exception:
+            pass
         self._cancel_grid_render()
         if self._grid_resize_after is not None:
             try:
@@ -1671,6 +1719,17 @@ class MarkCheckerGUI:
             self._all_entries_df['after'] = self._all_entries_df['after'].astype(object)
             if correction == '-1':
                 self._all_entries_df.at[self.current_index, 'after'] = '-1'
+            elif self.mark_format == MARK_FORMAT_MULTI_DIGIT:
+                # 複数桁モード: 紙面記号1文字(-, 0〜9, a〜d)を受理(大文字は小文字化)
+                from constants import MULTI_DIGIT_VALID_SYMBOLS
+                symbol = correction.lower()
+                if symbol in MULTI_DIGIT_VALID_SYMBOLS:
+                    self._all_entries_df.at[self.current_index, 'after'] = symbol
+                else:
+                    messagebox.showwarning("入力エラー",
+                                            "マーク記号1文字（- 0〜9 a〜d）または -1 を入力してください",
+                                            parent=self.window)
+                    return False
             elif re.match(r'^-?\d+$', correction):
                 self._all_entries_df.at[self.current_index, 'after'] = correction
             else:
@@ -1688,6 +1747,18 @@ class MarkCheckerGUI:
         if self._unsaved_count >= self._save_interval:
             self._flush_csv()
         return True
+
+    def _count_pending_corrections(self):
+        """「xlsxに反映」していない訂正の件数を返す。
+
+        反映(apply_to_xlsx)後は refresh_data で after 列がクリアされるため、
+        現在 after に値が残っている行 = 未反映の訂正。'skip'は意図的な保留なので除く。
+        """
+        if self._all_entries_df is None or 'after' not in self._all_entries_df.columns:
+            return 0
+        col = self._all_entries_df['after']
+        mask = col.notna() & (~col.astype(str).isin(['', 'skip']))
+        return int(mask.sum())
 
     def _flush_csv(self):
         """修正のあるエントリだけをCSVに書き出す"""
@@ -3246,17 +3317,19 @@ class _PositionPreviewWindow:
 class StartupModeDialog:
     """アプリ起動時のモード選択ダイアログ
 
-    3つのモードボタン＋採点再開ボタンを表示し、
+    5つのモードボタン（標準3種＋数学マーク2種）＋採点再開ボタンを表示し、
     ユーザーが選択したモードを返す。
 
     使い方:
         dialog = StartupModeDialog(root)
-        mode = dialog.result  # MODE_MARK_ONLY etc. or None (閉じた場合)
+        mode = dialog.result           # MODE_MARK_ONLY etc. or None (閉じた場合)
+        mark_format = dialog.mark_format  # MARK_FORMAT_STANDARD / MARK_FORMAT_MULTI_DIGIT
     """
 
     def __init__(self, root):
         self.root = root
         self.result = None
+        self.mark_format = MARK_FORMAT_STANDARD
         self._session_path = None
 
         self._build_dialog()
@@ -3318,6 +3391,22 @@ class StartupModeDialog:
             "#B39DDB", MODE_DESCRIPTIVE_ONLY, BTN_W, BTN_H, BTN_FONT, DESC_FONT, BG,
         )
 
+        # 数学マーク（複数桁）のみ
+        self._make_mode_button(
+            btn_area, "🔢  数学マーク採点のみ",
+            "共通テスト数学式。複数のマーク行で1つの値(-24等)を完答採点します",
+            "#FFCC80", MODE_MARK_ONLY, BTN_W, BTN_H, BTN_FONT, DESC_FONT, BG,
+            mark_format=MARK_FORMAT_MULTI_DIGIT,
+        )
+
+        # 数学マーク＋記述
+        self._make_mode_button(
+            btn_area, "🔢✏  数学マーク採点 ＋ 記述採点",
+            "数学マーク採点に加えて、記述式問題の採点も行います",
+            "#FFAB91", MODE_MARK_AND_DESCRIPTIVE, BTN_W, BTN_H, BTN_FONT, DESC_FONT, BG,
+            mark_format=MARK_FORMAT_MULTI_DIGIT,
+        )
+
         # セパレータ
         tk.Frame(self.dialog, bg="#CFD8DC", height=1).pack(fill=tk.X, padx=40, pady=(15, 10))
 
@@ -3342,12 +3431,13 @@ class StartupModeDialog:
         y = (sh - h) // 2
         self.dialog.geometry(f"+{x}+{y}")
 
-    def _make_mode_button(self, parent, text, desc, color, mode, w, h, font, desc_font, bg):
+    def _make_mode_button(self, parent, text, desc, color, mode, w, h, font, desc_font, bg,
+                          mark_format=MARK_FORMAT_STANDARD):
         """モードボタン＋説明テキストを作成"""
         frame = tk.Frame(parent, bg=bg)
         frame.pack(fill=tk.X, pady=4)
         tk.Button(
-            frame, text=text, command=lambda: self._select(mode),
+            frame, text=text, command=lambda: self._select(mode, mark_format),
             font=font, bg=color, relief=tk.FLAT, cursor="hand2",
             height=h, width=w, activebackground=color,
         ).pack(fill=tk.X)
@@ -3355,9 +3445,10 @@ class StartupModeDialog:
             frame, text=desc, font=desc_font, fg="#78909C", bg=bg,
         ).pack(anchor=tk.W, padx=5)
 
-    def _select(self, mode):
+    def _select(self, mode, mark_format=MARK_FORMAT_STANDARD):
         """モードを選択してダイアログを閉じる"""
         self.result = mode
+        self.mark_format = mark_format
         self.dialog.grab_release()
         self.dialog.destroy()
 
@@ -3394,6 +3485,11 @@ class StartupModeDialog:
             self.result = MODE_MARK_AND_DESCRIPTIVE
         else:
             self.result = MODE_MARK_ONLY
+
+        # マーク形式（複数桁モード）を復元。旧セッションはキーなし=標準
+        saved_format = data.get("mark_format", MARK_FORMAT_STANDARD)
+        self.mark_format = (saved_format if saved_format in (MARK_FORMAT_STANDARD, MARK_FORMAT_MULTI_DIGIT)
+                            else MARK_FORMAT_STANDARD)
 
         self._session_path = selected
         self.dialog.grab_release()

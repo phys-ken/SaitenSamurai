@@ -43,6 +43,7 @@ from constants import (
     get_rendering_settings, DEFAULT_RENDERING_SETTINGS,
     resource_path,
     MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY,
+    MARK_FORMAT_STANDARD, MARK_FORMAT_MULTI_DIGIT,
     OMR_MODE_THRESHOLD, OMR_MODE_KMEANS,
     atomic_json_save, load_json_safe,
 )
@@ -148,9 +149,12 @@ class _ToolTip:
 
 class SaitenSamuraiGUI:
     """採点侍 統合GUIクラス"""
-    def __init__(self, root, mode=MODE_MARK_AND_DESCRIPTIVE, restore_session_path=None):
+    def __init__(self, root, mode=MODE_MARK_AND_DESCRIPTIVE, restore_session_path=None,
+                 mark_format=MARK_FORMAT_STANDARD):
         self.root = root
         self.app_mode = mode  # v4.0: アプリケーション動作モード
+        # v4.7: マーク形式 (app_modeに直交するフラグ。multi_digit=複数桁設問モード)
+        self.mark_format = mark_format
         self._restore_session_path = restore_session_path  # 起動時復元用
 
         # モード別タイトル
@@ -160,6 +164,8 @@ class SaitenSamuraiGUI:
             MODE_DESCRIPTIVE_ONLY: "記述採点",
         }
         mode_label = mode_labels.get(mode, "")
+        if self.mark_format == MARK_FORMAT_MULTI_DIGIT:
+            mode_label = f"数学{mode_label}（複数桁）"
         self.root.title(f"採点侍 v{APP_VERSION} — {mode_label}")
         self.root.geometry("1100x600")
         
@@ -293,6 +299,11 @@ class SaitenSamuraiGUI:
             MODE_MARK_AND_DESCRIPTIVE: f"採点侍 v{APP_VERSION} — マーク＋記述採点",
             MODE_DESCRIPTIVE_ONLY: f"採点侍 v{APP_VERSION} — 記述採点",
         }
+        if self.mark_format == MARK_FORMAT_MULTI_DIGIT:
+            mode_titles = {
+                MODE_MARK_ONLY: f"採点侍 v{APP_VERSION} — 数学マーク採点（複数桁）",
+                MODE_MARK_AND_DESCRIPTIVE: f"採点侍 v{APP_VERSION} — 数学マーク＋記述採点（複数桁）",
+            }
         title_text = mode_titles.get(self.app_mode, f"採点侍 v{APP_VERSION}")
         tk.Label(title_row, text=title_text, font=FONT_TITLE, fg="#1976D2", bg=BG_COLOR).pack(side=tk.LEFT)
         tk.Button(
@@ -462,6 +473,13 @@ class SaitenSamuraiGUI:
         tk.Label(s_row1, text="正答データ", width=10, anchor=tk.W, font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
         tk.Entry(s_row1, textvariable=self.template_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Button(s_row1, text="ファイル選択", command=self.select_template, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=("Yu Gothic UI", 8)).pack(side=tk.LEFT)
+        _btn_key_check = tk.Button(
+            s_row1, text="📋", command=self.run_answer_key_check_gui,
+            width=3, bg=BTN_GRAY, relief=tk.FLAT, font=("Yu Gothic UI", 8), cursor="hand2")
+        _btn_key_check.pack(side=tk.LEFT, padx=(3, 0))
+        _ToolTip(_btn_key_check,
+                 "正答チェック — 登録内容を検証し、チェック報告と模範解答の\n"
+                 "Markdownを正答データと同じフォルダに書き出します")
 
         # OMR結果（記述のみモードでは非表示）
         s_row2 = tk.Frame(step1, bg=SECTION_BG)
@@ -903,6 +921,63 @@ class SaitenSamuraiGUI:
         if file:
             self.template_path.set(file)
             self.log_message(f"✓ 正答データを選択: {file}")
+            self.run_answer_key_check_gui(auto=True)
+
+    def run_answer_key_check_gui(self, auto=False):
+        """正答チェックを実行し、要約をログに・詳細をMarkdownに書き出す。
+
+        answer_keyと同じフォルダに <ファイル名>_check.md（検証結果・行割当・集計）を
+        常に書き出し、エラーがなければ <ファイル名>_模範解答.md も書き出す。
+
+        Args:
+            auto: 正答データの選択/自動検出時の自動実行ならTrue
+                  （未選択・正答未入力を騒がず要点だけログに出す）
+        """
+        template = self.template_path.get().strip()
+        if not template:
+            if not auto:
+                messagebox.showerror("エラー", "正答データ（Answer Key）を選択してください")
+            return
+        try:
+            from answer_key_checker import run_answer_key_check
+            coord = self.coord_excel_path.get().strip() or None
+            try:
+                skip = int(self.skip_questions.get())
+            except (ValueError, tk.TclError):
+                skip = 0
+            res, check_md, model_md = run_answer_key_check(
+                template, mark_format=getattr(self, 'mark_format', MARK_FORMAT_STANDARD),
+                coord_excel_path=coord, skip_questions=skip)
+        except Exception as e:
+            self.log_message(f"⚠ 正答チェックでエラー: {e}")
+            return
+
+        if res['ok']:
+            stats = res['stats']
+            self.log_message(
+                f"📋 正答チェック: ✅ エラーなし（{stats['問題数']}問 / 満点{stats['満点']}点 / "
+                f"最終使用行 解答番号{stats['最終使用行']}）")
+        else:
+            # 自動実行時、生成直後の空answer_key（正答未入力）は騒がない
+            only_empty = (len(res['errors']) == 1 and '1問もありません' in res['errors'][0])
+            if auto and only_empty:
+                self.log_message("📋 正答チェック: 正答が未入力です（入力後に 📋 ボタンで確認できます）")
+                return
+            self.log_message(f"📋 正答チェック: ❌ エラー {len(res['errors'])}件")
+            for err in res['errors'][:5]:
+                self.log_message(f"   ❌ {err}")
+            if len(res['errors']) > 5:
+                self.log_message(f"   … 他{len(res['errors']) - 5}件はチェック報告を参照")
+        for w in res['warnings']:
+            self.log_message(f"   ⚠ {w}")
+        self.log_message(f"   📄 チェック報告: {Path(check_md).name}")
+        if model_md:
+            self.log_message(f"   📄 模範解答: {Path(model_md).name}")
+        if not auto and not res['ok']:
+            messagebox.showwarning(
+                "正答チェック",
+                f"エラーが{len(res['errors'])}件あります。\n"
+                "詳細はログとチェック報告（Markdown）を確認してください。")
     
     def select_mark2_result(self):
         """OMR読取結果ファイルを選択"""
@@ -924,6 +999,7 @@ class SaitenSamuraiGUI:
         if template_path.exists():
             self.template_path.set(str(template_path))
             self.log_message(f"✓ 正答データを自動検出: {template_path.name}")
+            self.run_answer_key_check_gui(auto=True)
     
     def _auto_detect_omr_result(self, results_folder):
         """Step1完了後、最新のOMR読取結果を自動検出してStep1にセット"""
@@ -1598,6 +1674,7 @@ class SaitenSamuraiGUI:
         state = {
             "version": 1,
             "app_mode": self.app_mode,
+            "mark_format": getattr(self, 'mark_format', MARK_FORMAT_STANDARD),
             "image_folder": str(img_folder),
             "coord_excel": _to_rel(self.coord_excel_path.get()),
             "template": _to_rel(self.template_path.get()),
@@ -1765,6 +1842,20 @@ class SaitenSamuraiGUI:
             True: 復元成功, False: 復元キャンセル
         """
         base_folder = Path(state.get("image_folder", ""))
+
+        # マーク形式の不一致ガード: 標準セッションを数学モードで復元（またはその逆）
+        # すると採点ルールが食い違い誤採点になるため、復元を中止する
+        saved_format = state.get("mark_format", MARK_FORMAT_STANDARD)
+        current_format = getattr(self, 'mark_format', MARK_FORMAT_STANDARD)
+        if saved_format != current_format:
+            fmt_names = {MARK_FORMAT_STANDARD: "標準マーク", MARK_FORMAT_MULTI_DIGIT: "数学マーク（複数桁）"}
+            messagebox.showerror(
+                "復元エラー",
+                f"セッションのマーク形式（{fmt_names.get(saved_format, saved_format)}）が"
+                f"現在のモード（{fmt_names.get(current_format, current_format)}）と一致しません。\n\n"
+                "アプリを終了し、起動画面で対応するモードを選択してから復元してください。"
+            )
+            return False
 
         # 画像フォルダ自体の確認（PDF展開後のフォルダも含む）
         if not base_folder.exists():
@@ -2023,7 +2114,7 @@ class SaitenSamuraiGUI:
 
         # AnswerKeyから満点ベースのプレビューテキストを生成
         try:
-            template_dict = load_template(template_path)
+            template_dict = load_template(template_path, mark_format=self.mark_format)
             aspect_max = {}
             for q_no, q_info in template_dict.items():
                 asp = q_info.get('観点', 1)
@@ -2381,6 +2472,7 @@ class SaitenSamuraiGUI:
                 skip_questions=params['skip_questions'],
                 output_folder=str(output_folder),
                 log_callback=self.log_message,
+                mark_format=self.mark_format,
             )
 
             if result:
@@ -2502,11 +2594,54 @@ class SaitenSamuraiGUI:
         self._btn_cancel.config(state=tk.DISABLED)
         self.log_message("⏹ 中断を要求しました。現在の処理が完了次第停止します...")
 
+    def _confirm_mark_format_coord_match(self, coord_path, skip_q):
+        """モード(mark_format)と座標ファイルの選択肢数の整合を確認する。
+
+        数学マーク（複数桁）モードは15マーク紙面（-, 0〜9, a〜d）を想定するため、
+        10択の標準座標ファイルとの組合せ（およびその逆）は誤採点につながる。
+        不一致が疑われる場合は警告し、ユーザーが続行を選んだ場合のみTrueを返す。
+        判定不能（パース失敗等）の場合は黙ってTrue（既存のエラー処理に委ねる）。
+        """
+        try:
+            from collections import Counter
+            from omr_engine import parse_excel_coordinates
+            coords, _ = parse_excel_coordinates(coord_path)
+            per_q = {}
+            for c in coords:
+                per_q[c['question_no']] = per_q.get(c['question_no'], 0) + 1
+            answer_counts = [n for q, n in per_q.items()
+                             if isinstance(q, (int, float)) and q > skip_q]
+            if not answer_counts:
+                return True
+            typical = Counter(answer_counts).most_common(1)[0][0]
+            is_md = getattr(self, 'mark_format', MARK_FORMAT_STANDARD) == MARK_FORMAT_MULTI_DIGIT
+            if is_md and typical <= 10:
+                msg = (
+                    f"数学マーク採点（複数桁）モードですが、選択した座標ファイルの設問は"
+                    f"{typical}択（標準テンプレート相当）です。\n\n"
+                    "複数桁モードは15マーク（-, 0〜9, a〜d）の紙面を想定しています。\n"
+                    "座標ファイルまたは起動モードが違っていませんか？\n\n"
+                    "このまま続行しますか？")
+            elif (not is_md) and typical >= 11:
+                msg = (
+                    f"標準マーク採点モードですが、選択した座標ファイルの設問は"
+                    f"{typical}マーク（複数桁テンプレート相当）です。\n\n"
+                    "数学マーク採点（複数桁）モードで起動し直す必要はありませんか？\n\n"
+                    "このまま続行しますか？")
+            else:
+                return True
+            return messagebox.askyesno("モードと座標ファイルの確認", msg)
+        except Exception:
+            return True
+
     def run_box_drawer(self):
         """枠描画処理を実行"""
         if self._processing:
             return
         if not self.validate_inputs():
+            return
+        if not self._confirm_mark_format_coord_match(
+                self.coord_excel_path.get(), int(self.skip_questions.get())):
             return
         
         self.log_text.config(state=tk.NORMAL)
@@ -2526,6 +2661,7 @@ class SaitenSamuraiGUI:
             'color_threshold': self.color_threshold.get(),
             'area_threshold': self.area_threshold.get(),
             'omr_mode': self.omr_mode.get(),
+            'mark_format': self.mark_format,
         }
         thread = threading.Thread(target=self._run_box_drawer_thread, args=(params,), daemon=True)
         thread.start()
@@ -2545,8 +2681,9 @@ class SaitenSamuraiGUI:
                 progress_callback=self._update_progress,
                 cancel_event=self._cancel_event,
                 omr_mode=params['omr_mode'],
+                mark_format=params['mark_format'],
             )
-            
+
             # 中断された場合
             if self._cancel_event.is_set():
                 self.log_message("")
@@ -2796,6 +2933,10 @@ class SaitenSamuraiGUI:
             messagebox.showerror("エラー", "OMR結果ファイルが存在しません")
             return
 
+        if not self._confirm_mark_format_coord_match(
+                self.coord_excel_path.get(), int(self.skip_questions.get())):
+            return
+
         # ----- 記述モード時の事前チェック -----
         # 記述採点が有効な場合、以下の 3 段階でデータの存在と完了状態を確認する。
         # (1) descriptive_config.json が存在するか？
@@ -2842,13 +2983,17 @@ class SaitenSamuraiGUI:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state=tk.DISABLED)
-        
+
         self.log_message("=" * 60)
         if use_descriptive:
             self.log_message("採点処理を開始します（マーク＋記述統合モード）...")
         else:
             self.log_message("採点処理を開始します...")
         self.log_message("=" * 60)
+
+        # answer_key編集後の採点実行に合わせて、チェック報告・模範解答mdを再生成する
+        # (古い模範解答を配布する事故の防止。エラーがあればこの後の採点でも失敗する)
+        self.run_answer_key_check_gui(auto=True)
         
         self._set_processing_state(True)
         # メインスレッドでStringVar値をキャプチャ（スレッドセーフ）
@@ -2947,6 +3092,7 @@ class SaitenSamuraiGUI:
                     rendering_settings=r_settings,
                     progress_callback=self._update_progress,
                     cancel_event=self._cancel_event,
+                    mark_format=self.mark_format,
                 )
             else:
                 # --- マーク採点のみ ---
@@ -2961,6 +3107,7 @@ class SaitenSamuraiGUI:
                     rendering_settings=r_settings,
                     progress_callback=self._update_progress,
                     cancel_event=self._cancel_event,
+                    mark_format=self.mark_format,
                 )
             
             # 中断された場合
@@ -3091,12 +3238,13 @@ class SaitenSamuraiGUI:
             # チェッカー起動
             template_path = self.template_path.get() if self.template_path.get() else None
             checker = MarkCheckerGUI(
-                self.root, 
-                self.image_folder_path.get(), 
-                csv_path, 
+                self.root,
+                self.image_folder_path.get(),
+                csv_path,
                 xlsx_path,
                 int(self.skip_questions.get()),
-                template_path=template_path
+                template_path=template_path,
+                mark_format=self.mark_format
             )
             # MarkCheckerGUIにstdout復帰用の参照を渡す
             checker._original_stdout_ref = original_stdout
@@ -3152,7 +3300,10 @@ class SaitenSamuraiGUI:
             "結果フォルダに出力されます。"
         ):
             return
-        
+
+        # answer_key編集後の再集計に合わせて、チェック報告・模範解答mdを再生成する
+        self.run_answer_key_check_gui(auto=True)
+
         # --- 氏名欄トリミング（チェックボックスで制御） ---
         name_images = None
         self._name_trimmer = None
@@ -3468,6 +3619,7 @@ class SaitenSamuraiGUI:
                     ),
                     progress_callback=self._update_progress,
                     cancel_event=self._cancel_event,
+                    mark_format=self.mark_format,
                 )
             finally:
                 self._detach_gui_log_handler(gui_handler, suppressed)

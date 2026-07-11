@@ -67,7 +67,12 @@ try:
 except ImportError:
     HAS_REPORTLAB = False
 
-from constants import safe_print, escape_excel_formula
+from constants import (
+    safe_print,
+    escape_excel_formula,
+    MARK_FORMAT_STANDARD,
+    MARK_FORMAT_MULTI_DIGIT,
+)
 from scoring_engine import (
     number_to_circled,
     normalize_value,
@@ -81,7 +86,8 @@ from scoring_engine import (
 
 def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0,
                               descriptive_config=None, descriptive_scores=None,
-                              template_dict=None, mark2_results=None):
+                              template_dict=None, mark2_results=None,
+                              mark_format=MARK_FORMAT_STANDARD):
     """
     Mark2のデータをCTT分析用のDataFrameに変換する。
     
@@ -107,28 +113,41 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
         descriptive_scores: {ファイル名: {問題ID: 得点}} の辞書（オプション）
         template_dict: 事前読込済みテンプレート（省略時は内部でExcelパース）
         mark2_results: 事前読込済みOMR結果（省略時は内部でExcelパース）
-    
+        mark_format: MARK_FORMAT_MULTI_DIGIT なら複数桁グループ=1項目として変換する。
+            QuestionID は範囲表記ラベル("1-3")、Key は正答文字列そのまま
+            (0⇔10正規化なし)、解答はグループ行の連結（無マーク・ダブルマークを
+            含むグループは「無効回答」に集約）。key_df に ExactMatch=True を立てる。
+
     Returns:
         tuple: (ans_df, key_df)
             ans_df: DataFrame (行=学生, 列=設問ID文字列, 値=選択肢文字列)
-            key_df: DataFrame (QuestionID, Key)
+            key_df: DataFrame (QuestionID, Key, Summary, AllCorrect, ExactMatch)
     """
     # --- 記述のみモード: マーク問題なし ---
     has_mark = (template_path is not None or template_dict is not None)
-    
+    multi_digit = (mark_format == MARK_FORMAT_MULTI_DIGIT)
+
     if has_mark:
         if template_dict is None:
-            template_dict = load_template(template_path)
+            template_dict = load_template(template_path, mark_format=mark_format)
         if mark2_results is None:
             mark2_results = load_mark2_results(mark2_result_path, skip_questions)
-        
+
         question_numbers = sorted(template_dict.keys())
-        questions = [str(q) for q in question_numbers]
-        
-        # 正答キーの正規化: "10" → "0" (マークシートの10番目の位置 = 選択肢"0")
+        if multi_digit:
+            # 複数桁グループ: QuestionID は範囲表記ラベル("1-3")
+            questions = [str(template_dict[q].get('group_label', q)) for q in question_numbers]
+        else:
+            questions = [str(q) for q in question_numbers]
+
         keys = []
         for q in question_numbers:
             raw_key = normalize_value(template_dict[q]['正答'])
+            if multi_digit:
+                # 複数桁モード: 正答文字列("-24"等)をそのまま使用(0⇔10正規化なし)
+                keys.append(raw_key)
+                continue
+            # 正答キーの正規化: "10" → "0" (マークシートの10番目の位置 = 選択肢"0")
             if ';' in raw_key or '|' in raw_key:
                 # 複数正答の各要素を正規化(表示順は元の記載順を維持)
                 parts = raw_key.replace('|', ';').split(';')
@@ -136,30 +155,44 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
             else:
                 raw_key = normalize_zero_ten(raw_key)
             keys.append(raw_key)
-        
+
         # key_df: 設問IDと正答のペア(+任意の問題概要・特例フラグ)
         summaries = [str(template_dict[q].get('問題概要', '') or '') for q in question_numbers]
         # 特例(全員正解): score_answers と同様に全員正答として扱う。
         # 正誤マトリクス上は分散ゼロの列になるため、項目分析統計からは除外される
         all_correct = [template_dict[q].get('特例', '') == '全員正解' for q in question_numbers]
+        # ExactMatch: 複数桁グループは正答文字列との完全一致で0/1化する
+        # (0⇔10等価・複数正答の集合判定を適用しない)
+        exact_match = [multi_digit] * len(question_numbers)
         key_df = pd.DataFrame({'QuestionID': questions, 'Key': keys, 'Summary': summaries,
-                               'AllCorrect': all_correct})
-        
+                               'AllCorrect': all_correct, 'ExactMatch': exact_match})
+
         # ans_df: 各学生の解答マトリクス
         rows = []
         for result_data in mark2_results:
             student_answers = result_data['answers']
             row = {}
             row['StudentID'] = result_data['image']  # ファイル名をIDに
-            for q_no in question_numbers:
-                ans = student_answers.get(q_no, '')
-                row[str(q_no)] = normalize_value(ans)
+            for q_no, q_id in zip(question_numbers, questions):
+                if multi_digit:
+                    # グループ各行を連結。無マーク(空)・ダブルマーク(;)を含む
+                    # グループは「無効回答」に集約(既存の無効回答カテゴリを流用)
+                    span = template_dict[q_no].get('span', 1)
+                    parts = [str(student_answers.get(q_no + i, '')).strip().lower()
+                             for i in range(span)]
+                    if any(p == '' or p == 'nan' or ';' in p for p in parts):
+                        row[q_id] = '無効回答'
+                    else:
+                        row[q_id] = ''.join(parts)
+                else:
+                    ans = student_answers.get(q_no, '')
+                    row[q_id] = normalize_value(ans)
             rows.append(row)
-        
+
         ans_df = pd.DataFrame(rows)
     else:
         # 記述のみモード: マーク解答なし、空の DataFrame から開始
-        key_df = pd.DataFrame(columns=['QuestionID', 'Key', 'Summary', 'AllCorrect'])
+        key_df = pd.DataFrame(columns=['QuestionID', 'Key', 'Summary', 'AllCorrect', 'ExactMatch'])
         if descriptive_scores:
             student_ids = sorted(descriptive_scores.keys())
             ans_df = pd.DataFrame({'StudentID': student_ids})
@@ -179,7 +212,7 @@ def convert_mark2_to_ctt_data(template_path, mark2_result_path, skip_questions=0
             # 記述問題が誤って項目分析から除外されてしまう
             desc_summary = str(dq.get('name', '') or '')
             new_key = pd.DataFrame({'QuestionID': [q_id], 'Key': ['1'], 'Summary': [desc_summary],
-                                    'AllCorrect': [False]})
+                                    'AllCorrect': [False], 'ExactMatch': [False]})
             key_df = pd.concat([key_df, new_key], ignore_index=True)
             
             # ans_df に記述問題のバイナリ解答を追加
@@ -245,6 +278,7 @@ def _sort_choices(choices):
     """
     regular = []     # 1,2,3,...,9 (1以上の数値)
     zero = []        # "0" (10番目のマーク位置)
+    others = []      # 非数値の解答文字列（複数桁グループの"-24"等）— 辞書順
     invalid = []     # "無効回答"
 
     for c in choices:
@@ -264,11 +298,13 @@ def _sort_choices(choices):
             else:
                 regular.append((v, cs))
         except (ValueError, TypeError):
-            # その他の非数値は無視
+            # 非数値(複数桁グループの解答文字列等)は辞書順で数値の後に置く
+            others.append(cs)
             continue
 
     regular.sort(key=lambda x: x[0])
-    return [s for _, s in regular] + zero + invalid
+    others.sort()
+    return [s for _, s in regular] + zero + others + invalid
 
 
 class CTTAnalyzer:
@@ -304,6 +340,15 @@ class CTTAnalyzer:
             }
         else:
             self.all_correct_flags = {}
+        # ExactMatch(任意列): 複数桁グループ項目は正答文字列との完全一致で0/1化する
+        # (0⇔10等価・複数正答の集合判定を適用しない)。NaNはFalse扱い
+        if 'ExactMatch' in key_df.columns:
+            self.exact_match_flags = {
+                str(q): (not pd.isna(f)) and bool(f)
+                for q, f in zip(key_df['QuestionID'], key_df['ExactMatch'])
+            }
+        else:
+            self.exact_match_flags = {}
         # 項目分析(P値/D値/I-T相関/α/選択肢分析)の対象設問(特例を除く)
         self.analysis_questions = [q for q in self.questions
                                    if not self.all_correct_flags.get(q, False)]
@@ -356,8 +401,11 @@ class CTTAnalyzer:
                 matrix[q] = 0
                 continue
             student_ans = self.ans_df[q].astype(str).str.strip()
-            
-            if ';' in correct_key or '|' in correct_key:
+
+            if self.exact_match_flags.get(q, False):
+                # 複数桁グループ: 正答文字列との完全一致(score_answersのmulti_digitと同一)
+                matrix[q] = student_ans.apply(lambda ans: 1 if ans == correct_key else 0)
+            elif ';' in correct_key or '|' in correct_key:
                 # 複数正答: 0⇔10正規化済みの集合比較 (score_answers と同一)
                 correct_set = normalize_answer_set(correct_key)
                 def check_multi(ans):
@@ -482,15 +530,34 @@ class CTTAnalyzer:
 
         # 特例(全員正解)の設問は選択肢分析の対象外(項目分析統計と同じ扱い)
         for q in self.analysis_questions:
-            # レガシー"10"表記の解答も選択肢"0"に集約してから集計する
-            # (キー側は正規化済みのため、正規化しないと該当生徒がどの
-            #  選択肢行にもカウントされず選択肢分析から消えてしまう)
-            col_norm = self.ans_df[q].astype(str).map(normalize_zero_ten)
+            if q not in self.ans_df.columns:
+                # 解答データに列がない(受験者0件等)場合はスキップ
+                # (_calculate_score_matrix と同じガード)
+                continue
+            exact = self.exact_match_flags.get(q, False)
+            if exact:
+                # 複数桁グループ: 値は変換時に無効分を「無効回答」へ集約済み。
+                # 0⇔10正規化は適用しない("10"は正規の2桁解答)。
+                # "-1"等の正規解答がレガシー無効値と誤判定されないよう、
+                # 無効判定はラベル一致・空値のみで行う
+                col_norm = self.ans_df[q].astype(str)
+                def _q_invalid(v):
+                    return v in ('', 'nan', '無効回答')
+            else:
+                # レガシー"10"表記の解答も選択肢"0"に集約してから集計する
+                # (キー側は正規化済みのため、正規化しないと該当生徒がどの
+                #  選択肢行にもカウントされず選択肢分析から消えてしまう)
+                col_norm = self.ans_df[q].astype(str).map(normalize_zero_ten)
+                _q_invalid = _is_invalid_response
             found_choices = col_norm.unique()
             raw_set = set(found_choices) | {str(keys_by_q.get(q, ''))}
             # 無効回答相当の値を除去（「無効回答」カテゴリに集約して集計）
-            raw_set = {v for v in raw_set if not _is_invalid_response(v)}
-            all_choices = _sort_choices(list(raw_set) + ["無効回答"])
+            raw_set = {v for v in raw_set if not _q_invalid(v)}
+            if exact:
+                # 解答文字列の辞書順 + 無効回答を末尾
+                all_choices = sorted(raw_set) + ["無効回答"]
+            else:
+                all_choices = _sort_choices(list(raw_set) + ["無効回答"])
 
             for choice in all_choices:
                 is_key = (str(choice) == str(keys_by_q.get(q, '')))
@@ -499,7 +566,7 @@ class CTTAnalyzer:
                 for grp_name, grp_idx in groups.items():
                     subset = col_norm.loc[grp_idx]
                     if choice == "無効回答":
-                        count = sum(1 for v in subset if _is_invalid_response(v))
+                        count = sum(1 for v in subset if _q_invalid(v))
                     else:
                         count = (subset == choice).sum()
                     ratio = count / len(subset) if len(subset) > 0 else 0
@@ -1900,7 +1967,8 @@ class CTTPDFReporter:
 def generate_ctt_analysis(template_path, mark2_result_path, excel_output_path,
                           pdf_output_path, skip_questions=0,
                           descriptive_config=None, descriptive_scores=None,
-                          template_dict=None, mark2_results=None):
+                          template_dict=None, mark2_results=None,
+                          mark_format=MARK_FORMAT_STANDARD):
     """
     古典テスト理論(CTT)分析のExcel+PDFレポートを生成する統括関数。
     
@@ -1931,6 +1999,7 @@ def generate_ctt_analysis(template_path, mark2_result_path, excel_output_path,
             descriptive_scores=descriptive_scores,
             template_dict=template_dict,
             mark2_results=mark2_results,
+            mark_format=mark_format,
         )
         logger.info("  ✓ 受験者数: %d, 設問数: %d", len(ans_df), len(key_df))
         

@@ -36,6 +36,7 @@ from constants import (
     CTT_ANALYSIS_PDF_FILE,
     SCORED_PDF_FILE,
     R_EXPORT_FOLDER,
+    MARK_FORMAT_STANDARD,
     escape_excel_formula,
 )
 
@@ -59,9 +60,10 @@ def _natural_sort_key(text: str):
 
 def generate_student_summary(template_path, mark2_result_path, output_path, skip_questions=0, name_images=None,
                              descriptive_config=None, descriptive_scores=None,
-                             template_dict=None, mark2_results=None):
+                             template_dict=None, mark2_results=None,
+                             mark_format=MARK_FORMAT_STANDARD):
     """学生別サマリーを生成
-    
+
     Args:
         template_path: 正答データExcelファイルのパス
         mark2_result_path: OMR読取結果Excelファイルのパス
@@ -72,13 +74,15 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
         descriptive_scores: {ファイル名: {問題ID: 得点}} の辞書（オプション）
         template_dict: 事前読込済みのテンプレートdict（Noneなら内部で読込）
         mark2_results: 事前読込済みのMark2結果list（Noneなら内部で読込）
+        mark_format: マーク形式（MARK_FORMAT_MULTI_DIGIT で複数桁グループ採点。
+            設問列は範囲表記ラベル「問1-3」で表示）
     """
     logger.info("=" * 60)
     logger.info("学生別サマリー生成")
     logger.info("=" * 60)
-    
+
     if template_dict is None:
-        template_dict = load_template(template_path)
+        template_dict = load_template(template_path, mark_format=mark_format)
     logger.info("✓ テンプレート読込: %d問", len(template_dict))
     
     if mark2_results is None:
@@ -135,15 +139,17 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
         logger.info("✓ 氏名欄画像: %d枚", len(name_images))
     
     question_numbers = sorted(template_dict.keys())
+    # 設問列の表示ラベル（複数桁グループは範囲表記「1-3」、標準はint問題番号のまま）
+    question_labels = {q: template_dict[q].get('group_label', q) for q in question_numbers}
     rows = []
 
     # 自然順ソート: page1, page2, ..., page10 の順になる (Windows Explorer互換)
     mark2_results = sorted(mark2_results, key=lambda r: _natural_sort_key(r['image']))
-    
+
     for idx, result_data in enumerate(mark2_results, 1):
         image_name = result_data['image']
         student_answers = result_data['answers']
-        scoring_result = score_answers(student_answers, template_dict)
+        scoring_result = score_answers(student_answers, template_dict, mark_format=mark_format)
         
         row = {'No': idx, 'File': image_name}
 
@@ -161,7 +167,7 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
         
         for q_no in question_numbers:
             result = scoring_result['results'].get(q_no, {})
-            row[f'問{q_no}'] = result.get('points', 0)
+            row[f'問{question_labels[q_no]}'] = result.get('points', 0)
         
         # 記述問題の得点を追加
         if has_descriptive:
@@ -189,7 +195,7 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
     # --- ヘッダー行1: 問題番号 ---
     # 氏名欄がある場合は1列追加
     name_col_extra = [''] if has_name_images else []
-    header_row1 = ['', ''] + name_col_extra + [''] * skip_questions + [''] + [''] * len(all_aspects) + list(question_numbers)
+    header_row1 = ['', ''] + name_col_extra + [''] * skip_questions + [''] + [''] * len(all_aspects) + [question_labels[q] for q in question_numbers]
     if has_descriptive:
         header_row1 += [q['name'] for q in descriptive_config['questions']]
     ws.append(header_row1)
@@ -199,7 +205,7 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
     for aspect in all_aspects:
         header_row2.append(f'観点{number_to_circled(aspect)}')
     for q_no in question_numbers:
-        header_row2.append(f'問{q_no}')
+        header_row2.append(f'問{question_labels[q_no]}')
     if has_descriptive:
         for q in descriptive_config['questions']:
             header_row2.append(q['id'])
@@ -217,7 +223,7 @@ def generate_student_summary(template_path, mark2_result_path, output_path, skip
             aspect_name = f'観点{number_to_circled(aspect)}'
             data_row.append(row[aspect_name])
         for q_no in question_numbers:
-            data_row.append(row[f'問{q_no}'])
+            data_row.append(row[f'問{question_labels[q_no]}'])
         if has_descriptive:
             for q in descriptive_config['questions']:
                 data_row.append(row.get(q['id'], 0))
@@ -441,7 +447,8 @@ def _create_scatter_matrix(all_aspects, aspect_scores_list, corr_matrix, aspect_
 
 def generate_exam_summary(template_path, mark2_result_path, output_path, skip_questions=0,
                           descriptive_config=None, descriptive_scores=None,
-                          template_dict=None, mark2_results=None):
+                          template_dict=None, mark2_results=None,
+                          mark_format=MARK_FORMAT_STANDARD):
     """試験サマリーを生成
 
     4シート構成の見やすい Excel レポートを出力する。
@@ -465,7 +472,7 @@ def generate_exam_summary(template_path, mark2_result_path, output_path, skip_qu
     _chart_temp_dir = get_app_temp_dir(str(Path(output_path).parent.parent.parent))
 
     if template_dict is None:
-        template_dict = load_template(template_path)
+        template_dict = load_template(template_path, mark_format=mark_format)
     logger.info("✓ テンプレート読込: %d問", len(template_dict))
 
     if mark2_results is None:
@@ -474,6 +481,8 @@ def generate_exam_summary(template_path, mark2_result_path, output_path, skip_qu
 
     aspects = sorted(set(data['観点'] for data in template_dict.values()))
     question_numbers = sorted(template_dict.keys())
+    # 設問の表示ラベル（複数桁グループは範囲表記「1-3」、標準はint問題番号のまま）
+    question_labels = {q: template_dict[q].get('group_label', q) for q in question_numbers}
 
     # 記述問題判定
     has_descriptive = descriptive_config and descriptive_config.get('questions') and descriptive_scores
@@ -495,7 +504,7 @@ def generate_exam_summary(template_path, mark2_result_path, output_path, skip_qu
 
     for result_data in mark2_results:
         student_answers = result_data['answers']
-        scoring_result = score_answers(student_answers, template_dict)
+        scoring_result = score_answers(student_answers, template_dict, mark_format=mark_format)
         student_total = scoring_result['total_score']
 
         # 観点別得点（マーク）
@@ -685,7 +694,7 @@ def generate_exam_summary(template_path, mark2_result_path, output_path, skip_qu
         tpl = template_dict[q_no]
         evaluation = _evaluate_correct_rate(correct_rate)
 
-        ws2.cell(row=q_row, column=1, value=q_no)
+        ws2.cell(row=q_row, column=1, value=question_labels[q_no])
         # 特例(全員正解)の設問は種別欄で明示する(正答率100%の理由が分かるように)
         q_type = 'マーク(全員正解)' if tpl.get('特例') else 'マーク'
         ws2.cell(row=q_row, column=2, value=q_type)
@@ -1253,13 +1262,13 @@ def process_descriptive_only_summary(
         return {"success": False, "error": str(e)}
 
 
-def process_summary_generation(image_folder, coord_excel_path, template_path, 
+def process_summary_generation(image_folder, coord_excel_path, template_path,
                                mark2_result_path, skip_questions=0, output_base_folder=None,
                                name_images=None, descriptive_config=None, descriptive_scores=None,
                                include_descriptive_in_analysis=False, progress_callback=None,
-                               cancel_event=None):
+                               cancel_event=None, mark_format=MARK_FORMAT_STANDARD):
     """サマリー生成処理を実行
-    
+
     Args:
         image_folder: 画像フォルダのパス
         coord_excel_path: 座標ファイルのパス
@@ -1273,6 +1282,7 @@ def process_summary_generation(image_folder, coord_excel_path, template_path,
         include_descriptive_in_analysis: 記述採点結果をCTT/R分析に含めるか（デフォルトFalse）
         progress_callback: 進捗コールバック(current, total)（オプション、GUIプログレスバー用）
         cancel_event: threading.Event — set()されると処理を中断
+        mark_format: マーク形式（MARK_FORMAT_MULTI_DIGIT で複数桁グループ集計）
     """
     # 遅延インポート: ctt_analyzerとsummary_generatorの循環参照を避ける
     from ctt_analyzer import generate_ctt_analysis
@@ -1310,7 +1320,7 @@ def process_summary_generation(image_folder, coord_excel_path, template_path,
     
     try:
         # ★ Excel読込を1回だけ行い、全サブ関数に渡す（6→2回に削減）
-        template_dict = load_template(template_path)
+        template_dict = load_template(template_path, mark_format=mark_format)
         mark2_results = load_mark2_results(mark2_result_path, skip_questions)
 
         def _progress(step):
@@ -1336,7 +1346,8 @@ def process_summary_generation(image_folder, coord_excel_path, template_path,
             descriptive_config=descriptive_config,
             descriptive_scores=descriptive_scores,
             template_dict=template_dict,
-            mark2_results=mark2_results
+            mark2_results=mark2_results,
+            mark_format=mark_format
         )
         _progress(1)
 
@@ -1352,7 +1363,8 @@ def process_summary_generation(image_folder, coord_excel_path, template_path,
             descriptive_config=descriptive_config,
             descriptive_scores=descriptive_scores,
             template_dict=template_dict,
-            mark2_results=mark2_results
+            mark2_results=mark2_results,
+            mark_format=mark_format
         )
         _progress(2)
 
@@ -1396,6 +1408,7 @@ def process_summary_generation(image_folder, coord_excel_path, template_path,
                 descriptive_scores=_desc_scores_for_analysis,
                 template_dict=template_dict,
                 mark2_results=mark2_results,
+                mark_format=mark_format,
             )
         except Exception as ctt_e:
             logger.warning("CTT分析レポート生成エラー: %s", ctt_e, exc_info=True)
@@ -1413,6 +1426,7 @@ def process_summary_generation(image_folder, coord_excel_path, template_path,
                 skip_questions,
                 descriptive_config=_desc_config_for_analysis,
                 descriptive_scores=_desc_scores_for_analysis,
+                mark_format=mark_format,
             )
         except Exception as r_e:
             logger.warning("R連携エクスポートエラー: %s", r_e, exc_info=True)

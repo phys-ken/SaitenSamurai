@@ -52,6 +52,9 @@ from constants import (
     OMR_MODE_KMEANS,
     KMEANS_N_CLUSTERS,
     KMEANS_MIN_SAMPLES,
+    MARK_FORMAT_STANDARD,
+    MARK_FORMAT_MULTI_DIGIT,
+    MULTI_DIGIT_VALUE_TO_SYMBOL,
     escape_excel_formula,
 )
 
@@ -85,11 +88,29 @@ def parse_excel_coordinates(excel_path, skip_questions=0):
         question_groups: 設問ごとのグループ情報
     """
     df = pd.read_excel(excel_path, header=None)
-    
+
     coordinates = []
     question_groups = {}  # 設問番号 -> 選択肢群の範囲
     renumber_offset = 0  # 再採番用のオフセット
-    
+
+    # row0 の値ヘッダ(base_col=4,8,...に置かれた選択肢の値)を読み取る。
+    # raw_choice はこのヘッダ値であり、標準テンプレート(0〜9)ではヘッダ=列の
+    # 出現順と一致するが、複数桁モードのテンプレート(-1〜13)では一致しない。
+    # ヘッダが欠損・非数値の列は従来互換で出現順インデックスを使う。
+    header_row = df.iloc[0] if len(df) > 0 else None
+    header_values = {}
+    if header_row is not None:
+        for raw_choice_idx in range(20):
+            base_col = 4 + (raw_choice_idx * 4)
+            if base_col >= len(header_row):
+                break
+            hv = header_row[base_col]
+            if pd.notna(hv):
+                try:
+                    header_values[raw_choice_idx] = int(float(hv))
+                except (ValueError, TypeError):
+                    pass
+
     for row_idx in range(3, len(df)):
         row = df.iloc[row_idx]
         original_question_no = row[0]
@@ -122,8 +143,9 @@ def parse_excel_coordinates(excel_path, skip_questions=0):
                         coord = {
                             'question_no': question_no,
                             'question': question_name,
-                            # choiceは後でX座標順に割り振るため、ここでは仮の値
-                            'raw_choice': raw_choice_idx,
+                            # choiceは後でX座標順に割り振るため、ここでは仮の値。
+                            # raw_choiceは row0 の値ヘッダ(欠損時は出現順)
+                            'raw_choice': header_values.get(raw_choice_idx, raw_choice_idx),
                             'x': int(pos_x),
                             'y': int(pos_y),
                             'width': int(size_x),
@@ -842,17 +864,19 @@ def recognize_marks_kmeans(image, coordinates, n_clusters=KMEANS_N_CLUSTERS,
     return results, kmeans_info
 
 
-def save_recognition_results(output_path, recognition_results, all_questions, question_names=None, choice_counts=None, coordinates=None):
+def save_recognition_results(output_path, recognition_results, all_questions, question_names=None, choice_counts=None, coordinates=None, mark_format=MARK_FORMAT_STANDARD):
     """
     認識結果をExcelファイルに保存 (Mark2OSS Survey.cs準拠)
     スタイリング: ヘッダー装飾, 罫線, NoMark背景色(オレンジ), DoubleMark背景色(薄い赤), ウィンドウ枠固定
-    
+
     Args:
         output_path: 出力Excelファイルパス
         recognition_results: 認識結果リスト
         all_questions: 全設問番号リスト
         question_names: 設問名辞書 (optional)
         choice_counts: 設問番号 -> 選択肢数 の辞書 (optional, 未指定時は10)
+        mark_format: MARK_FORMAT_MULTI_DIGIT ならセル値を紙面記号
+                     (-1→「-」、10〜13→a〜d)に変換して出力する
     """
     wb = Workbook()
     ws = wb.active
@@ -925,6 +949,9 @@ def save_recognition_results(output_path, recognition_results, all_questions, qu
                     else:
                         # フォールバック（coordinates未指定時の後方互換）
                         val = (c + 1) % num_choices
+                    if mark_format == MARK_FORMAT_MULTI_DIGIT:
+                        # 複数桁モード: ヘッダ値を紙面記号(-, 0〜9, a〜d)へ変換
+                        val = MULTI_DIGIT_VALUE_TO_SYMBOL.get(val, str(val))
                     val_strs.append(str(val))
                 row_values.append(';'.join(val_strs))
             else:
@@ -1372,7 +1399,7 @@ const chart = new Chart(document.getElementById('pcaChart'), {{
         f.write(html)
 
 
-def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_base_folder=None, debug=False, color_threshold=0.1, area_threshold=0.4, progress_callback=None, cancel_event=None, omr_mode=OMR_MODE_THRESHOLD):
+def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_base_folder=None, debug=False, color_threshold=0.1, area_threshold=0.4, progress_callback=None, cancel_event=None, omr_mode=OMR_MODE_THRESHOLD, mark_format=MARK_FORMAT_STANDARD):
     """
     フォルダ内の画像を一括処理（枠描画 + OMR認識）
 
@@ -1380,6 +1407,8 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
         progress_callback: 進捗コールバック(current, total)（オプション、GUIプログレスバー用）
         cancel_event: threading.Event — set()されると処理を中断
         omr_mode: OMR認識モード ('threshold' or 'kmeans')
+        mark_format: マーク形式。MARK_FORMAT_MULTI_DIGIT なら読取結果Excelの
+                     セル値を紙面記号(-, 0〜9, a〜d)で出力する
     """
     start_time = time.time()
     
@@ -1547,7 +1576,7 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
         q_coords = [c for c in coordinates if c['question_no'] == q_no]
         choice_counts[q_no] = len(q_coords)
     
-    save_recognition_results(omr_result_path, recognition_results_list, all_questions, question_names, choice_counts, coordinates)
+    save_recognition_results(omr_result_path, recognition_results_list, all_questions, question_names, choice_counts, coordinates, mark_format=mark_format)
     logger.info("OMR認識結果保存: %s", omr_result_path.name)
 
     # K-means HTMLレポート生成

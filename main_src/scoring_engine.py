@@ -12,9 +12,19 @@ scoring_engine.py — 採点コアロジック
     - 記述式問題との統合採点
 """
 
+import datetime
 import logging
+import re
 
 import pandas as pd
+
+from constants import (
+    MARK_FORMAT_STANDARD,
+    MARK_FORMAT_MULTI_DIGIT,
+    MULTI_DIGIT_VALUE_TO_SYMBOL,
+    MULTI_DIGIT_SYMBOL_TO_VALUE,
+    MULTI_DIGIT_VALID_SYMBOLS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,26 +79,46 @@ def normalize_answer_set(answer_str):
     return {normalize_zero_ten(p) for p in str(answer_str).replace('|', ';').split(';')}
 
 
-def choice_to_position_index(choice, num_choices):
+def choice_to_position_index(choice, num_choices, mark_format=MARK_FORMAT_STANDARD):
     """選択肢の値をマーク位置のインデックス(0始まり)に変換する。
 
-    マークシートの並びは 1,2,...,9,0 で、選択肢"0"は10番目の位置
+    standard: マークシートの並びは 1,2,...,9,0 で、選択肢"0"は10番目の位置
     ("10"はレガシー表記で"0"と同義)。数値でない・位置が存在しない
     場合は None を返す。
+
+    multi_digit(複数桁設問モード): 並びは -,0,1,...,9,a,b,c,d で
+    位置 = ヘッダ値+1("-"のヘッダ値は-1)。記号('-','a'等)と
+    数値表記('-1','10'等)の両方を受理する。0⇔10の正規化は行わない。
 
     正答位置の赤字表示(image_renderer)・正答枠オーバーレイ(gui_components)
     など「選択肢の値→物理的なマーク位置」の解決は必ずこの関数を経由し、
     箇所ごとに変換ルールがズレないようにする。
-    将来の複数桁設問モード(1問=複数のマーク列で "-24" 等を表現)でも、
-    各列の値解決はこの関数を唯一の入口とする想定。
 
     Args:
-        choice: 選択肢の値(str/int。"3", "0", "10", 3.0 など)
+        choice: 選択肢の値(str/int。"3", "0", "10", 3.0、multi_digitでは"-","a"など)
         num_choices: その設問のマーク位置の数
+        mark_format: MARK_FORMAT_STANDARD / MARK_FORMAT_MULTI_DIGIT
 
     Returns:
         0始まりの位置インデックス、または None
     """
+    if mark_format == MARK_FORMAT_MULTI_DIGIT:
+        s = str(choice).strip().lower()
+        if s in MULTI_DIGIT_SYMBOL_TO_VALUE:
+            v = MULTI_DIGIT_SYMBOL_TO_VALUE[s]
+        else:
+            try:
+                f = float(s)
+            except (ValueError, TypeError):
+                return None
+            if not f.is_integer():
+                return None
+            v = int(f)
+            if v not in MULTI_DIGIT_VALUE_TO_SYMBOL:
+                return None
+        index = v + 1  # ヘッダ値-1("-")が位置0
+        return index if 0 <= index < num_choices else None
+
     try:
         f = float(normalize_zero_ten(choice))
     except (ValueError, TypeError):
@@ -109,8 +139,48 @@ SPECIAL_ALL_CORRECT = '全員正解'
 # 特例列に入力可能な値。これ以外の値は警告を出して通常採点にフォールバックする
 VALID_SPECIAL_VALUES = (SPECIAL_ALL_CORRECT,)
 
+# 複数桁モード: 問題番号セルの範囲表記 "1-3" (全角ハイフン類は事前に半角へ正規化)
+_RANGE_PATTERN = re.compile(r'^(\d+)\s*-\s*(\d+)$')
+_FULLWIDTH_HYPHENS = str.maketrans({'－': '-', 'ー': '-', '−': '-', '‐': '-', '～': '-', '〜': '-'})
 
-def load_template(template_path):
+
+def _check_excel_date_cell(q_no_raw):
+    """問題番号セルがExcelの日付自動変換に化けていないか検査する。
+
+    Excelは「1-3」のような入力を日付(1月3日)へ自動変換するため、
+    ユーザーは範囲表記を書いたつもりでもセルはdatetimeになっている。
+    日付型ならヒント付きのValueErrorを送出する。
+    """
+    if isinstance(q_no_raw, (datetime.datetime, datetime.date)):
+        raise ValueError(
+            f"問題番号セルが日付({q_no_raw})になっています。"
+            "Excelが「1-3」等の入力を日付に自動変換した可能性があります。"
+            "セルの書式を「文字列」にしてから入力し直してください")
+
+
+def _parse_question_range(q_no_raw):
+    """複数桁モードの問題番号セルを (先頭行番号, span, ラベル, 明示範囲か) に解析する。
+
+    "1-3" → (1, 3, "1-3", True) / "5" → (5, 1, "5", False)。解析不能なら ValueError。
+    明示範囲でない行は、正答の文字数から消費行数を自動割付できる
+    (load_template側で span を上書きする)。
+    """
+    _check_excel_date_cell(q_no_raw)
+    s = normalize_value(q_no_raw).translate(_FULLWIDTH_HYPHENS)
+    m = _RANGE_PATTERN.match(s)
+    if m:
+        start, end = int(m.group(1)), int(m.group(2))
+        if start >= end:
+            raise ValueError(f"問題番号『{s}』が不正です（範囲は 開始-終了 の昇順で記入してください）")
+        return start, end - start + 1, f"{start}-{end}", True
+    try:
+        q_no = int(float(s))
+    except (ValueError, TypeError):
+        raise ValueError(f"問題番号『{s}』を解釈できません（単独行は「5」、範囲は「1-3」の形式で記入してください）")
+    return q_no, 1, s, False
+
+
+def load_template(template_path, mark_format=MARK_FORMAT_STANDARD):
     """
     採点用テンプレートを読み込み
 
@@ -118,8 +188,18 @@ def load_template(template_path):
     ただし特例列が「全員正解」の問題は、正答が空欄でも採点対象に含める
     （不適切問題の救済措置。配点は必須のまま）。
 
+    複数桁モード(mark_format=MARK_FORMAT_MULTI_DIGIT)では問題番号列の
+    範囲表記「1-3」を受理し、先頭行番号をキーに 'span'(消費するマーク行数) と
+    'group_label'(表示用ラベル) を付与する。正答は記号列("-24"等)。
+    - 明示範囲「1-3」: 範囲長=正答文字数をバリデーションする
+    - 単独表記「1」+複数文字正答: 正答の文字数ぶん連続行を自動割付する
+      (例: 問題番号1に正答"-24" → 1〜3行を消費、group_label="1-3")
+    - 特例「全員正解」で正答空欄の複数行グループは範囲表記が必須
+      (単独表記では消費行数を推論できないため span=1 になる)
+
     Args:
         template_path: 正答データExcelファイルのパス
+        mark_format: MARK_FORMAT_STANDARD / MARK_FORMAT_MULTI_DIGIT
 
     Returns:
         問題番号をキーとした辞書（正答登録済みの問題のみ）
@@ -138,12 +218,37 @@ def load_template(template_path):
     # 辞書形式に変換（正答未登録の行はスキップ）
     template_dict = {}
     skipped_questions = []
+    multi_digit = (mark_format == MARK_FORMAT_MULTI_DIGIT)
+    errors = []          # multi_digit: バリデーションエラーを集約して一括報告
+    occupied_rows = {}   # multi_digit: マーク行番号 -> group_label（範囲重複の検出）
     for _, row in df.iterrows():
         # 問題番号が空欄・NaNの場合はスキップ（Excelの末尾空行対策）
         q_no_raw = row['問題番号']
         if pd.isna(q_no_raw) or str(q_no_raw).strip() == '':  # type: ignore[arg-type]
             continue
-        q_no = int(float(q_no_raw))
+        if multi_digit:
+            try:
+                q_no, span, group_label, is_explicit_range = _parse_question_range(q_no_raw)
+            except ValueError as e:
+                errors.append(str(e))
+                continue
+        else:
+            _check_excel_date_cell(q_no_raw)
+            try:
+                q_no = int(float(q_no_raw))
+            except (ValueError, TypeError):
+                s = normalize_value(q_no_raw).translate(_FULLWIDTH_HYPHENS)
+                if _RANGE_PATTERN.match(s):
+                    # 範囲表記は複数桁モード専用 — モード違いを案内する
+                    raise ValueError(
+                        f"問題番号『{s}』の範囲表記は数学マーク採点（複数桁）モード用です。"
+                        "起動画面で「数学マーク採点」を選んでから読み込んでください")
+                raise ValueError(
+                    f"問題番号『{s}』を数値として解釈できません。"
+                    "問題番号列には数値を入力してください")
+            span = 1
+            group_label = str(q_no)
+            is_explicit_range = False
         # 特例区分の読み取り（想定外の値は警告して通常扱い）
         special = ''
         if has_special_col:
@@ -152,8 +257,8 @@ def load_template(template_path):
                 if special_raw in VALID_SPECIAL_VALUES:
                     special = special_raw
                 else:
-                    logger.warning("問題%d: 特例列の値'%s'は未対応のため通常採点します（対応値: %s）",
-                                   q_no, special_raw, '/'.join(VALID_SPECIAL_VALUES))
+                    logger.warning("問題%s: 特例列の値'%s'は未対応のため通常採点します（対応値: %s）",
+                                   group_label, special_raw, '/'.join(VALID_SPECIAL_VALUES))
         # 正答が空欄・NaNの場合は採点対象外（全員正解の特例問題は正答空欄を許容）
         answer_val = row['正答']
         answer_empty = bool(pd.isna(answer_val)) or str(answer_val).strip() == ''  # type: ignore[arg-type]
@@ -165,15 +270,54 @@ def load_template(template_path):
         if pd.isna(points_val) or str(points_val).strip() == '':  # type: ignore[arg-type]
             skipped_questions.append(q_no)
             continue
+
+        if multi_digit:
+            # 正答は記号列("-24"等)。大文字A-Dは小文字に正規化
+            answer_str = '' if answer_empty else normalize_value(answer_val).lower()
+            if ';' in answer_str or '|' in answer_str:
+                errors.append(f"問題{group_label}: 複数正答（;区切り）は複数桁設問モードでは未対応です")
+                continue
+            bad_chars = sorted({ch for ch in answer_str if ch not in MULTI_DIGIT_VALID_SYMBOLS})
+            if bad_chars:
+                errors.append(f"問題{group_label}: 正答『{answer_str}』に使用できない文字『{''.join(bad_chars)}』があります"
+                              f"（使用可能: - 0〜9 a〜d）")
+                continue
+            if is_explicit_range:
+                # 明示範囲: 範囲長=正答文字数を検証(全員正解の正答空欄は除く)
+                if answer_str and len(answer_str) != span:
+                    errors.append(f"問題{group_label}: 範囲{span}行に対し正答『{answer_str}』が{len(answer_str)}文字です"
+                                  f"（先頭ゼロを含む正答はセルを文字列書式で入力してください）")
+                    continue
+            elif len(answer_str) > 1:
+                # 自動割付: 単独表記の行は正答の文字数ぶん連続行を消費する
+                # (行番号は各行に固定されているためズレは起きず、
+                #  消費先に別の登録があれば下の重複チェックで検出される)
+                span = len(answer_str)
+                group_label = f"{q_no}-{q_no + span - 1}"
+            conflict = next((r for r in range(q_no, q_no + span) if r in occupied_rows), None)
+            if conflict is not None:
+                errors.append(f"問題番号{group_label}と{occupied_rows[conflict]}が重複しています（マーク行{conflict}）")
+                continue
+            for r in range(q_no, q_no + span):
+                occupied_rows[r] = group_label
+        else:
+            answer_str = normalize_value(answer_val)
+
         template_dict[q_no] = {
-            '正答': normalize_value(answer_val),
+            '正答': answer_str,
             '配点': int(float(points_val)),
             '観点': int(float(row['観点'])) if not pd.isna(row['観点']) else 1,  # type: ignore[arg-type]
             # 問題概要は任意列(古いテンプレートには存在しない)
             '問題概要': normalize_value(row['問題概要']) if '問題概要' in df.columns else '',
             '特例': special
         }
-    
+        if multi_digit:
+            template_dict[q_no]['span'] = span
+            template_dict[q_no]['group_label'] = group_label
+
+    if errors:
+        raise ValueError("answer_keyの検証エラー:\n" + "\n".join(errors))
+
     if skipped_questions:
         total = len(df)
         registered = len(template_dict)
@@ -318,14 +462,21 @@ def load_mark2_results(mark2_result_path, skip_questions=0):
     return results
 
 
-def score_answers(student_answers, template_dict):
+def score_answers(student_answers, template_dict, mark_format=MARK_FORMAT_STANDARD):
     """
     学生の解答を採点
-    
+
+    複数桁モード(mark_format=MARK_FORMAT_MULTI_DIGIT)では、テンプレートの
+    'span' に従い q_no から連続する複数マーク行の解答を連結して正答文字列と
+    完全一致比較する（完答のみ得点）。グループ内に無マーク・ダブルマークが
+    1行でもあれば不正解。0⇔10の等価判定は行わない
+    （例: 2行グループの '1'+'0' → "10" が "0" に正規化される事故を防ぐ）。
+
     Args:
         student_answers: {問題番号: 解答} の辞書
         template_dict: テンプレート辞書
-    
+        mark_format: MARK_FORMAT_STANDARD / MARK_FORMAT_MULTI_DIGIT
+
     Returns:
         採点結果の辞書
     """
@@ -334,12 +485,14 @@ def score_answers(student_answers, template_dict):
     aspect_scores = {}
     aspect_max_scores = {}
     results = {}
-    
+    multi_digit = (mark_format == MARK_FORMAT_MULTI_DIGIT)
+
     for q_no, template_data in template_dict.items():
         correct_answer = template_data['正答']
         points = template_data['配点']
         aspect = template_data['観点']
         special = template_data.get('特例', '')
+        span = template_data.get('span', 1)
 
         max_score += points
 
@@ -350,26 +503,43 @@ def score_answers(student_answers, template_dict):
             aspect_scores[aspect] = 0
         aspect_max_scores[aspect] += points
 
-        # 学生の解答を取得
-        student_answer = student_answers.get(q_no, '')
-
         # 採点
         is_correct = False
         earned_points = 0
 
-        # 後方互換性: かつてload_mark2_resultsが0→10変換していた時代の
-        # 既存データとの互換のため、0⇔10の等価判定を維持する。
-        # 現在のパイプラインでは raw_choice ベースで出力しており、
-        # 10列テンプレートの最終列は raw_choice=0 として記録される。
-        if special == SPECIAL_ALL_CORRECT:
-            # 特例(全員正解): 無回答・誤答を問わず全員に満点を与える
-            is_correct = True
-        elif ';' in correct_answer or '|' in correct_answer:
-            # 複数正答: 0⇔10正規化済みの集合同士で比較
-            is_correct = normalize_answer_set(correct_answer) == normalize_answer_set(student_answer)
+        if multi_digit:
+            # グループ各行の解答を取得して連結
+            parts = [str(student_answers.get(q_no + i, '')).strip().lower() for i in range(span)]
+            # 無マーク(空)・ダブルマーク(;入り)が1行でもあればグループ全体を不正解とする
+            invalid = any(p == '' or ';' in p for p in parts)
+            if invalid:
+                # 無効時は行の生値をカンマ区切りで残す(集計・目視確認用)
+                student_answer = ','.join(parts)
+            else:
+                student_answer = ''.join(parts)
+            if special == SPECIAL_ALL_CORRECT:
+                # 特例(全員正解): グループ単位で満点を与える
+                is_correct = True
+            elif not invalid:
+                # 完答判定: 連結文字列の完全一致(0⇔10正規化は行わない)
+                is_correct = (student_answer == correct_answer)
         else:
-            # 単一正答: 両辺を0⇔10正規化して比較
-            is_correct = normalize_zero_ten(student_answer) == normalize_zero_ten(correct_answer)
+            # 学生の解答を取得
+            student_answer = student_answers.get(q_no, '')
+
+            # 後方互換性: かつてload_mark2_resultsが0→10変換していた時代の
+            # 既存データとの互換のため、0⇔10の等価判定を維持する。
+            # 現在のパイプラインでは raw_choice(座標Excelの値ヘッダ)ベースで
+            # 出力しており、10列テンプレートの最終列は raw_choice=0 として記録される。
+            if special == SPECIAL_ALL_CORRECT:
+                # 特例(全員正解): 無回答・誤答を問わず全員に満点を与える
+                is_correct = True
+            elif ';' in correct_answer or '|' in correct_answer:
+                # 複数正答: 0⇔10正規化済みの集合同士で比較
+                is_correct = normalize_answer_set(correct_answer) == normalize_answer_set(student_answer)
+            else:
+                # 単一正答: 両辺を0⇔10正規化して比較
+                is_correct = normalize_zero_ten(student_answer) == normalize_zero_ten(correct_answer)
 
         if is_correct:
             earned_points = points
@@ -389,7 +559,10 @@ def score_answers(student_answers, template_dict):
             'aspect': aspect,
             'special': special
         }
-    
+        if multi_digit:
+            results[q_no]['span'] = span
+            results[q_no]['group_label'] = template_data.get('group_label', str(q_no))
+
     return {
         'total_score': total_score,
         'max_score': max_score,

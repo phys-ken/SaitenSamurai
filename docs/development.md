@@ -186,7 +186,10 @@ mark_coords (ベース座標系: 595×842)
 
 ### OMR 値変換パイプライン
 
-座標 Excel の列ヘッダ値 (`raw_choice`) をそのまま表示値として使用します。
+座標 Excel の row0 の値ヘッダ (`raw_choice`) をそのまま表示値として使用します。
+`parse_excel_coordinates()` が row0 のヘッダセルを読み取って `raw_choice` に格納します
+（ヘッダ欠損時は出現順にフォールバック）。複数桁モード（ヘッダ -1〜13）では
+`save_recognition_results()` が記号（-1→「-」、10〜13→a〜d）へ変換して出力します。
 
 ```mermaid
 flowchart TD

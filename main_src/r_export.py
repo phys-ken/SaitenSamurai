@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from constants import escape_excel_formula
+from constants import escape_excel_formula, MARK_FORMAT_STANDARD
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ def export_r_analysis_kit(
     author="Mark2 Analysis System",
     descriptive_config=None,
     descriptive_scores=None,
+    mark_format=MARK_FORMAT_STANDARD,
 ):
     """
     R言語 exametrika 分析キットを出力する。
@@ -100,6 +101,7 @@ def export_r_analysis_kit(
             template_path, mark2_result_path, skip_questions,
             descriptive_config=descriptive_config,
             descriptive_scores=descriptive_scores,
+            mark_format=mark_format,
         )
         analyzer = CTTAnalyzer(ans_df, key_df)
         score_matrix = analyzer.score_matrix  # 0/1バイナリ DataFrame

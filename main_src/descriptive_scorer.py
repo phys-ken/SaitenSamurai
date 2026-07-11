@@ -24,6 +24,7 @@ from name_trimmer import select_region_on_image, get_image_files
 from constants import (
     get_app_temp_dir, atomic_json_save, load_json_safe,
     MARKER_X_FRAC_LEFT, MARKER_X_FRAC_RIGHT, MARKER_Y_FRAC_BOTTOM,
+    MARK_FORMAT_STANDARD,
 )
 from scoring_engine import number_to_circled
 
@@ -295,6 +296,7 @@ def generate_return_sheets(
     rendering_settings=None,
     progress_callback=None,
     cancel_event=None,
+    mark_format=MARK_FORMAT_STANDARD,
 ) -> dict:
     """
     マーク採点 + 記述採点を合成した返却用画像を生成する。
@@ -341,7 +343,7 @@ def generate_return_sheets(
     log("返却答案生成")
     log(f"{'='*60}")
 
-    template_dict = load_template(template_path)
+    template_dict = load_template(template_path, mark_format=mark_format)
     mark2_results = load_mark2_results(mark2_result_path, skip_questions)
     coordinates, _ = parse_excel_coordinates(coord_excel_path, skip_questions)
 
@@ -393,12 +395,13 @@ def generate_return_sheets(
             corrected, _ = apply_perspective_transform(image, markers, output_scale=output_scale)
 
             # マーク採点
-            scoring_result = score_answers(student_answers, template_dict)
+            scoring_result = score_answers(student_answers, template_dict, mark_format=mark_format)
 
             # マーク ○× 描画
             result_image = draw_scoring_results(
                 corrected, coordinates, scoring_result, skip_questions,
                 output_scale=output_scale, rendering_settings=rendering_settings,
+                mark_format=mark_format,
             )
 
             # 記述得点描画

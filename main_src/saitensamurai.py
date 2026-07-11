@@ -253,6 +253,7 @@ def main():
     # 起動モード選択ダイアログ
     dialog = StartupModeDialog(root)
     mode = dialog.result
+    mark_format = getattr(dialog, 'mark_format', None)
     session_path = getattr(dialog, '_session_path', None)
 
     if mode is None:
@@ -261,7 +262,11 @@ def main():
         return
 
     root.deiconify()  # メインウィンドウを表示
-    app = SaitenSamuraiGUI(root, mode=mode, restore_session_path=session_path)
+    if mark_format is None:
+        from constants import MARK_FORMAT_STANDARD
+        mark_format = MARK_FORMAT_STANDARD
+    app = SaitenSamuraiGUI(root, mode=mode, mark_format=mark_format,
+                           restore_session_path=session_path)
     root.mainloop()
 
 

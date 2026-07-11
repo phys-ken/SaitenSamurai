@@ -1,0 +1,2003 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="普通紙マークシート＆記述式採点を、これ1本で。Windows向けフリーソフト。">
+      
+      
+        <meta name="author" content="phys-ken">
+      
+      
+        <link rel="canonical" href="https://phys-ken.github.io/SaitenSamurai/usage/mark/">
+      
+      
+        <link rel="prev" href="../../features/">
+      
+      
+        <link rel="next" href="../descriptive/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../images/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>マーク採点 - 採点侍 — SaitenSamurai</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Noto+Sans+JP:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Noto Sans JP";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-LWBZHSGT4R"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-LWBZHSGT4R",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-LWBZHSGT4R",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="採点侍 — SaitenSamurai" class="md-header__button md-logo" aria-label="採点侍 — SaitenSamurai" data-md-component="logo">
+      
+  <img src="../../images/samurai.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            採点侍 — SaitenSamurai
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              マーク採点
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="ダークモードに切り替え"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードに切り替え" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="ライトモードに切り替え"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードに切り替え" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/phys-ken/SaitenSamurai" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    phys-ken/SaitenSamurai
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="タブ" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  ホーム
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../download/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ダウンロード
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+  はじめに
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  使い方
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+  サポート
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  開発者向け
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../research/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  研究レポート
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../disclaimer/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  免責事項
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../credits/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  クレジット
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="採点侍 — SaitenSamurai" class="md-nav__button md-logo" aria-label="採点侍 — SaitenSamurai" data-md-component="logo">
+      
+  <img src="../../images/samurai.png" alt="logo">
+
+    </a>
+    採点侍 — SaitenSamurai
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/phys-ken/SaitenSamurai" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    phys-ken/SaitenSamurai
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../download/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ダウンロード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめに
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    はじめに
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    クイックスタート
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../preparation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    解答用紙の準備
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    機能一覧
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使い方
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使い方
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    マーク採点
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    マーク採点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ワークフロー概要
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. ファイルの準備
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. メイン画面の操作
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. メイン画面の操作">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v45" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        認識方式の選択（v4.5 新機能）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. マーク読み取り精度の設定（しきい値モード時のみ）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. マークチェック
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. マークチェック">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面の見方
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修正の操作
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ナビゲーション
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        チェック結果の反映
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 描画設定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 描画設定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        表示項目
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        描画位置オフセット
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        その他のボタン
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 合計点の表示位置
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 結果の出力
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 生徒ビューア
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../descriptive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    記述式採点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../combined/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    マーク＋記述
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サポート
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    サポート
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    よくある質問
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新履歴
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    研究レポート
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    免責事項
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../credits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    クレジット
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ワークフロー概要
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. ファイルの準備
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. メイン画面の操作
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. メイン画面の操作">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v45" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        認識方式の選択（v4.5 新機能）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. マーク読み取り精度の設定（しきい値モード時のみ）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. マークチェック
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. マークチェック">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面の見方
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修正の操作
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ナビゲーション
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        チェック結果の反映
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 描画設定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 描画設定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        表示項目
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        描画位置オフセット
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        その他のボタン
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 合計点の表示位置
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 結果の出力
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 生徒ビューア
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">マーク採点の使い方<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>Mark2 形式のマークシートを自動で読み取り、採点するモードです。<br />
+このページでは、スキャン画像の読み込みから結果出力までの全手順を、初めて使う方にもわかるように説明します。</p>
+<hr />
+<h2 id="_2">ワークフロー概要<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>座標ファイル読込 → スキャン画像読込 → OMR認識 → 正答登録 → マークチェック → 採点 → 結果出力
+</code></pre></div>
+<hr />
+<h2 id="1">1. ファイルの準備<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<p>マーク採点で事前に用意するファイルは <strong>2 つ</strong> です。</p>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Mark2 座標ファイル</strong></td>
+<td><a href="https://mark2.sfc.keio.ac.jp/ja/templates">Mark2 テンプレートサイト</a> からダウンロードした座標 Excel（<code>.xlsx</code>）形式</td>
+</tr>
+<tr>
+<td><strong>スキャン画像</strong></td>
+<td>答案をスキャンした画像（JPEG / PNG / PDF 形式）。<strong>1 枚の画像 = 1 人分の答案</strong> です</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition question">
+<p class="admonition-title">マーク問題の答えや配点はどうやって登録するの？</p>
+<p>事前にファイルを準備する必要はありません。<br />
+OMR 読み取りを実行すると、スキャン画像フォルダの中に正答データファイル（<code>answer_key.xlsx</code>）が自動生成されます。<br />
+正確なパスは以下の通りです:</p>
+<div class="highlight"><pre><span></span><code>スキャン画像フォルダ/
+└── _saiten_grading_results/
+    └── 01_Results/
+        └── results_data/
+            └── answer_key.xlsx  ← ★ このファイルをExcelで開いて編集
+</code></pre></div>
+<p>このファイルを Excel で開いて、以下の 3 項目を記入してください。</p>
+<table>
+<thead>
+<tr>
+<th>列名</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>正答</strong></td>
+<td>正しい選択肢の番号</td>
+</tr>
+<tr>
+<td><strong>配点</strong></td>
+<td>その問題の配点</td>
+</tr>
+<tr>
+<td><strong>観点</strong></td>
+<td>観点別集計のためのグループ番号</td>
+</tr>
+</tbody>
+</table>
+<p>観点別の集計が不要であれば、<strong>観点はすべて <code>1</code></strong> で構いません。<br />
+記入が終わったら保存して、採点を実行してください。</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg></span> 実際の問題数よりマーク欄が多い場合は <a href="../../faq/#excess-mark-areas">こちらの FAQ</a> をご覧ください。</p>
+</div>
+<hr />
+<h2 id="2">2. メイン画面の操作<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<p>モード選択で <strong>「マーク採点」</strong> を選ぶと、マーク採点専用のメイン画面が開きます。<br />
+画面上のボタンを <strong>上から順に</strong> 操作してください。</p>
+<ol>
+<li><strong>「フォルダ選択」</strong> ボタンを押して、スキャン画像が保存されているフォルダを選択します<br />
+   （PDF ファイルを読み込む場合は <strong>「PDF 選択」</strong> ボタンを使ってください。採点侍が自動で画像に変換します）</li>
+<li><strong>「ファイル選択」</strong> ボタンを押して、Mark2 テンプレートの座標ファイル（Excel）を選択します</li>
+<li><strong>Skip 数</strong> を確認します。これは解答欄の前にある「学年」「クラス」「番号」「氏名」等の欄の数です。多くの Mark2 テンプレートでは <strong><code>4</code></strong> のままで OK です</li>
+<li><strong>「▶ 認識実行」</strong> ボタンを押すと、マーク読み取り（OMR）が開始されます</li>
+</ol>
+<p>認識が完了すると、スキャン画像フォルダの中に <code>_saiten_grading_results/</code> フォルダが自動生成され、<code>answer_key.xlsx</code> が作成されます。</p>
+<p>初回実行時は、処理完了と同時に正答入力の案内ダイアログが表示されます。「📂 フォルダを開いて編集する」を押すと、<code>answer_key.xlsx</code> のあるフォルダが開き、正答データのパスも自動設定されます。</p>
+<details class="info">
+<summary>ダイアログの詳細</summary>
+<ul>
+<li><strong>「📂 フォルダを開いて編集する」</strong>: フォルダを開き、正答データのパスを自動設定します</li>
+<li><strong>「後で入力する」</strong>: ダイアログを閉じます。正答データのパスは自動設定されません（手動で設定してください）</li>
+<li>正答が既に入力済みの場合（閾値変更後の再実行など）は、この案内ダイアログは表示されません</li>
+</ul>
+</details>
+<p>保存したら、メイン画面の「正答データ」の <strong>「ファイル選択」</strong> ボタンを押して <code>answer_key.xlsx</code> を選択してください。</p>
+<p><img alt="マーク採点メイン画面" class="screenshot" src="../../images/02a_main_mark_only.png" />
+<span class="caption">マーク採点モードのメイン画面</span></p>
+<div class="admonition tip">
+<p class="admonition-title">前回の作業が見つかると自動で提案されます</p>
+<p>以前に同じフォルダで作業していた場合、フォルダ選択時に <strong>「前回の設定を復元しますか？」</strong> というダイアログが自動表示されます。<br />
+「はい」を選ぶと、座標ファイル・正答データ・閾値設定などが前回の状態に復元されます。</p>
+</div>
+<h3 id="v45">認識方式の選択（v4.5 新機能）<a class="headerlink" href="#v45" title="Permanent link">&para;</a></h3>
+<p>メイン画面には <strong>「認識方式」</strong> コンボボックスが表示され、 マーク判定アルゴリズムを選択できます。</p>
+<table>
+<thead>
+<tr>
+<th>選択肢</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>（推奨）クラスタリング</strong></td>
+<td>K-means法による 7 次元特徴量で判定。溈しゴム跡にも強い。<strong>デフォルト設定。</strong></td>
+</tr>
+<tr>
+<td><strong>しきい値による識別（従来式）</strong></td>
+<td>v4.4 以前のコンパクトな指定間隔識別。 スライダーで手動調整が必要な場合に使用。</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">クラスタリング模ード選択時</p>
+<p><strong>クラスタリング</strong> を選ぶと、スライダー円の指定は不要となり画面から非表示になります。
+内部で K-means が自動的に分離境界を決定するため、手動調整は不要です。</p>
+<p><strong>しきい値</strong> を選ぶと、従来の「色の読取感度」「面積の読取感度」スライダーが表示され、すべてのマークに共通の固定境界値を手動で指定できます。</p>
+</div>
+<hr />
+<h2 id="3">3. マーク読み取り精度の設定（しきい値モード時のみ）<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<p>認識方式で <strong>しきい値による識別（従来式）</strong> を選んだ場合は、マーク認識の精度を調整する画面を利用できます。<br />
+「クラスタリング（推奨）」を選んでいる場合、この画面はスキップされます。<br />
+特にこだわりがなければ、<strong>「▶ 自動計算 実行」</strong> ボタンをクリックするだけで OK です。<br />
+自動計算の後、プレビュー画面でマークの認識がおおむね正しいことを確認してください。</p>
+<p>うまくいっていない箇所がある場合は、「色の読取感度」「面積の読取感度」のスライダーを手動で微調整し、「🔄 この閾値で再判定」で結果を確認します。</p>
+<p><img alt="マーク読み取り精度の設定" class="screenshot" src="../../images/17_threshold_calibrator.png" />
+<span class="caption">マーク読み取り精度の設定画面</span></p>
+<details class="abstract">
+<summary>マーク認識の仕組みについて詳しく知りたい方へ</summary>
+<div class="admonition info">
+<p class="admonition-title">2 つの感度スライダーの意味</p>
+<p>マーク認識は 2 段階で動作します。</p>
+<p><strong>① 色の読取感度</strong>（範囲: 0.03〜0.35）</p>
+<p>スキャン画像をグレースケールに変換し、どの明るさから「黒」と見なすかの境界を設定します。値が大きいほど、薄い鉛筆の跡もマークとして拾います。</p>
+<p><strong>② 面積の読取感度</strong>（範囲: 0.05〜0.80）</p>
+<p>マーク欄の中で「黒」と判定された画素が占める割合がこの値を超えたとき、「マークされている」と判定します。例えば 0.40 なら、マーク欄の 40% 以上が塗られていれば有効なマークとみなします。</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">自動計算のアルゴリズム — 大津の方法と K-means</p>
+<p>「▶ 自動計算 実行」を押すと、以下のアルゴリズムで最適な感度を推定します。</p>
+<p><strong>色の読取感度 → 大津の二値化法（Otsu's method）</strong></p>
+<p>読み込んだ全画像の全マーク領域から画素の明るさのヒストグラムを作成し、「塗られている画素」と「塗られていない画素」の 2 グループに分離します。両グループの分散が最大になる境界値を自動的に計算します。これはコンピュータビジョンの分野で広く使われている手法です。</p>
+<p><strong>面積の読取感度 → K-means 2 クラス分類</strong></p>
+<p>推定した色の閾値で全マーク領域の塗りつぶし率を計測し、K-means クラスタリングで「塗りつぶし率が高いグループ（マークあり）」と「低いグループ（マークなし）」の 2 つに分類します。その 2 グループの境界値を推奨の感度として算出します。</p>
+</div>
+</details>
+<hr />
+<h2 id="4">4. マークチェック<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<p>OMR の認識結果をもとに、以下のエラーを自動検出します。</p>
+<table>
+<thead>
+<tr>
+<th>エラー種別</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>未マーク</strong></td>
+<td>どの選択肢もマークされていない</td>
+</tr>
+<tr>
+<td><strong>複数マーク</strong></td>
+<td>複数の選択肢がマークされている</td>
+</tr>
+<tr>
+<td><strong>不正値</strong></td>
+<td>読み取り結果が有効な選択肢番号（1桁の数字）でない</td>
+</tr>
+</tbody>
+</table>
+<p>エラーがある場合は、マークチェック画面が開き、1 件ずつ確認しながら修正できます。</p>
+<h3 id="_3">画面の見方<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p>画面上部にはエラーの進捗（要チェック数・チェック済み数・進捗率）が表示されます。<br />
+中央にマークシート画像のエラー箇所が拡大表示され、下部に読み取り結果と修正用のコントロールが並びます。</p>
+<p>正答データ（<code>answer_key.xlsx</code>）が設定されている場合、正答の選択肢位置に <strong>赤色の点線枠</strong> が自動的に表示されます。<br />
+この枠は「どの選択肢が正しいか」を一目で確認でき、未マーク・ダブルマークの修正判断がスムーズになります。</p>
+<p><img alt="マークチェック画面" class="screenshot" src="../../images/18_mark_checker.png" />
+<span class="caption">マークチェック画面 — エラーの確認と修正（正答枠は赤い点線で表示）</span></p>
+<details class="tip">
+<summary>正答枠が表示されない場合</summary>
+<p>正答枠は <code>answer_key.xlsx</code> の「正答」列に値が入力されている問題でのみ表示されます。<br />
+正答枠が表示されない場合は、以下を確認してください：</p>
+<ul>
+<li>メイン画面で「正答データ」のファイルパスが設定されているか</li>
+<li><code>answer_key.xlsx</code> の「正答」列に正しい選択肢番号が入力されているか</li>
+</ul>
+</details>
+<h3 id="_4">修正の操作<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<p><strong>選択肢ボタン</strong>（<code>1</code> 〜 <code>10</code>）をクリックすると、その選択肢に修正して自動的に次のエラーへ進みます。キーボードの数字キーでも同様に操作できます（<code>0</code> キーは選択肢 <code>10</code> に対応）。</p>
+<p><strong><code>-1</code> ボタン</strong>（赤色）は「無効回答」を意味します。生徒が意図的にマークしていないと判断した場合や、読み取り不能な場合にこのボタンを押してください。<code>-1</code> に設定した問題は採点対象から除外されます。</p>
+<p>テキスト入力欄に直接値を入力して <code>Enter</code> キーで確定することもできます。</p>
+<h3 id="_5">ナビゲーション<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>ボタン</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>← 前へ</strong></td>
+<td>1 つ前のエラーに戻る</td>
+</tr>
+<tr>
+<td><strong>保存して次へ →</strong></td>
+<td>入力欄の値を保存して次のエラーへ進む</td>
+</tr>
+<tr>
+<td><strong>SKIP</strong></td>
+<td>このエラーを後回しにして次へ進む（後から再チェック可能）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">チェック結果の反映<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p>すべてのエラーをチェックし終えたら（または途中でも）、画面下部の <strong>「チェック結果を xlsx に反映」</strong> ボタンを押してください。修正内容が OMR 結果の Excel ファイルに書き込まれます。反映前に自動でバックアップが作成されるのでご安心ください。</p>
+<hr />
+<h2 id="5">5. 描画設定<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<p>採点結果を答案画像に描画する際の設定をカスタマイズできます。<br />
+メイン画面の <strong>「⚙ 詳細設定...」</strong> リンクから設定ダイアログを開きます。</p>
+<p><img alt="描画設定" class="screenshot" src="../../images/03_rendering_settings_mark_only.png" />
+<span class="caption">マーク採点モードの描画設定</span></p>
+<h3 id="_7">表示項目<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>答案画像に描画する情報をチェックボックスで選べます。</p>
+<table>
+<thead>
+<tr>
+<th>チェックボックス</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>正答選択肢番号を表示</strong></td>
+<td>不正解の問題について、正答の選択肢位置に正答番号を赤字で描画します</td>
+</tr>
+<tr>
+<td><strong>○×△マークを表示</strong></td>
+<td>正解なら○、不正解なら×を赤字で描画します</td>
+</tr>
+<tr>
+<td><strong>得点を表示</strong></td>
+<td>各問の得点を○×の右隣に黒字で描画します</td>
+</tr>
+<tr>
+<td><strong>観点を表示</strong></td>
+<td>観点番号を丸数字（①②③…）で得点の右隣に描画します</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">描画位置オフセット<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>○×マークや得点テキストをマーク欄のどの位置に描画するかを調整します。デフォルト（<code>0.0</code>）では、マーク欄の右端付近に描画されます。</p>
+<ul>
+<li><strong>正の値</strong> → <strong>右</strong>方向にずらす</li>
+<li><strong>負の値</strong> → <strong>左</strong>方向にずらす</li>
+<li>マーク枠の外側にはみ出しても問題ありません</li>
+</ul>
+<p>矢印ボタンで値を増減できます。</p>
+<table>
+<thead>
+<tr>
+<th>ボタン</th>
+<th>増分</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>◀◀</strong> / <strong>▶▶</strong></td>
+<td>±1.0（マーク欄 1 つ分）</td>
+<td>大きく移動</td>
+</tr>
+<tr>
+<td><strong>◀</strong> / <strong>▶</strong></td>
+<td>±0.5（半マーク分）</td>
+<td>中程度の移動</td>
+</tr>
+<tr>
+<td><strong>◀.</strong> / <strong>.▶</strong></td>
+<td>±0.1</td>
+<td>微調整</td>
+</tr>
+</tbody>
+</table>
+<p><strong>「📐 位置プレビュー...」</strong> ボタンを押すと、実際の答案画像上で描画位置をリアルタイムに確認しながら調整できます。プレビュー画面では赤枠が○×マークの位置、青枠が得点・観点の位置を示します。</p>
+<h3 id="_9">その他のボタン<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>ボタン</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>デフォルトに戻す</strong></td>
+<td>すべての設定を初期値にリセットします</td>
+</tr>
+<tr>
+<td><strong>適用</strong></td>
+<td>設定を保存してダイアログを閉じます</td>
+</tr>
+<tr>
+<td><strong>キャンセル</strong></td>
+<td>変更を破棄してダイアログを閉じます</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6">6. 合計点の表示位置<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<p>合計点を答案画像のどこに描画するかを指定できます。</p>
+<p><img alt="合計点の位置選択" class="screenshot" src="../../images/13_select_total_position.png" />
+<span class="caption">合計点の表示位置を選択</span></p>
+<hr />
+<h2 id="7">7. 結果の出力<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<p>採点が完了すると、以下のファイルが <strong>スキャン画像フォルダの中</strong> の <code>_saiten_grading_results/</code> フォルダに自動生成されます。</p>
+<div class="highlight"><pre><span></span><code>あなたのスキャン画像フォルダ/
+├── 生徒01.jpg, 生徒02.jpg, …
+└── _saiten_grading_results/
+    ├── 00_Processing/             ← 枠描画済み画像（中間ファイル）
+    ├── 00_Processing_Clean/       ← 補正済み画像（枠なし、記述採点プレビュー用）
+    ├── 01_Results/                ← OMR データ・正答ファイル
+    │   └── answer_key.xlsx       ← 正答データ
+    ├── 02_Graded_Detail/          ← 採点済み答案画像（○×マーク・得点付き）
+    └── 03_Final_Report/           ← 成績サマリー・統計レポート・CTT分析
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>出力先</th>
+<th>主なファイル</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>01_Results/</code></td>
+<td>OMR 読み取り結果 Excel、正答ファイル</td>
+</tr>
+<tr>
+<td><code>02_Graded_Detail/</code></td>
+<td>採点済み答案画像（○×マーク・得点が描画された画像）</td>
+</tr>
+<tr>
+<td><code>03_Final_Report/</code></td>
+<td>生徒別成績サマリー Excel、試験統計 Excel、CTT 分析 PDF</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8">8. 生徒ビューア<a class="headerlink" href="#8" title="Permanent link">&para;</a></h2>
+<p>個別の生徒の採点結果を確認するビューアも搭載しています。</p>
+<p><img alt="生徒ビューア" class="screenshot" src="../../images/11_student_viewer.png" />
+<span class="caption">生徒別の採点結果ビューア</span></p>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="フッター" >
+        
+          
+          <a href="../../features/" class="md-footer__link md-footer__link--prev" aria-label="前: 機能一覧">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                前
+              </span>
+              <div class="md-ellipsis">
+                機能一覧
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../descriptive/" class="md-footer__link md-footer__link--next" aria-label="次: 記述式採点">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                次
+              </span>
+              <div class="md-ellipsis">
+                記述式採点
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2025-2026 phys-ken &mdash; GPL-3.0 License
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/phys-ken" target="_blank" rel="noopener" title="phys-ken on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "content.tabs.link", "toc.follow", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>

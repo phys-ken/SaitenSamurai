@@ -3,6 +3,8 @@
 # ==================================================
 # push (全ブランチ) で pytest を自動実行する。
 # 手動実行 (workflow_dispatch) にも対応。
+# 同一ブランチへの連続 push では古い実行を自動キャンセルし、
+# pip キャッシュで依存インストールを高速化する。
 
 name: Test
 
@@ -12,9 +14,14 @@ on:
       - stats-data
   workflow_dispatch:
 
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pytest:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -22,6 +29,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: |
@@ -29,4 +38,4 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run tests
-        run: python -m pytest tests/ -q --timeout=60 -p no:warnings
+        run: python -m pytest tests/ -q --timeout=60 -p no:warnings -rf

@@ -100,6 +100,9 @@ M2-03-008/
 # --- 実データ由来のanswer_keyサンプル (個人データ — NEVER commit) ---
 answer_key_*_sample.xlsx
 
+# --- ペルソナ監査報告 (作業メモ — ローカル保持のみ) ---
+persona_audit_report.md
+
 # --- Misc ---
 *.bak
 *.tmp

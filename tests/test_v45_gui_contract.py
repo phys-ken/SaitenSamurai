@@ -133,6 +133,10 @@ def mark_checker_gui(monkeypatch):
         gui.window.update_idletasks()
         yield gui
 
+        # teardown: 未反映の訂正がある場合 on_close は確認モーダルを出すため、
+        # ヘッドレス環境でブロックしないよう「はい(閉じる)」を自動応答にする
+        import gui_components as _gc
+        monkeypatch.setattr(_gc.messagebox, "askyesno", lambda *a, **k: True)
         try:
             gui.on_close()
         except Exception:

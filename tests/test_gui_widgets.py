@@ -961,3 +961,26 @@ class TestMarkCheckerGUIStructure:
         src = inspect.getsource(MarkCheckerGUI)
         assert "_hint_label" in src, "ヒントラベルがない"
         assert "マークなし" in src, "マークなし表示がない"
+
+
+class TestDescriptiveStatusInitialDisplay:
+    """記述ステータスパネルが起動直後から案内を表示すること。
+
+    初期化時に _update_descriptive_status を呼ばないと、起動直後は
+    空の紫パネルが表示されるだけで、何のための領域か分からなかった。
+    """
+
+    def test_status_not_blank_on_startup(self):
+        import tkinter as tk
+        from conftest import get_shared_tk_root
+        from main_gui import SaitenSamuraiGUI
+        from constants import MODE_DESCRIPTIVE_ONLY
+        top = tk.Toplevel(get_shared_tk_root())
+        top.withdraw()
+        try:
+            app = SaitenSamuraiGUI(top, mode=MODE_DESCRIPTIVE_ONLY)
+            text = app._desc_status_label.cget("text")
+            assert text.strip() != ""
+            assert "フォルダ未選択" in text
+        finally:
+            top.destroy()

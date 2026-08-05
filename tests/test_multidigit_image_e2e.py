@@ -279,6 +279,11 @@ class TestProcessBoxDrawerSmoke:
         results_folder = img_folder / RESULTS_FOLDER
         assert (results_folder / BOXED_FOLDER).is_dir()
         assert (results_folder / CLEAN_FOLDER).is_dir()
+
+        # 結果フォルダの説明ファイルが同梱される（フォルダ名は互換のため
+        # 変えない方針の代わりに、中身を日本語で説明する）
+        readme = (results_folder / 'README.txt').read_text(encoding='utf-8-sig')
+        assert '00_Processing' in readme and '消していい' in readme
         assert len(list((results_folder / BOXED_FOLDER).glob('*.png'))) == 2
         assert progress and progress[-1] == (2, 2)
 

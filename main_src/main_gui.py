@@ -208,6 +208,11 @@ class SaitenSamuraiGUI:
         
         self.create_widgets()
 
+        # 記述ステータスパネルの初期表示。呼ばないと起動直後は空の紫パネルが
+        # 出るだけで、何のための領域か分からない
+        if self.app_mode in (MODE_MARK_AND_DESCRIPTIVE, MODE_DESCRIPTIVE_ONLY):
+            self._update_descriptive_status()
+
         # ウィンドウ閉じるハンドラ（処理中のデータ保護）
         self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
@@ -319,13 +324,13 @@ class SaitenSamuraiGUI:
         top_section.pack(fill=tk.X, pady=(0, 10))
         
         # 左側: ファイル入力
-        input_group = tk.LabelFrame(top_section, text="1. データソース", padx=10, pady=5, font=FONT_BOLD, bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT)
+        input_group = tk.LabelFrame(top_section, text="📂 データソース", padx=10, pady=5, font=FONT_BOLD, bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT)
         input_group.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
         # 画像フォルダ
         row1 = tk.Frame(input_group, bg=SECTION_BG)
         row1.pack(fill=tk.X, pady=2)
-        tk.Label(row1, text="画像フォルダ", width=10, anchor=tk.W, font=FONT_NORMAL, bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Label(row1, text="画像フォルダ", width=12, anchor=tk.W, font=FONT_NORMAL, bg=SECTION_BG).pack(side=tk.LEFT)
         tk.Entry(row1, textvariable=self.image_folder_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._btn_select_folder = tk.Button(row1, text="フォルダ選択", command=self.select_folder, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_NORMAL)
         self._btn_select_folder.pack(side=tk.LEFT)
@@ -337,13 +342,13 @@ class SaitenSamuraiGUI:
         self._coord_row = row2  # モード制御用に保持
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
             row2.pack(fill=tk.X, pady=2)
-        tk.Label(row2, text="座標ファイル", width=10, anchor=tk.W, font=FONT_NORMAL, bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Label(row2, text="座標ファイル", width=12, anchor=tk.W, font=FONT_NORMAL, bg=SECTION_BG).pack(side=tk.LEFT)
         tk.Entry(row2, textvariable=self.coord_excel_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._btn_select_excel = tk.Button(row2, text="ファイル選択", command=self.select_excel, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_NORMAL)
         self._btn_select_excel.pack(side=tk.LEFT)
 
         # 右側: オプション（記述のみモードでは簡略化）
-        option_group = tk.LabelFrame(top_section, text="2. オプション", padx=10, pady=5, font=FONT_BOLD, bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT)
+        option_group = tk.LabelFrame(top_section, text="⚙ オプション", padx=10, pady=5, font=FONT_BOLD, bg=SECTION_BG, fg=HEADER_TEXT, relief=tk.FLAT)
         option_group.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
         opt_row1 = tk.Frame(option_group, bg=SECTION_BG)

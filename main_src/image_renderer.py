@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 logger = logging.getLogger(__name__)
 
 from constants import (
+    write_results_readme,
     RESULTS_FOLDER,
     SCORED_FOLDER,
     RESULTS_DATA_FOLDER,
@@ -644,6 +645,7 @@ def process_scoring(image_folder, coord_excel_path, template_path, mark2_result_
     scored_folder = results_folder / SCORED_FOLDER
     
     scored_folder.mkdir(parents=True, exist_ok=True)
+    write_results_readme(results_folder)
     
     log(f"{'='*60}")
     log(f"採点処理")

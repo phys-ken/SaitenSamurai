@@ -33,6 +33,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 from constants import (
+    write_results_readme,
     MARK2_WIDTH,
     MARK2_HEIGHT,
     MARKER_X_FRAC_LEFT,
@@ -1429,6 +1430,9 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
 
     clean_folder = results_folder / CLEAN_FOLDER
     clean_folder.mkdir(exist_ok=True)
+
+    # 結果フォルダの説明ファイル（利用者がエクスプローラーで開いたとき用）
+    write_results_readme(results_folder)
 
     results_data_folder = results_folder / RESULTS_DATA_FOLDER
     results_data_folder.mkdir(exist_ok=True)

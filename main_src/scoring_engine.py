@@ -204,7 +204,14 @@ def load_template(template_path, mark_format=MARK_FORMAT_STANDARD):
     Returns:
         問題番号をキーとした辞書（正答登録済みの問題のみ）
     """
-    df = pd.read_excel(template_path)
+    # 正答列は必ず文字列として読む。dtype を指定しないと pandas が列を型推論し、
+    # '024' → 24 のように先頭ゼロを落とす。複数桁モードでは正答の文字数が
+    # そのまま消費するマーク行数(span)になるため、これが起きると設問全体が
+    # 黙って誤採点になる。型推論は列単位なので、正答列に英字(a〜d)が1つでも
+    # 混ざっていれば object 型のまま保たれ、不具合は answer_key の他の行しだいで
+    # 出たり出なかったりする。標準モードでは normalize_value を通した結果が
+    # 従来と一致するため影響しない。
+    df = pd.read_excel(template_path, dtype={'正答': str})
 
     # 必要な列をチェック
     required_columns = ['問題番号', '正答', '配点', '観点']

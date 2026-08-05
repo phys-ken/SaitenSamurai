@@ -214,6 +214,46 @@ class TestLoadTemplateMultiDigit:
         td = load_template(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
         assert td[1]['正答'] == '-24'
 
+    def test_leading_zero_kept_when_column_is_all_numeric(self, tmp_path):
+        """正答の先頭ゼロを落とさない（正答列が全部数字でも）。
+
+        pandas は「正答」列を型推論して int64 に変換するため、dtype を指定しないと
+        '024' が 24 になり、span も文字数も狂って設問全体が誤採点になる。
+        正答列に英字が1つでも混ざると object 型のまま保たれるので、この不具合は
+        answer_key の他の行しだいで出たり出なかったりする。列を全部数字にして再現させる。
+        """
+        path = tmp_path / "key.xlsx"
+        _create_answer_key(path, [
+            {'問題番号': 1, '正答': '024', '配点': 3, '観点': 1},
+            {'問題番号': 5, '正答': '9', '配点': 2, '観点': 1},
+        ])
+        td = load_template(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert td[1]['正答'] == '024'
+        assert td[1]['span'] == 3
+        assert td[1]['group_label'] == '1-3'
+
+    def test_leading_zero_kept_with_explicit_range(self, tmp_path):
+        """明示範囲でも先頭ゼロを保つ（従来は文字数不一致エラーになっていた）。"""
+        path = tmp_path / "key.xlsx"
+        _create_answer_key(path, [
+            {'問題番号': '1-3', '正答': '007', '配点': 3, '観点': 1},
+            {'問題番号': 4, '正答': '9', '配点': 2, '観点': 1},
+        ])
+        td = load_template(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert td[1]['正答'] == '007'
+        assert td[1]['span'] == 3
+
+    def test_leading_zero_kept_with_minus(self, tmp_path):
+        """負値の先頭ゼロ（-05 など）も保つ。"""
+        path = tmp_path / "key.xlsx"
+        _create_answer_key(path, [
+            {'問題番号': 1, '正答': '-05', '配点': 3, '観点': 1},
+            {'問題番号': 5, '正答': '9', '配点': 2, '観点': 1},
+        ])
+        td = load_template(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert td[1]['正答'] == '-05'
+        assert td[1]['span'] == 3
+
     def test_length_mismatch_raises(self, tmp_path):
         path = tmp_path / "key.xlsx"
         _create_answer_key(path, [

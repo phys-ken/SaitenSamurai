@@ -340,3 +340,65 @@ class TestProcessScoringSmoke:
         assert red_count(outs['ok.png']) > 0
         # 誤答者は各行に正答の赤記号が追加で載るため、赤画素が明確に多い
         assert red_count(outs['ng.png']) > red_count(outs['ok.png'])
+
+
+# ── 優先3: 15マーク行での認識アルゴリズム ─────────────────────
+
+
+class TestRecognitionAlgorithms15Marks:
+    """K-means とキャリブレーション駆動部が 15マーク/行の紙面で動くこと。
+
+    既存の test_kmeans_omr.py は最大10択の合成のみ。複数桁紙面は
+    1行15マーク・行あたり塗りは高々1個（塗り率 1/15 ≈ 6.7%）という
+    偏ったクラス比になるため、その条件で固定する。
+    """
+
+    def test_kmeans_on_15_mark_rows(self, tmp_path):
+        from omr_engine import recognize_marks_kmeans
+        coord = make_coord_xlsx(tmp_path / "coord.xlsx", 4)
+        coords, _ = parse_excel_coordinates(str(coord))
+        assert len(coords) == 60  # 4行×15マーク ≥ KMEANS_MIN_SAMPLES(50)
+
+        filled = {q: p for q, p in zip([1, 2, 3], sym_positions('-24'))}
+        filled[4] = sym_positions('7')[0]
+        img = make_sheet(filled)
+
+        results, info = recognize_marks_kmeans(img, coords, min_samples=50)
+        assert info is not None, "フォールバックせず実K-means経路で走ること"
+        expected = {q: [p] for q, p in filled.items()}
+        assert results == expected
+        assert info['n_marked'] == 4 and info['n_empty'] == 56
+
+    def test_calibration_driver_on_multidigit_sheets(self, tmp_path):
+        import cv2
+        from threshold_calibrator import (
+            run_threshold_calibration,
+            collect_mark_fill_ratios,
+            reclassify_with_threshold,
+        )
+        coord = make_coord_xlsx(tmp_path / "coord.xlsx", 4)
+        img_folder = tmp_path / "scans"
+        img_folder.mkdir()
+        s1 = {q: p for q, p in zip([1, 2, 3], sym_positions('-24'))}
+        s1[4] = sym_positions('7')[0]
+        s2 = {q: p for q, p in zip([1, 2, 3], sym_positions('a05'))}
+        s2[4] = sym_positions('0')[0]
+        for name, filled in [('s1.png', s1), ('s2.png', s2)]:
+            cv2.imwrite(str(img_folder / name),
+                        make_sheet(filled, with_markers=True))
+
+        result = run_threshold_calibration(str(img_folder), str(coord))
+        assert result['image_count'] == 2
+        assert result['error_images'] == []
+        assert 0.0 < result['recommended_color_threshold'] < 1.0
+        assert 0.0 < result['recommended_area_threshold'] < 1.0
+
+        # スライダー再分類（GUIのリアルタイム更新経路）: 塗った8個だけがマーク側
+        all_ratios = []
+        for name, gray in result['corrected_images']:
+            all_ratios.extend(collect_mark_fill_ratios(
+                gray, result['coordinates'],
+                result['recommended_color_threshold']))
+        re = reclassify_with_threshold(all_ratios, 0.5)
+        assert re['total_count'] == 120  # 60マーク×2枚
+        assert re['marked_count'] == 8   # 4マーク×2枚

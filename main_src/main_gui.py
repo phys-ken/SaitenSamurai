@@ -903,7 +903,14 @@ class SaitenSamuraiGUI:
             self.root.after(0, self._update_step1_availability)
         except Exception as e:
             self.log_message(f"✗ PDF展開エラー: {e}")
-            self.root.after(0, lambda: messagebox.showerror("PDF展開エラー", str(e)))
+            self.root.after(0, lambda: messagebox.showerror(
+                "PDF展開エラー",
+                "PDF を画像に展開できませんでした。\n\n"
+                "・PDF が壊れていないか\n"
+                "・パスワードで保護されていないか\n"
+                "・展開先フォルダに書き込む権限があるか\n"
+                "を確認してください。\n\n"
+                f"詳細: {e}"))
         finally:
             self.root.after(0, self._set_processing_state, False)
     
@@ -913,7 +920,64 @@ class SaitenSamuraiGUI:
         if file:
             self.coord_excel_path.set(file)
             self.log_message(f"✓ 座標ファイルを選択: {file}")
+            self.check_coord_file_gui()
             self._update_step1_availability()
+
+    def check_coord_file_gui(self):
+        """選択された座標ファイルを読んで、内容の要約をログに出す。
+
+        正答データは選択直後に自動チェックが走るのに、座標ファイルは
+        パスを設定するだけで読めるかどうかも分からなかった。準備を全部
+        終えてから「認識実行」で初めて間違いに気づくのを防ぐ。
+
+        モード不一致はここでは警告ログのみに留める。続行を止める確認は
+        run_box_drawer / run_scoring の _confirm_mark_format_coord_match が
+        担当しており、二重に確認ダイアログを出さないため。
+        """
+        path = self.coord_excel_path.get().strip()
+        if not path:
+            return
+        try:
+            skip = int(self.skip_questions.get())
+        except (ValueError, tk.TclError):
+            skip = 0
+        try:
+            from collections import Counter
+            from omr_engine import parse_excel_coordinates
+            coords, _ = parse_excel_coordinates(path)
+        except Exception as e:
+            self.log_message(f"❌ 座標ファイルを読み込めません: {e}")
+            messagebox.showerror(
+                "座標ファイルのエラー",
+                "座標ファイルを読み込めませんでした。\n\n"
+                "Mark2 で書き出した座標 Excel を選んでいるか確認してください。\n"
+                "（正答データや読取結果を間違えて選んでいませんか？）\n\n"
+                f"詳細: {e}")
+            return
+
+        per_q = {}
+        for c in coords:
+            per_q[c['question_no']] = per_q.get(c['question_no'], 0) + 1
+        answer_counts = [n for q, n in per_q.items()
+                         if isinstance(q, (int, float)) and q > skip]
+        if not answer_counts:
+            self.log_message("⚠ 座標ファイルに採点対象の設問が見つかりません（Skip 数が大きすぎませんか？）")
+            return
+
+        typical = Counter(answer_counts).most_common(1)[0][0]
+        self.log_message(
+            f"  └ 解答欄 {len(answer_counts)} 行 / 1行あたり {typical} マーク"
+            f"（Skip {skip} 行を除く）")
+
+        is_md = getattr(self, 'mark_format', MARK_FORMAT_STANDARD) == MARK_FORMAT_MULTI_DIGIT
+        if is_md and typical <= 10:
+            self.log_message(
+                "⚠ 数学マーク採点（複数桁）モードですが、標準テンプレート相当の座標ファイルです。"
+                "座標ファイルか起動モードが違っていませんか？")
+        elif (not is_md) and typical >= 11:
+            self.log_message(
+                "⚠ 標準マーク採点モードですが、複数桁テンプレート相当の座標ファイルです。"
+                "数学マーク採点モードで起動し直す必要はありませんか？")
     
     def select_template(self):
         """正答データファイルを選択"""

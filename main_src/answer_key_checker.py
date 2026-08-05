@@ -106,12 +106,29 @@ def check_answer_key(template_path, mark_format=MARK_FORMAT_STANDARD,
     result['rows'] = rows
 
     # --- 警告: 使用行の中抜け ---
+    # 登録漏れや範囲表記の書き忘れに気づける唯一の入口なので、
+    # 「問題ありません」で終わらせず、典型的な原因を示す。
     first_used, last_used = min(used_rows), max(used_rows)
     gaps = [r for r in range(first_used, last_used + 1) if r not in used_rows]
     if gaps:
-        result['warnings'].append(
-            f"使用行の途中に未使用の解答番号があります: {_format_row_list(gaps)}"
-            "（意図した行飛ばしなら問題ありません）")
+        msg = f"使用行の途中に未使用の解答番号があります: {_format_row_list(gaps)}"
+        if mark_format == MARK_FORMAT_MULTI_DIGIT:
+            msg += "（意図した行飛ばしでなければ、範囲表記の書き忘れか正答の入れ忘れです）"
+        else:
+            msg += "（意図した行飛ばしでなければ、正答か配点の入れ忘れです）"
+        result['warnings'].append(msg)
+
+    # --- 警告: 全員正解で正答空欄・単独表記の複数桁グループ ---
+    # 正答が空欄だと消費行数を推論できず1行ぶんとして扱われる。
+    # 1行の設問を全員正解にする場合もあるためエラーにはしないが、
+    # 複数行のつもりだった場合は末尾なら中抜け警告も出ないので、ここで知らせる。
+    if mark_format == MARK_FORMAT_MULTI_DIGIT:
+        ambiguous = [r['label'] for r in rows
+                     if r['special'] == SPECIAL_ALL_CORRECT and r['span'] == 1 and not r['answer']]
+        if ambiguous:
+            result['warnings'].append(
+                f"特例「全員正解」で正答が空欄の問 {', '.join(ambiguous)} を1行ぶんとして扱いました"
+                "（複数行の設問なら問題番号を「1-3」のように範囲で書いてください）")
 
     # --- 警告: 入力が不完全なため未登録(スキップ)になった行 ---
     # 完全な空行は自動生成テンプレの正常状態なので対象外(中抜けは上の警告が指摘する)
@@ -137,6 +154,15 @@ def check_answer_key(template_path, mark_format=MARK_FORMAT_STANDARD,
                 if overruns:
                     result['errors'].append(
                         f"座標定義のマーク行数({max_row}行)を超える問があります: {', '.join(overruns)}")
+                elif last_used < max_row:
+                    # 末尾の取りこぼしは中抜け警告では検出できない。
+                    # 中抜けは「最初に使った行〜最後に使った行」の間しか見ないため、
+                    # 最後の設問の範囲表記や正答を書き忘れると何の警告も出ないまま
+                    # その行が採点されない。
+                    result['warnings'].append(
+                        f"座標定義は{max_row}行ぶんありますが、answer_keyは{last_used}行までしか使っていません"
+                        f"（解答番号 {_format_row_list(list(range(last_used + 1, max_row + 1)))} が未採点です。"
+                        "意図した余りでなければ、最後の問の登録漏れです）")
         except Exception as e:
             result['infos'].append(f"座標ファイルの整合チェックをスキップしました: {e}")
 

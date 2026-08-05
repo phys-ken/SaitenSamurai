@@ -1077,6 +1077,7 @@ def process_descriptive_only_summary(
         # データ行
         sorted_files = sorted(descriptive_scores.keys())
         totals = []
+        _name_image_failures = []
         for row_idx, fname in enumerate(sorted_files, 2):
             scores_for_file = descriptive_scores.get(fname, {})
             col = 1
@@ -1093,8 +1094,10 @@ def process_descriptive_only_summary(
                         img.width = 120
                         img.height = 30
                         ws.add_image(img, get_column_letter(col) + str(row_idx))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # 失敗しても例外は出ないため、警告しないと
+                        # 氏名欄が空のサマリーが黙って出力される
+                        _name_image_failures.append((fname, str(e)))
                 ws.cell(row=row_idx, column=col).border = thin_border
                 col += 1
 
@@ -1124,6 +1127,12 @@ def process_descriptive_only_summary(
             ws.row_dimensions[1].height = 20
             for r in range(2, len(sorted_files) + 2):
                 ws.row_dimensions[r].height = 25
+
+        if _name_image_failures:
+            logger.warning(
+                "氏名欄の画像を%d件貼り付けられませんでした（該当行の氏名欄は空になります）: %s",
+                len(_name_image_failures),
+                ", ".join(f"{f} ({msg})" for f, msg in _name_image_failures[:5]))
 
         wb_student.save(str(student_summary_path))
         logger.info("✓ 学生別サマリー: %s", student_summary_path.name)

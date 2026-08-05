@@ -344,8 +344,13 @@ def load_mark2_results(mark2_result_path, skip_questions=0):
     
     Args:
         mark2_result_path: Mark2結果Excelのパス
-        skip_questions: スキップする問題数（後方互換性のため残すが、ヘッダー行の値を優先する）
-    
+        skip_questions: 解答欄の前にある ID 欄（学年・クラス・出席番号等）の列数。
+            この引数は実際に使われる。用途は2つ:
+            (1) File 列の直後 skip_questions 列分を採点対象から除外する
+            (2) 設問名行(Row 1)の番号が「元の問題番号」か「採点用の1始まり」かを
+                判定し、前者ならオフセットを引いて1始まりに揃える
+            設問名行が無い場合は Row 0 の元番号から skip_questions を引いて復元する。
+
     Returns:
         学生データのリスト
     """

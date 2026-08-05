@@ -886,3 +886,165 @@ class TestSaveRecognitionResultsSymbols:
         row = self._run(tmp_path, MARK_FORMAT_STANDARD)
         assert row[2] == '-1'
         assert row[3] == '10'
+
+
+# ── マークチェックの値分類: 複数桁記号を不正扱いしない ───────────
+
+
+class TestCheckerValueClassification:
+    """複数桁モードの正しいマークがエラー扱いされないこと。
+
+    mark_checker は長らく mark_format を受け取っておらず、'^\\d+$' に
+    一致しない値をすべて「不正な値」に分類していた。複数桁モードの紙面は
+    -, 0〜9, a〜d の15マークなので、マイナスや a〜d を正しく塗った答案が
+    まるごとエラー一覧に並んでいた（数学は負の答えが多く実用を妨げる）。
+    """
+
+    def _omr_xlsx(self, path, values):
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Sheet1'
+        ws.append(['No', 'File', '1', '2', '3'])
+        ws.append(['', '', 1, 2, 3])
+        ws.append([1, 'img1.jpg'] + list(values))
+        wb.save(path)
+        return path
+
+    def test_symbols_are_not_errors_in_multi_digit(self, tmp_path):
+        from mark_checker import detect_errors_checker
+        x = self._omr_xlsx(tmp_path / "omr.xlsx", ['-', 'a', 'd'])
+        n = detect_errors_checker(str(x), str(tmp_path / "err.csv"),
+                                  mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert n == 0
+
+    def test_symbols_are_still_errors_in_standard(self, tmp_path):
+        """標準モードの紙面に '-' や 'a' は無いので従来どおりエラー"""
+        from mark_checker import detect_errors_checker
+        from constants import MARK_FORMAT_STANDARD
+        x = self._omr_xlsx(tmp_path / "omr.xlsx", ['-', 'a', 'd'])
+        n = detect_errors_checker(str(x), str(tmp_path / "err.csv"),
+                                  mark_format=MARK_FORMAT_STANDARD)
+        assert n == 3
+
+    def test_category_uses_symbol_in_multi_digit(self, tmp_path):
+        from mark_checker import detect_all_entries_checker
+        x = self._omr_xlsx(tmp_path / "omr.xlsx", ['-', 'A', 3])
+        df = detect_all_entries_checker(str(x), mark_format=MARK_FORMAT_MULTI_DIGIT)
+        cats = list(df['category'])
+        assert cats == ['-', 'a', '3'], "大文字は小文字へ、数値セルは記号へ寄せる"
+        assert all(e == '' for e in df['error_type'])
+
+    def test_invalid_symbol_still_detected(self, tmp_path):
+        """紙面に存在しない文字は複数桁モードでもエラー"""
+        from mark_checker import detect_all_entries_checker
+        x = self._omr_xlsx(tmp_path / "omr.xlsx", ['x', 'e', '-'])
+        df = detect_all_entries_checker(str(x), mark_format=MARK_FORMAT_MULTI_DIGIT)
+        cats = list(df['category'])
+        assert cats[:2] == ['不正な値', '不正な値']
+        assert cats[2] == '-'
+
+    def test_invalid_answer_marker_unchanged(self, tmp_path):
+        """無効回答マーカー -1 は複数桁モードでもマイナス記号に化けない"""
+        from mark_checker import detect_all_entries_checker
+        x = self._omr_xlsx(tmp_path / "omr.xlsx", ['-1', '-', '2'])
+        df = detect_all_entries_checker(str(x), mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert list(df['category']) == ['無効回答(-1)', '-', '2']
+
+
+class TestNormalizeMarkValue:
+    def test_multi_digit_symbols(self):
+        from mark_checker import normalize_mark_value
+        for raw, expected in [('-', '-'), ('A', 'a'), ('d', 'd'), ('0', '0'),
+                              ('9', '9'), (3, '3'), ('3.0', '3'), (10, 'a'), (13, 'd')]:
+            assert normalize_mark_value(raw, MARK_FORMAT_MULTI_DIGIT) == expected, raw
+
+    def test_multi_digit_rejects(self):
+        from mark_checker import normalize_mark_value
+        for raw in ['x', 'e', '', '3.5', '14', '-1']:
+            assert normalize_mark_value(raw, MARK_FORMAT_MULTI_DIGIT) is None, raw
+
+    def test_standard_single_digit_only(self):
+        from mark_checker import normalize_mark_value
+        from constants import MARK_FORMAT_STANDARD
+        assert normalize_mark_value('7', MARK_FORMAT_STANDARD) == '7'
+        assert normalize_mark_value('7.0', MARK_FORMAT_STANDARD) == '7'
+        assert normalize_mark_value('10', MARK_FORMAT_STANDARD) is None
+        assert normalize_mark_value('a', MARK_FORMAT_STANDARD) is None
+
+
+# ── 座標ファイルの選択時チェック ────────────────────────
+
+
+class TestCoordFileCheckOnSelect:
+    """座標ファイルを選んだ時点で内容を要約し、取り違えに早く気づけること。
+
+    正答データは選択直後に自動チェックが走るのに、座標ファイルは
+    パスを設定するだけだった（準備を全部終えて「認識実行」で初めて気づく）。
+    """
+
+    def _app(self, mark_format):
+        import tkinter as tk
+        from conftest import get_shared_tk_root
+        from main_gui import SaitenSamuraiGUI
+        from constants import MODE_MARK_ONLY
+        top = tk.Toplevel(get_shared_tk_root())
+        top.withdraw()
+        return SaitenSamuraiGUI(top, mode=MODE_MARK_ONLY, mark_format=mark_format), top
+
+    def _log(self, app):
+        return app.log_text.get("1.0", "end-1c")
+
+    def test_summary_logged_for_matching_coord(self, tmp_path):
+        coord = tmp_path / "md.xlsx"
+        _create_coord_xlsx(coord, MULTI_DIGIT_HEADERS, num_questions=6)
+        app, top = self._app(MARK_FORMAT_MULTI_DIGIT)
+        try:
+            app.skip_questions.set(0)
+            app.coord_excel_path.set(str(coord))
+            app.check_coord_file_gui()
+            log = self._log(app)
+            assert '解答欄 6 行' in log and '15 マーク' in log
+            assert '⚠' not in log
+        finally:
+            top.destroy()
+
+    def test_summary_reflects_skip_setting(self, tmp_path):
+        """Skip 行数を除いた解答欄数を出す（Skip の設定ミスにも気づける）"""
+        coord = tmp_path / "md.xlsx"
+        _create_coord_xlsx(coord, MULTI_DIGIT_HEADERS, num_questions=6)
+        app, top = self._app(MARK_FORMAT_MULTI_DIGIT)
+        try:
+            app.skip_questions.set(4)
+            app.coord_excel_path.set(str(coord))
+            app.check_coord_file_gui()
+            assert '解答欄 2 行' in self._log(app)
+        finally:
+            top.destroy()
+
+    def test_warns_on_format_mismatch(self, tmp_path):
+        """数学モードで標準テンプレートを選んだら選択時点で警告する"""
+        coord = tmp_path / "std.xlsx"
+        _create_coord_xlsx(coord, STANDARD_HEADERS, num_questions=6)
+        app, top = self._app(MARK_FORMAT_MULTI_DIGIT)
+        try:
+            app.coord_excel_path.set(str(coord))
+            app.check_coord_file_gui()
+            assert '⚠' in self._log(app)
+        finally:
+            top.destroy()
+
+    def test_unreadable_file_reports_error(self, tmp_path):
+        """座標ファイルでないものを選んだらその場でエラーを出す"""
+        from unittest.mock import patch
+        bogus = tmp_path / "not_a_coord.xlsx"
+        bogus.write_text("これはExcelではない", encoding='utf-8')
+        app, top = self._app(MARK_FORMAT_MULTI_DIGIT)
+        try:
+            app.coord_excel_path.set(str(bogus))
+            with patch('main_gui.messagebox') as mb:
+                app.check_coord_file_gui()
+                assert mb.showerror.called
+            assert '読み込めません' in self._log(app)
+        finally:
+            top.destroy()

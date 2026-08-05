@@ -264,6 +264,13 @@ main() → StartupModeDialog(root) → mode, mark_format, session_path を取得
   が唯一の入口。multi_digit では位置 = ヘッダ値+1（"-"=位置0、"d"=位置14）。
 - **記号対応表**: `constants.MULTI_DIGIT_VALUE_TO_SYMBOL`（-1→"-"、10〜13→a〜d）。
   mark2結果Excelのセル・正答表記・描画はすべて記号側で統一。
+- **読取値の分類**: `mark_checker.normalize_mark_value(value, mark_format)` が唯一の入口。
+  マークチェックが「正常な値か／不正な値か」を判断する箇所は必ずここを通す。
+  この関数に `mark_format` を渡し忘れると、複数桁モードで正しく塗られた
+  `-` や `a`〜`d` がすべて「不正な値」に分類され、クラス全員分がエラー一覧に並ぶ
+  （`detect_errors_checker` / `detect_all_entries_checker` の既定は標準モード）。
+  なお `-1` は紙面のマークではなく「採点しない」という運用上の無効回答マーカーで、
+  分類より前に処理する（`mark_checker.INVALID_ANSWER_MARKER`）。
 - **データモデル**: `load_template` は先頭行intキーのまま `'span'`（消費行数）と
   `'group_label'`（"1-3"）を付与。グループ2行目以降のエントリは作られません。
 - **CTT/R**: グループ=1項目（項目ID=範囲表記）。key_df の `ExactMatch` 列が True の項目は

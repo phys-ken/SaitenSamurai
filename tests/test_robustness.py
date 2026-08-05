@@ -291,7 +291,9 @@ class TestLogMessageThreadSafety:
         original_after = root.after
 
         def mock_after(delay, *args, **kwargs):
-            if args and args[0] is app.log_message:
+            # 束縛メソッドは属性アクセスのたびに新しいオブジェクトが作られるため
+            # `is` では常に False になる。等価比較を使うこと。
+            if args and args[0] == app.log_message:
                 after_called.set()
             return original_after(delay, *args, **kwargs)
 
@@ -538,3 +540,60 @@ class TestThreadSafeParams:
         import inspect
         sig = inspect.signature(SaitenSamuraiGUI._run_box_drawer_thread)
         assert 'params' in sig.parameters
+
+
+# ================================================================
+# R18: 日本語フォントが無いときに黙って劣化しない
+# ================================================================
+
+class TestJapaneseFontResolution:
+    """フォント解決が失敗を黙らせないこと。
+
+    フォントが見つからないと採点結果画像の得点が極小のビットマップフォントになり、
+    CTTレポートの日本語も出なくなるが、どちらも例外は起きない。
+    警告が出ないと利用者が気づけないため、警告そのものを検証する。
+    """
+
+    def teardown_method(self):
+        import constants
+        constants._reset_japanese_font_cache()
+
+    def test_found_font_path_exists(self):
+        import constants
+        constants._reset_japanese_font_cache()
+        path = constants.find_japanese_font()
+        assert path is not None, "候補のどれも見つからない環境ではフォント描画が壊れる"
+        assert Path(path).exists()
+
+    def test_warns_when_no_font_found(self, caplog):
+        import constants
+        constants._reset_japanese_font_cache()
+        with patch.object(constants, 'JAPANESE_FONT_CANDIDATES', ('/nonexistent/a.ttf',)):
+            with caplog.at_level('WARNING', logger='constants'):
+                assert constants.find_japanese_font() is None
+        assert any('日本語フォントが見つかりません' in r.message for r in caplog.records)
+
+    def test_result_is_cached(self, caplog):
+        """2回目以降は再探索せず、警告も繰り返さない"""
+        import constants
+        constants._reset_japanese_font_cache()
+        with patch.object(constants, 'JAPANESE_FONT_CANDIDATES', ('/nonexistent/a.ttf',)):
+            with caplog.at_level('WARNING', logger='constants'):
+                constants.find_japanese_font()
+                constants.find_japanese_font()
+        warnings = [r for r in caplog.records if '日本語フォントが見つかりません' in r.message]
+        assert len(warnings) == 1
+
+    def test_descriptive_renderer_font_scales_with_size(self):
+        """描画フォントがサイズ指定の効くものであること。
+
+        ImageFont.load_default() に落ちるとサイズ指定が無視され、
+        採点結果画像の得点が読めない大きさになる。
+        """
+        import descriptive_renderer as dr
+        dr._font_cache.clear()
+        small = dr._get_font(12)
+        dr._font_cache.clear()
+        large = dr._get_font(48)
+        assert large.getbbox('8')[3] > small.getbbox('8')[3], \
+            "フォントサイズが効いていない（load_default にフォールバックしている）"

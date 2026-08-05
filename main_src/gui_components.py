@@ -1487,6 +1487,7 @@ class MarkCheckerGUI:
             self._all_entries_df = detect_all_entries_checker(
                 self.xlsx_path,
                 registered_questions=self._get_registered_questions(),
+                mark_format=self.mark_format,
             )
             logger.info("全エントリ読み込み: %d件", len(self._all_entries_df))
 

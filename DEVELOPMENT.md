@@ -140,9 +140,12 @@ saitensamurai.py          ← main_gui（+ 後方互換 re-export）
 | `00_Processing/` | `BOXED_FOLDER` | マーク認識枠を描画した画像（マークチェック用） |
 | `00_Processing_Clean/` | `CLEAN_FOLDER` | 射影変換のみ適用したクリーン画像（記述式採点プレビュー用） |
 
-> **並列処理制約**: `_process_single_image()` は `ProcessPoolExecutor` で並列実行されます。
-> 引数タプルのアンパック順序（現行 8 要素）を変更する場合、全ワーカーに影響するため注意してください。
-> （後方互換のため 7 要素入力も受理する実装です）
+> **並列処理制約**: `_process_single_image()` は `ProcessPoolExecutor` で並列実行されます
+> （pickle 可能にするためモジュールレベル定義）。引数は**名前付きの辞書**で渡します。
+> かつては位置タプル（7/8 要素の両対応）で、順序を1つ間違えると閾値同士が
+> 入れ替わっても黙って動く事故の余地がありました。キーを増やすときは
+> 呼び出し側（`process_box_drawer` の `worker_args`）と同時に変更してください。
+> 欠けたキーは KeyError で即座に落ちます。
 
 ### マークチェック正答オーバーレイ (`gui_components.py`)
 

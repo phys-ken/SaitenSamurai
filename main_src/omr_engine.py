@@ -990,7 +990,7 @@ def save_recognition_results(output_path, recognition_results, all_questions, qu
         raise
 
 
-def _process_single_image(args: tuple) -> dict:
+def _process_single_image(args: dict) -> dict:
     """
     1枚の画像を処理するワーカー関数（ProcessPoolExecutor 用）。
 
@@ -998,24 +998,25 @@ def _process_single_image(args: tuple) -> dict:
     各ワーカープロセスで独立して実行される。
 
     Args:
-        args: (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
-               question_groups, color_threshold, area_threshold, omr_mode)
+        args: 名前付きの処理パラメータ辞書。必須キー:
+            image_path / boxed_folder / clean_folder / coordinates /
+            question_groups / color_threshold / area_threshold / omr_mode
+            （かつては位置タプルで、順序を1つ間違えると閾値同士が入れ替わっても
+            黙って動く事故の余地があった。キー名で受け取ることでそれを排除。
+            欠けたキーは KeyError で即座に落ちる）
 
     Returns:
         dict with keys: filename, marks, marker_data, csv_data, success, kmeans_info
     """
-    # 後方互換: 8要素なら omr_mode あり、7要素なら閾値方式
-    if len(args) == 8:
-        (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
-         question_groups, color_threshold, area_threshold, omr_mode) = args
-    else:
-        (image_path_str, boxed_folder_str, clean_folder_str, coordinates,
-         question_groups, color_threshold, area_threshold) = args
-        omr_mode = OMR_MODE_THRESHOLD
+    coordinates = args['coordinates']
+    question_groups = args['question_groups']
+    color_threshold = args['color_threshold']
+    area_threshold = args['area_threshold']
+    omr_mode = args['omr_mode']
 
-    image_path = Path(image_path_str)
-    boxed_folder = Path(boxed_folder_str)
-    clean_folder = Path(clean_folder_str) if clean_folder_str else None
+    image_path = Path(args['image_path'])
+    boxed_folder = Path(args['boxed_folder'])
+    clean_folder = Path(args['clean_folder']) if args['clean_folder'] else None
 
     with open(str(image_path), 'rb') as f:
         image_data_bytes = f.read()
@@ -1492,15 +1493,23 @@ def process_box_drawer(image_folder, coord_excel_path, skip_questions=0, output_
                 "ThreadPool" if is_frozen else "ProcessPool")
 
     worker_args = [
-        (str(img), str(boxed_folder), str(clean_folder), coordinates, question_groups,
-         color_threshold, area_threshold, omr_mode)
+        {
+            'image_path': str(img),
+            'boxed_folder': str(boxed_folder),
+            'clean_folder': str(clean_folder),
+            'coordinates': coordinates,
+            'question_groups': question_groups,
+            'color_threshold': color_threshold,
+            'area_threshold': area_threshold,
+            'omr_mode': omr_mode,
+        }
         for img in image_files
     ]
 
     completed = 0
     with PoolExecutor(max_workers=max_workers) as executor:
         future_to_name = {
-            executor.submit(_process_single_image, args): Path(args[0]).name
+            executor.submit(_process_single_image, args): Path(args['image_path']).name
             for args in worker_args
         }
 

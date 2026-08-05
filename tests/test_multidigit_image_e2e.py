@@ -402,3 +402,55 @@ class TestRecognitionAlgorithms15Marks:
         re = reclassify_with_threshold(all_ratios, 0.5)
         assert re['total_count'] == 120  # 60マーク×2枚
         assert re['marked_count'] == 8   # 4マーク×2枚
+
+
+# ── ワーカー直接呼び出し（frozen exe と同じインプロセス実行相当） ──
+
+
+class TestProcessSingleImageWorker:
+    """並列ワーカーを直接呼ぶ。
+
+    引数は名前付き辞書（かつては位置タプル7/8要素の両対応で、順序を
+    間違えても黙って動く事故の余地があった）。frozen exe では
+    ThreadPoolExecutor 経由の同一プロセス実行になるため、
+    直接呼び出しはその経路の検証も兼ねる。
+    """
+
+    def _args(self, tmp_path, **overrides):
+        import cv2
+        coord = make_coord_xlsx(tmp_path / "coord.xlsx", 3)
+        coords, groups = parse_excel_coordinates(str(coord))
+        filled = {q: p for q, p in zip([1, 2, 3], sym_positions('-24'))}
+        img_path = tmp_path / "s1.png"
+        cv2.imwrite(str(img_path), make_sheet(filled, with_markers=True))
+        boxed = tmp_path / "boxed"; boxed.mkdir(exist_ok=True)
+        clean = tmp_path / "clean"; clean.mkdir(exist_ok=True)
+        args = {
+            'image_path': str(img_path),
+            'boxed_folder': str(boxed),
+            'clean_folder': str(clean),
+            'coordinates': coords,
+            'question_groups': groups,
+            'color_threshold': 0.1,
+            'area_threshold': 0.4,
+            'omr_mode': 'threshold',
+        }
+        args.update(overrides)
+        return args
+
+    def test_worker_returns_named_result(self, tmp_path):
+        from omr_engine import _process_single_image
+        result = _process_single_image(self._args(tmp_path))
+        assert result['success'] is True
+        assert result['filename'] == 's1.png'
+        assert result['marks'] == {1: [0], 2: [3], 3: [5]}
+        assert (tmp_path / "boxed" / "s1.png").exists()
+        assert (tmp_path / "clean" / "s1.png").exists()
+
+    def test_worker_fails_fast_on_missing_key(self, tmp_path):
+        """キー欠落は黙って既定値で動かず KeyError で落ちる"""
+        from omr_engine import _process_single_image
+        args = self._args(tmp_path)
+        del args['omr_mode']
+        with pytest.raises(KeyError):
+            _process_single_image(args)

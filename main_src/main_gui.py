@@ -22,6 +22,17 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# 最小フォント。かつては 8pt 直書きが21箇所あり、高DPI環境の教員には小さすぎた
+FONT_SMALL = ("Yu Gothic UI", 9)
+
+# 無効ボタンの統一スタイル。従来はパステル地のまま文字だけ灰色になり、
+# 「押せないのか、押すと壊れるのか」が読み取れなかった
+DISABLED_BTN_BG = "#E0E0E0"
+DISABLED_BTN_FG = "#8A8A8A"
+
+# 「次に押すべきボタン」の強調枠色（4停止: 認識→マークチェック→採点生成→集計）
+NEXT_ACTION_BORDER = "#1565C0"
+
 # サードパーティライブラリ
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
@@ -206,6 +217,10 @@ class SaitenSamuraiGUI:
         # 採点結果描画の詳細設定（セッション保存/復元対象）
         self.rendering_settings = get_rendering_settings()
         
+        # マークチェックを一度でも開いたか（「次はこれ」誘導の通過判定。
+        # 強制はしない — 開いたら次の停止へ枠が進むだけ）
+        self._mark_check_visited = False
+
         self.create_widgets()
 
         # 記述ステータスパネルの初期表示。呼ばないと起動直後は空の紫パネルが
@@ -253,8 +268,8 @@ class SaitenSamuraiGUI:
         BTN_AMBER = "#FFE082"     # サマリー (Amber 200)
         BTN_GRAY = "#EEEEEE"      # 参照・開くボタン
         
-        FONT_NORMAL = ("Yu Gothic UI", 9)
-        FONT_BOLD = ("Yu Gothic UI", 9, "bold")
+        FONT_NORMAL = ("Yu Gothic UI", 10)
+        FONT_BOLD = ("Yu Gothic UI", 10, "bold")
         FONT_TITLE = ("Yu Gothic UI", 12, "bold")
         
         # ルートウィンドウの背景設定
@@ -314,7 +329,7 @@ class SaitenSamuraiGUI:
         tk.Button(
             title_row, text="📂 前回の状態を復元",
             command=self._restore_session_interactive,
-            font=("Yu Gothic UI", 8), bg="#E3F2FD", relief=tk.FLAT, cursor="hand2",
+            font=FONT_SMALL, bg="#E3F2FD", relief=tk.FLAT, cursor="hand2",
         ).pack(side=tk.RIGHT, padx=(10, 0))
 
         # ---------------------------------------------------------
@@ -331,7 +346,7 @@ class SaitenSamuraiGUI:
         row1 = tk.Frame(input_group, bg=SECTION_BG)
         row1.pack(fill=tk.X, pady=2)
         tk.Label(row1, text="画像フォルダ", width=12, anchor=tk.W, font=FONT_NORMAL, bg=SECTION_BG).pack(side=tk.LEFT)
-        tk.Entry(row1, textvariable=self.image_folder_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Entry(row1, textvariable=self.image_folder_path, font=FONT_SMALL, bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._btn_select_folder = tk.Button(row1, text="フォルダ選択", command=self.select_folder, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_NORMAL)
         self._btn_select_folder.pack(side=tk.LEFT)
         self._btn_select_pdf = tk.Button(row1, text="PDF選択", command=self.select_pdf, width=8, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_NORMAL)
@@ -343,7 +358,7 @@ class SaitenSamuraiGUI:
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
             row2.pack(fill=tk.X, pady=2)
         tk.Label(row2, text="座標ファイル", width=12, anchor=tk.W, font=FONT_NORMAL, bg=SECTION_BG).pack(side=tk.LEFT)
-        tk.Entry(row2, textvariable=self.coord_excel_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Entry(row2, textvariable=self.coord_excel_path, font=FONT_SMALL, bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._btn_select_excel = tk.Button(row2, text="ファイル選択", command=self.select_excel, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_NORMAL)
         self._btn_select_excel.pack(side=tk.LEFT)
 
@@ -355,9 +370,9 @@ class SaitenSamuraiGUI:
         opt_row1.pack(fill=tk.X)
         
         # スキップ（記述のみモードでは非表示）
-        self._skip_label1 = tk.Label(opt_row1, text="Skip:", font=FONT_NORMAL, bg=SECTION_BG)
+        self._skip_label1 = tk.Label(opt_row1, text="Skip（ID欄の数）:", font=FONT_NORMAL, bg=SECTION_BG)
         self._skip_entry = tk.Entry(opt_row1, textvariable=self.skip_questions, width=3, justify=tk.CENTER, bg="#F9F9F9", relief=tk.FLAT)
-        self._skip_label2 = tk.Label(opt_row1, text="問", font=FONT_NORMAL, bg=SECTION_BG)
+        self._skip_label2 = tk.Label(opt_row1, text="欄", font=FONT_NORMAL, bg=SECTION_BG)
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
             self._skip_label1.pack(side=tk.LEFT)
             self._skip_entry.pack(side=tk.LEFT, padx=2)
@@ -380,7 +395,7 @@ class SaitenSamuraiGUI:
         self._chk_descriptive = tk.Checkbutton(
             opt_row1, text="記述問題も採点する",
             variable=self.descriptive_enabled, bg=SECTION_BG,
-            font=("Yu Gothic UI", 8), anchor=tk.W, cursor="hand2",
+            font=FONT_SMALL, anchor=tk.W, cursor="hand2",
             command=self._on_descriptive_toggle,
         )
         # チェックボックスは pack しない（値は init で設定済み）
@@ -405,7 +420,7 @@ class SaitenSamuraiGUI:
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
             omr_mode_row.pack(fill=tk.X, pady=(5, 0))
 
-        tk.Label(omr_mode_row, text="認識方式:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Label(omr_mode_row, text="認識方式:", font=FONT_SMALL, bg=SECTION_BG).pack(side=tk.LEFT)
         self._omr_mode_combo = ttk.Combobox(
             omr_mode_row, textvariable=self._omr_display_var, width=22,
             values=list(self._omr_label_to_value.keys()), state="readonly",
@@ -419,14 +434,14 @@ class SaitenSamuraiGUI:
         if self.app_mode != MODE_DESCRIPTIVE_ONLY and self.omr_mode.get() == OMR_MODE_THRESHOLD:
             self._omr_slider_row.pack(side=tk.LEFT, padx=(10, 0))
 
-        tk.Label(self._omr_slider_row, text="色:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Label(self._omr_slider_row, text="色:", font=FONT_SMALL, bg=SECTION_BG).pack(side=tk.LEFT)
         tk.Scale(self._omr_slider_row, variable=self.color_threshold, from_=0.03, to=0.35, resolution=0.005, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
 
-        tk.Label(self._omr_slider_row, text="面積:", font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
+        tk.Label(self._omr_slider_row, text="面積:", font=FONT_SMALL, bg=SECTION_BG).pack(side=tk.LEFT, padx=(5, 0))
         tk.Scale(self._omr_slider_row, variable=self.area_threshold, from_=0.1, to=0.8, resolution=0.05, orient=tk.HORIZONTAL, bg=SECTION_BG, relief=tk.FLAT, length=80).pack(side=tk.LEFT, padx=2)
 
         tk.Button(self._omr_slider_row, text="\U0001f527 自動調整", command=self.open_threshold_calibrator,
-                  width=8, bg="#CE93D8", relief=tk.FLAT, font=("Yu Gothic UI", 8),
+                  width=8, bg="#CE93D8", relief=tk.FLAT, font=FONT_SMALL,
                   cursor="hand2").pack(side=tk.LEFT, padx=(10, 0))
 
         # ---------------------------------------------------------
@@ -475,13 +490,13 @@ class SaitenSamuraiGUI:
         self._answer_key_row = s_row1
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
             s_row1.pack(fill=tk.X, pady=2)
-        tk.Label(s_row1, text="正答データ", width=10, anchor=tk.W, font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
-        tk.Entry(s_row1, textvariable=self.template_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Button(s_row1, text="ファイル選択", command=self.select_template, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=("Yu Gothic UI", 8)).pack(side=tk.LEFT)
+        tk.Label(s_row1, text="正答データ", width=10, anchor=tk.W, font=FONT_SMALL, bg=SECTION_BG).pack(side=tk.LEFT)
         _btn_key_check = tk.Button(
             s_row1, text="📋", command=self.run_answer_key_check_gui,
-            width=3, bg=BTN_GRAY, relief=tk.FLAT, font=("Yu Gothic UI", 8), cursor="hand2")
-        _btn_key_check.pack(side=tk.LEFT, padx=(3, 0))
+            width=3, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_SMALL, cursor="hand2")
+        _btn_key_check.pack(side=tk.RIGHT, padx=(3, 0))
+        tk.Button(s_row1, text="ファイル選択", command=self.select_template, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_SMALL).pack(side=tk.RIGHT)
+        tk.Entry(s_row1, textvariable=self.template_path, font=FONT_SMALL, bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
         _ToolTip(_btn_key_check,
                  "正答チェック — 登録内容を検証し、チェック報告と模範解答の\n"
                  "Markdownを正答データと同じフォルダに書き出します")
@@ -491,9 +506,9 @@ class SaitenSamuraiGUI:
         self._omr_result_row = s_row2
         if self.app_mode != MODE_DESCRIPTIVE_ONLY:
             s_row2.pack(fill=tk.X, pady=2)
-        tk.Label(s_row2, text="OMR結果", width=10, anchor=tk.W, font=("Yu Gothic UI", 8), bg=SECTION_BG).pack(side=tk.LEFT)
-        tk.Entry(s_row2, textvariable=self.mark2_result_path, font=("Yu Gothic UI", 8), bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Button(s_row2, text="ファイル選択", command=self.select_mark2_result, width=10, bg=BTN_GRAY, relief=tk.FLAT, font=("Yu Gothic UI", 8)).pack(side=tk.LEFT)
+        tk.Label(s_row2, text="OMR結果", width=10, anchor=tk.W, font=FONT_SMALL, bg=SECTION_BG).pack(side=tk.LEFT)
+        tk.Button(s_row2, text="ファイル選択", command=self.select_mark2_result, bg=BTN_GRAY, relief=tk.FLAT, font=FONT_SMALL).pack(side=tk.RIGHT)
+        tk.Entry(s_row2, textvariable=self.mark2_result_path, font=FONT_SMALL, bg="#F9F9F9", relief=tk.FLAT, state="readonly").pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 記述問題設定（記述ON時のみ表示 — _on_descriptive_toggle で制御）
         self.desc_setup_btn = tk.Button(
@@ -538,7 +553,7 @@ class SaitenSamuraiGUI:
         self._desc_status_label = tk.Label(self._desc_status_frame, text="")
         # 表示用: 固定高さの Text ウィジェット（安定したレイアウト）
         self._desc_status_text = tk.Text(
-            _inner, font=("Yu Gothic UI", 8),
+            _inner, font=FONT_SMALL,
             bg="#F3E5F5", fg="#4A148C", wrap=tk.WORD,
             height=4, relief=tk.FLAT, bd=0, state=tk.DISABLED,
             highlightthickness=0, cursor="arrow",
@@ -565,7 +580,7 @@ class SaitenSamuraiGUI:
         # --- 詳細設定リンク ---
         self._link_detailed_settings = tk.Label(
             step2, text="⚙ 詳細設定...",
-            font=("Yu Gothic UI", 8, "underline"), fg="#1976D2",
+            font=("Yu Gothic UI", 9, "underline"), fg="#1976D2",
             bg=SECTION_BG, cursor="hand2", anchor=tk.E,
         )
         self._link_detailed_settings.pack(fill=tk.X, pady=(0, 2))
@@ -583,6 +598,7 @@ class SaitenSamuraiGUI:
 
         # Step 3: サマリー
         step3 = create_step_frame(pipeline_frame, "Step 3: 集計", BTN_AMBER)
+        self._step3_frame = step3  # フロー表示（✓）用に保持
         step3.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
         
         # --- チェックボックス群（集計実行ボタンの上部） ---
@@ -590,14 +606,14 @@ class SaitenSamuraiGUI:
         tk.Checkbutton(
             step3, text="氏名画像を集計シートに表示する",
             variable=self.name_trim_enabled, bg=SECTION_BG,
-            font=("Yu Gothic UI", 8), anchor=tk.W, cursor="hand2"
+            font=FONT_SMALL, anchor=tk.W, cursor="hand2"
         ).pack(fill=tk.X, pady=(0, 3))
 
         # 記述採点を分析に含むチェックボックス（記述ON時のみ表示）
         self._chk_include_desc_analysis = tk.Checkbutton(
             step3, text="記述採点の結果を分析ファイルに含む",
             variable=self.include_descriptive_in_analysis, bg=SECTION_BG,
-            font=("Yu Gothic UI", 8), anchor=tk.W, cursor="hand2"
+            font=FONT_SMALL, anchor=tk.W, cursor="hand2"
         )
         # 記述のみモードではON固定で表示、マーク＋記述では表示
         if self.app_mode == MODE_DESCRIPTIVE_ONLY:
@@ -628,6 +644,82 @@ class SaitenSamuraiGUI:
     # Step 進行ガード
     # ---------------------------------------------------------
 
+    def _apply_button_state(self, btn, enabled):
+        """ボタンの有効/無効を、状態フラグと背景色の両方で切り替える。
+
+        初回呼び出し時に元の背景色を覚え、無効時はフラットな灰色に落とす。
+        「押せる/押せない」が色で一目で分かるようにするための統一入口。
+        """
+        try:
+            if not hasattr(btn, '_enabled_bg'):
+                btn._enabled_bg = btn.cget('bg')
+            if enabled:
+                btn.config(state=tk.NORMAL, bg=btn._enabled_bg)
+            else:
+                btn.config(state=tk.DISABLED, bg=DISABLED_BTN_BG,
+                           disabledforeground=DISABLED_BTN_FG)
+        except Exception:
+            pass
+
+    def _update_flow_indicator(self, step1_done, step2_done, step3_done):
+        """「今どこまで終わっていて、次に押すのはどれか」を画面に常駐させる。
+
+        - 完了した Step のタイトル末尾に ✓ を付ける
+        - 次に押すべきボタン1つだけに濃色の太枠を付ける
+          （4停止: 認識実行 → マークチェック → 採点済み答案を生成 → 集計実行。
+          マークチェックは一度開いたら通過扱い。無効状態でも枠は出す —
+          「ここから始まる」という位置の案内として機能させる）
+
+        従来は有効/無効の文字色差だけが頼りで、初見では
+        「次に押すべきボタンはどれか」を画面が答えていなかった。
+        """
+        if not hasattr(self, '_btn_run_box') or not hasattr(self, '_btn_mark_check'):
+            return
+
+        # ✓ 表示（タイトルは付け外しできるよう毎回ベース名から組み立てる）
+        for frame_attr, done in [('_step1_frame', step1_done),
+                                 ('_step2_frame', step2_done),
+                                 ('_step3_frame', step3_done)]:
+            frame = getattr(self, frame_attr, None)
+            if frame is None:
+                continue
+            try:
+                base = frame.cget('text').replace(' ✓', '')
+                frame.config(text=base + (' ✓' if done else ''))
+            except Exception:
+                pass
+
+        # 次に押すべきボタンの決定
+        try:
+            mark_check_shown = self._btn_mark_check.winfo_manager() != ''
+        except Exception:
+            mark_check_shown = False
+
+        if not step1_done:
+            next_btn = self._btn_run_box
+        elif mark_check_shown and not self._mark_check_visited:
+            next_btn = self._btn_mark_check
+        elif not step2_done:
+            next_btn = self._btn_run_scoring
+        elif not step3_done:
+            next_btn = self._btn_run_summary
+        else:
+            next_btn = None  # 全工程完了
+
+        for btn in [self._btn_run_box, self._btn_mark_check,
+                    self._btn_run_scoring, self._btn_run_summary]:
+            try:
+                btn.config(highlightthickness=0)
+            except Exception:
+                pass
+        if next_btn is not None:
+            try:
+                next_btn.config(highlightthickness=3,
+                                highlightbackground=NEXT_ACTION_BORDER,
+                                highlightcolor=NEXT_ACTION_BORDER)
+            except Exception:
+                pass
+
     def _update_step1_availability(self):
         """Step 1 実行ボタンの有効化/無効化を制御する。
 
@@ -640,7 +732,7 @@ class SaitenSamuraiGUI:
             ready = bool(self.image_folder_path.get())
         else:
             ready = bool(self.image_folder_path.get()) and bool(self.coord_excel_path.get())
-        self._btn_run_box.config(state=tk.NORMAL if ready else tk.DISABLED)
+        self._apply_button_state(self._btn_run_box, ready)
 
     def _update_step_availability(self):
         """ファイルシステムの状態に基づき Step1/2/3 ボタンの有効化を制御する。
@@ -663,6 +755,7 @@ class SaitenSamuraiGUI:
             # フォルダ未選択 → Step2/3 無効
             self._set_step2_enabled(False)
             self._set_step3_enabled(False)
+            self._update_flow_indicator(False, False, False)
             return
 
         base = Path(img_folder)
@@ -696,9 +789,10 @@ class SaitenSamuraiGUI:
             self.last_results_folder = str(final)
             self.open_results_btn.config(state=tk.NORMAL)
 
+        self._update_flow_indicator(step1_done, step2_done, final.exists())
+
     def _set_step2_enabled(self, enabled: bool):
         """Step2 の操作ボタン群を有効化/無効化する"""
-        state = tk.NORMAL if enabled else tk.DISABLED
         for btn in [
             self._btn_mark_check,
             self.desc_scoring_btn,
@@ -706,10 +800,7 @@ class SaitenSamuraiGUI:
             self._btn_total_pos,
             self._btn_run_scoring,
         ]:
-            try:
-                btn.config(state=state)
-            except Exception:
-                pass
+            self._apply_button_state(btn, enabled)
         # 詳細設定リンクは色で表現
         if hasattr(self, '_link_detailed_settings'):
             fg = "#1976D2" if enabled else "#B0BEC5"
@@ -717,11 +808,7 @@ class SaitenSamuraiGUI:
 
     def _set_step3_enabled(self, enabled: bool):
         """Step3 の操作ボタンを有効化/無効化する"""
-        state = tk.NORMAL if enabled else tk.DISABLED
-        try:
-            self._btn_run_summary.config(state=state)
-        except Exception:
-            pass
+        self._apply_button_state(self._btn_run_summary, enabled)
 
     # ---------------------------------------------------------
     # エラーメッセージのユーザーフレンドリー変換
@@ -1839,7 +1926,7 @@ class SaitenSamuraiGUI:
             path_var = tk.StringVar(dialog, value="(未設定)")
             path_vars[key] = (path_var, var, ftypes, desc, expected)
 
-            entry = tk.Entry(row, textvariable=path_var, font=("Yu Gothic UI", 8),
+            entry = tk.Entry(row, textvariable=path_var, font=FONT_SMALL,
                              bg="#F9F9F9", relief=tk.FLAT, state="readonly", width=40)
             entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 5))
 
@@ -1854,7 +1941,7 @@ class SaitenSamuraiGUI:
                     pv.set(selected)
 
             tk.Button(row, text="参照...", command=_browse,
-                      font=("Yu Gothic UI", 8), bg="#EEEEEE",
+                      font=FONT_SMALL, bg="#EEEEEE",
                       relief=tk.FLAT, width=6, cursor="hand2").pack(side=tk.LEFT)
 
         # ボタン行
@@ -2633,13 +2720,13 @@ class SaitenSamuraiGUI:
             self._cancel_frame.pack(fill=tk.X, pady=(2, 0))
             self._btn_cancel.config(state=tk.NORMAL)
             for btn in action_buttons:
-                btn.config(state=tk.DISABLED)
+                self._apply_button_state(btn, False)
         else:
             self._progress_bar["value"] = 0
             self._progress_bar.pack_forget()
             self._cancel_frame.pack_forget()
             for btn in action_buttons:
-                btn.config(state=tk.NORMAL)
+                self._apply_button_state(btn, True)
             # Stepガードを再適用（未設定ボタンを無条件にNORMALに戻さない）
             self._update_step_availability()
 
@@ -3237,6 +3324,9 @@ class SaitenSamuraiGUI:
         if not self.image_folder_path.get():
             messagebox.showerror("エラー", "画像フォルダを選択してください")
             return
+        # 「次はこれ」誘導の通過判定（開いた時点で次の停止＝採点生成へ進める）
+        self._mark_check_visited = True
+        self._update_step_availability()
         
         results_folder = Path(self.image_folder_path.get()) / RESULTS_FOLDER
         coordinates_csv = results_folder / RESULTS_DATA_FOLDER / "coordinates.csv"

@@ -984,3 +984,106 @@ class TestDescriptiveStatusInitialDisplay:
             assert "フォルダ未選択" in text
         finally:
             top.destroy()
+
+
+class TestFlowIndicator:
+    """「次に押すべきボタン」の枠と Step タイトルの ✓（4停止フロー）。
+
+    従来は有効/無効の文字色差だけが頼りで、初見では次に押すボタンが
+    画面から読み取れなかった。
+    """
+
+    def _app(self, tmp_path=None):
+        import tkinter as tk
+        from conftest import get_shared_tk_root
+        from main_gui import SaitenSamuraiGUI
+        from constants import MODE_MARK_ONLY
+        top = tk.Toplevel(get_shared_tk_root())
+        top.withdraw()
+        return SaitenSamuraiGUI(top, mode=MODE_MARK_ONLY), top
+
+    def _thickness(self, btn):
+        return int(str(btn.cget('highlightthickness')))
+
+    def _next_of(self, app):
+        marked = [name for name in ('_btn_run_box', '_btn_mark_check',
+                                    '_btn_run_scoring', '_btn_run_summary')
+                  if self._thickness(getattr(app, name)) > 0]
+        return marked
+
+    def _make_results(self, tmp_path, boxed=False, scored=False, final=False):
+        from constants import RESULTS_FOLDER, BOXED_FOLDER, SCORED_FOLDER, FINAL_REPORT_FOLDER
+        base = tmp_path / RESULTS_FOLDER
+        if boxed:
+            d = base / BOXED_FOLDER; d.mkdir(parents=True, exist_ok=True)
+            (d / 'a.png').write_bytes(b'x')
+        if scored:
+            d = base / SCORED_FOLDER; d.mkdir(parents=True, exist_ok=True)
+            (d / 'a.png').write_bytes(b'x')
+        if final:
+            (base / FINAL_REPORT_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    def test_initial_next_is_step1(self):
+        app, top = self._app()
+        try:
+            assert self._next_of(app) == ['_btn_run_box']
+            assert '✓' not in app._step1_frame.cget('text')
+        finally:
+            top.destroy()
+
+    def test_after_step1_next_is_mark_check(self, tmp_path):
+        app, top = self._app()
+        try:
+            self._make_results(tmp_path, boxed=True)
+            app.image_folder_path.set(str(tmp_path))
+            app._update_step_availability()
+            assert self._next_of(app) == ['_btn_mark_check']
+            assert app._step1_frame.cget('text').endswith('✓')
+        finally:
+            top.destroy()
+
+    def test_after_mark_check_visited_next_is_scoring(self, tmp_path):
+        app, top = self._app()
+        try:
+            self._make_results(tmp_path, boxed=True)
+            app.image_folder_path.set(str(tmp_path))
+            app._mark_check_visited = True
+            app._update_step_availability()
+            assert self._next_of(app) == ['_btn_run_scoring']
+        finally:
+            top.destroy()
+
+    def test_after_scoring_next_is_summary(self, tmp_path):
+        app, top = self._app()
+        try:
+            self._make_results(tmp_path, boxed=True, scored=True)
+            app.image_folder_path.set(str(tmp_path))
+            app._mark_check_visited = True
+            app._update_step_availability()
+            assert self._next_of(app) == ['_btn_run_summary']
+            assert app._step2_frame.cget('text').endswith('✓')
+        finally:
+            top.destroy()
+
+    def test_all_done_no_highlight_all_checked(self, tmp_path):
+        app, top = self._app()
+        try:
+            self._make_results(tmp_path, boxed=True, scored=True, final=True)
+            app.image_folder_path.set(str(tmp_path))
+            app._mark_check_visited = True
+            app._update_step_availability()
+            assert self._next_of(app) == []
+            for f in (app._step1_frame, app._step2_frame, app._step3_frame):
+                assert f.cget('text').endswith('✓')
+        finally:
+            top.destroy()
+
+    def test_disabled_button_style_unified(self):
+        """無効ボタンは灰地になる（パステル地＋灰文字の曖昧さ解消）"""
+        from main_gui import DISABLED_BTN_BG
+        app, top = self._app()
+        try:
+            assert str(app._btn_run_scoring.cget('state')) == 'disabled'
+            assert app._btn_run_scoring.cget('bg') == DISABLED_BTN_BG
+        finally:
+            top.destroy()

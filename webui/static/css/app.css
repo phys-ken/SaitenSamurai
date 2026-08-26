@@ -1,0 +1,35 @@
+/* 採点侍 webui — ビルドなし・素のCSS。
+   固定px幅を避け、フレックスと相対単位で組む（tk時代の見切れ問題の再発防止） */
+:root {
+  --bg: #f5f7f9;
+  --panel: #ffffff;
+  --text: #263238;
+  --muted: #78909c;
+  --accent: #1565c0;
+  --ok: #2e7d32;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: "Yu Gothic UI", "Noto Sans CJK JP", "Hiragino Sans", sans-serif;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid #e0e5e9;
+}
+.topbar h1 { font-size: 1.15rem; margin: 0; color: var(--accent); }
+.version { font-size: 0.8rem; color: var(--muted); font-weight: normal; }
+.bridge-status { margin-left: auto; font-size: 0.8rem; color: var(--muted); }
+.bridge-status[data-state="ok"] { color: var(--ok); }
+.bridge-status[data-state="error"] { color: #c62828; }
+main#app { flex: 1; padding: 1rem; overflow: auto; }
+.placeholder { color: var(--muted); }

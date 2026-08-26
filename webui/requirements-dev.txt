@@ -1,0 +1,6 @@
+# 開発・テスト用（配布物には含めない）
+-r requirements.txt
+PySide6          # Linux での pywebview プレビュー用 (Qt バックエンド)
+qtpy
+playwright       # L2: ブラウザ単体のUIテスト
+pytest-playwright

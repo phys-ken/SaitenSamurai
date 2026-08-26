@@ -1,0 +1,2 @@
+# webui の実行時依存（root の requirements.txt とは独立 — tk exe の経路を汚さない）
+pywebview>=6.0

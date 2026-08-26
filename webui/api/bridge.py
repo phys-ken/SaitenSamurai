@@ -25,6 +25,7 @@ from api.checker import CheckerMixin  # noqa: E402
 from api.sheets import SheetsMixin  # noqa: E402
 from api.descriptive import DescriptiveMixin  # noqa: E402
 from api.session import SessionMixin  # noqa: E402
+from api.handwriting import HandwritingMixin  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,7 @@ class DataSourceMixin:
         self.state["image_count"] = count
         self._load_descriptive_state()
         self._load_total_display_state()
+        self._load_handwriting_state()
         # 正答データの自動検出（tk auto_detect_template 相当）
         auto_key = None
         if not self.state["answer_key"]:
@@ -250,7 +252,7 @@ class DataSourceMixin:
 
 
 class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin,
-             DescriptiveMixin, SessionMixin):
+             DescriptiveMixin, SessionMixin, HandwritingMixin):
     """pywebview の js_api として渡すクラス。
 
     window_adapter: ネイティブ機能の注入点。必要なメソッド:
@@ -265,6 +267,7 @@ class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin,
         self._init_jobs()
         self._init_checker()
         self._init_descriptive()
+        self._init_handwriting()
 
     # --- 疎通・情報 -------------------------------------------------
 

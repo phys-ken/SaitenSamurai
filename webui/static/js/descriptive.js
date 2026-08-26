@@ -9,6 +9,10 @@ import { pickRegion } from './region-picker.js';
 import { withTransition } from './transitions.js';
 import { createVirtualGrid, createImageLoader } from './vlist.js';
 import { openLightbox } from './lightbox.js';
+import {
+  wireHandwriting, loadHandwriting, layoutHandwriting,
+  setCommentMode, isCommentMode, undoHandwriting, redoHandwriting,
+} from './handwriting.js';
 
 let logFn = () => {};
 let onStateUpdate = () => {};
@@ -450,6 +454,8 @@ function layoutSheet() {
   const layer = el('annotation-layer');
   layer.style.width = `${img.clientWidth}px`;
   layer.style.height = `${img.clientHeight}px`;
+  layoutHandwriting(img.clientWidth, img.clientHeight,
+                    img.naturalWidth, img.naturalHeight);
   layer.replaceChildren(...sheetQuestions.map((q) => {
     const [x1, y1, x2, y2] = q.region;
     const sc = sheetScore(q.id, filename);
@@ -551,6 +557,7 @@ async function gotoSheet(index) {
   const firstUnscored = sheetQuestions.find((q) => sheetScore(q.id, filename) === null);
   focusedQid = (firstUnscored ?? sheetQuestions[0])?.id ?? null;
   el('sheet-stage').scrollTop = 0;
+  await loadHandwriting(filename);
   layoutSheet();
   renderSheetSide();
 }
@@ -642,6 +649,22 @@ function sheetKeyHandler(e) {
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
   if (!sheetFiles.length) return;
 
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault();
+    if (e.shiftKey) redoHandwriting(); else undoHandwriting();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+    e.preventDefault();
+    redoHandwriting();
+    return;
+  }
+  if (e.key === 'c' || e.key === 'C') {
+    e.preventDefault();
+    setCommentMode(!isCommentMode());
+    return;
+  }
+
   if (e.key >= '0' && e.key <= '9') {
     e.preventDefault();
     const q = sheetQuestions.find((x) => x.id === focusedQid);
@@ -696,7 +719,8 @@ export async function openSingleSheet() {
   const listing = await call('list_sheet_files');
   sheetFiles = listing.files;
   const state = (await call('get_state')).state;
-  sheetQuestions = state.descriptive.questions;
+  // マーク系モードでは記述設定が無い → コメント専用ビューとして開く
+  sheetQuestions = state.descriptive?.questions ?? [];
   // 全問題の得点表を一括で読み込み、以後はローカルで持つ
   // （1枚ごとに全問題を照会すると 100問×移動のたびに往復してしまう）
   sheetScores = {};
@@ -760,6 +784,9 @@ export function wireDescriptive(log, stateUpdate) {
     gridCardWidth = parseInt(ev.target.value, 10);
     await renderDescGrid();
   });
+  wireHandwriting(log);
+  el('btn-annotate').addEventListener('click', () =>
+    openSingleSheet().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
   el('btn-open-original').addEventListener('click', async () => {
     try {
       await call('open_original_image', sheetFiles[sheetIndex]);
@@ -769,8 +796,11 @@ export function wireDescriptive(log, stateUpdate) {
 
   el('btn-single-sheet').addEventListener('click', () =>
     openSingleSheet().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
-  el('btn-single-close').addEventListener('click', () =>
-    openDescScoring().catch((e) => { log(`❌ ${e.message}`); }));
+  el('btn-single-close').addEventListener('click', () => {
+    // コメント専用（記述問題なし）で開いた場合はメイン画面へ戻る
+    if (!sheetQuestions.length) { showView(null); return; }
+    openDescScoring().catch((e) => { log(`❌ ${e.message}`); });
+  });
   el('btn-sheet-prev').addEventListener('click', () => gotoSheet(sheetIndex - 1));
   el('btn-sheet-next').addEventListener('click', () => gotoSheet(sheetIndex + 1));
   el('btn-sheet-unfinished').addEventListener('click', jumpToUnfinishedSheet);

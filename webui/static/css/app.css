@@ -486,3 +486,17 @@ input, select {
 .map-body h3 { font-size: 0.95rem; margin: 0.8rem 0 0.2rem; }
 .btn-small { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
 .topbar .btn-small { margin-left: 0.8rem; }
+
+/* ── 手書きコメント ── */
+.hw-canvas { position: absolute; inset: 0; pointer-events: none; }
+.sheet-stage.commenting { cursor: crosshair; }
+.hw-toolbar { display: inline-flex; align-items: center; gap: 0.25rem; margin-left: auto; }
+.hw-toolbar .btn { padding: 0.25rem 0.55rem; font-size: 0.85rem; }
+.hw-toolbar .btn.active { background: var(--sumi); border-color: var(--sumi); color: var(--paper); }
+.hw-color { width: 1.7em; height: 1.7em; padding: 0; position: relative; }
+.hw-color::after {
+  content: ""; position: absolute; inset: 4px; border-radius: 50%;
+  background: var(--hw-color);
+}
+.hw-color.active { border-color: var(--sumi); border-width: 2px; }
+#hw-colors, #hw-widths { display: inline-flex; gap: 0.25rem; }

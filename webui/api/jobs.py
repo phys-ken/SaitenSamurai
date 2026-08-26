@@ -178,6 +178,7 @@ class JobsMixin:
             self.state["image_count"] = count
             self._load_descriptive_state()
             self._load_total_display_state()
+            self._load_handwriting_state()
         return dict(kind="pdf_import", ok=True, cancelled=cancelled,
                     message=("中断しました" if cancelled else
                              f"PDF展開が完了しました（{len(pdf_files)}ファイル）"
@@ -330,9 +331,13 @@ class JobsMixin:
                 self._desc_scores["scores"], str(out),
                 rendering_settings=self.state["rendering_settings"])
         cancelled = self._cancel_event.is_set()
+        baked = 0
+        if not cancelled:
+            baked = self._bake_handwriting(out)
+        note = f"（手書きコメント {baked} 枚を反映）" if baked else ""
         return dict(kind="scoring", ok=True, cancelled=cancelled,
                     message=("中断しました" if cancelled
-                             else f"採点済み答案の生成が完了しました → {out}"))
+                             else f"採点済み答案の生成が完了しました{note} → {out}"))
 
     # --- 集計 -------------------------------------------------------
 

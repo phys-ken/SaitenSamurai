@@ -157,6 +157,10 @@
       <span class="hint" id="desc-progress-hint"></span>
       <button class="info-btn" data-info="desc-config">ℹ</button>
     </div>
+    <div class="ds-row mark-only-ui">
+      <button class="btn" id="btn-annotate">答案に書き込む</button>
+      <span class="hint">マウスやペンタブレットで答案に手書きコメントを書けます（採点済み答案に反映）</span>
+    </div>
     <div class="ds-row">
       <button class="btn btn-primary" id="btn-run-scoring">▶ 採点済み答案を生成</button>
       <span class="hint">○×・得点を描き込んだ答案画像を出力します</span>
@@ -249,11 +253,21 @@
       <button class="btn" id="btn-zoom-100">原寸</button>
       <span class="hint" id="zoom-label">100%</span>
       <span class="hint">Ctrl＋ホイール＝拡大縮小 ／ ドラッグ＝移動 ／ ←→＝答案 ／ ↑↓＝設問 ／ 数字キー＝採点</span>
+      <span id="hw-toolbar" class="hw-toolbar">
+        <button class="btn" id="btn-hw-toggle" title="マウスで書き込む（C）。ペンはいつでも書けます">✎ コメント</button>
+        <span id="hw-colors"></span>
+        <span id="hw-widths"></span>
+        <button class="btn" id="btn-hw-eraser" title="ストローク単位で消します">消しゴム</button>
+        <button class="btn" id="btn-hw-undo">戻す</button>
+        <button class="btn" id="btn-hw-redo">やり直す</button>
+        <button class="btn" id="btn-hw-clear">全消去</button>
+      </span>
     </div>
     <div class="single-layout">
       <div class="sheet-stage" id="sheet-stage">
         <img id="sheet-image" alt="答案">
         <div class="annotation-layer" id="annotation-layer"></div>
+        <canvas id="hw-canvas" class="hw-canvas"></canvas>
       </div>
       <aside class="sheet-side" id="sheet-side"></aside>
     </div>

@@ -124,7 +124,7 @@ def test_single_sheet_view_overlays_and_navigation(open_app):
     side1.locator(".score-btn", has_text="5").first.click()
     page.wait_for_function(
         "document.querySelector('#annotation-layer .region-label').textContent.includes('5点')")
-    assert "— 5点" in page.locator("#sheet-side .side-q").nth(0).inner_text()
+    assert "5点" in page.locator("#sheet-side .side-q .score-mark").first.inner_text()
     # 次の答案へ → ファイル名が変わり、得点は答案ごとに独立
     page.click("#btn-sheet-next")
     page.wait_for_function(

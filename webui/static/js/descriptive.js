@@ -14,7 +14,7 @@ let onStateUpdate = () => {};
 const el = (id) => document.getElementById(id);
 
 function showView(id) {
-  withTransition(() => {
+  return withTransition(() => {
     document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
     for (const v of ['desc-config-view', 'desc-scoring-view', 'single-sheet-view']) {
       el(v).hidden = v !== id;
@@ -68,7 +68,7 @@ async function renderConfigTable() {
 }
 
 export async function openDescConfig() {
-  showView('desc-config-view');
+  await showView('desc-config-view');
   await renderConfigTable();
 }
 
@@ -308,52 +308,73 @@ export async function openDescScoring() {
   const state = (await call('get_state')).state;
   if (!state.descriptive.questions.length) return;
   currentQid = currentQid ?? state.descriptive.questions[0].id;
-  showView('desc-scoring-view');
+  await showView('desc-scoring-view');
   await renderQTabs();
   await renderDescGrid();
   logFn('記述採点を開きました（数字キーで得点、自動で次の未採点へ進みます）');
 }
 
 // ================================================================
-// 一枚採点ビュー
+// 一枚採点ビュー（ズーム/パン＋キーボード動線）
 // ================================================================
 
 let sheetFiles = [];
 let sheetIndex = 0;
 let focusedQid = null;
+let sheetQuestions = [];          // openSingleSheet で確定
+let sheetScores = {};             // qid -> {filename -> score} 全読み込み・ローカル更新
+let sheetZoom = null;             // null = 幅フィット / 数値 = 倍率
+let sheetDigitBuf = '';
+let sheetDigitTimer = null;
 
-async function renderSingleSheet() {
+const sheetLoader = createImageLoader(
+  (filename) => call('get_sheet_image', filename).then((r) => r.data_url),
+  { concurrency: 3, cacheSize: 30 });
+
+function sheetScore(qid, filename) {
+  const v = sheetScores[qid]?.[filename];
+  return v === undefined ? null : v;
+}
+
+function sheetCompleteCount() {
+  return sheetFiles.filter((f) =>
+    sheetQuestions.every((q) => sheetScore(q.id, f) !== null)).length;
+}
+
+function renderSheetHead() {
   const filename = sheetFiles[sheetIndex];
   el('single-sheet-name').textContent =
-    `${filename}（${sheetIndex + 1} / ${sheetFiles.length}）`;
+    `${filename}（${sheetIndex + 1} / ${sheetFiles.length}）` +
+    ` ─ 全問採点済み ${sheetCompleteCount()} 枚`;
   el('btn-sheet-prev').disabled = sheetIndex === 0;
   el('btn-sheet-next').disabled = sheetIndex >= sheetFiles.length - 1;
+}
 
-  const sheet = await call('get_sheet_image', filename);
+/** 現在のズーム設定に合わせて画像幅を決め、領域オーバーレイを敷き直す */
+function layoutSheet() {
   const img = el('sheet-image');
-  await new Promise((resolve) => {
-    img.onload = resolve;
-    img.src = sheet.data_url;
-  });
+  const stage = el('sheet-stage');
+  if (!img.naturalWidth) return;
+  if (sheetZoom === null) {
+    img.style.width = '100%';
+  } else {
+    img.style.width = `${img.naturalWidth * sheetZoom}px`;
+  }
+  const pct = Math.round((img.clientWidth / img.naturalWidth) * 100);
+  el('zoom-label').textContent = `${pct}%`;
 
-  const state = (await call('get_state')).state;
-  const questions = state.descriptive.questions;
-  const layer = el('annotation-layer');
-  const side = el('sheet-side');
+  const filename = sheetFiles[sheetIndex];
   const sx = img.clientWidth / img.naturalWidth;
   const sy = img.clientHeight / img.naturalHeight;
-
-  const targetsByQ = {};
-  for (const q of questions) {
-    const t = await call('list_descriptive_targets', q.id);
-    targetsByQ[q.id] = t.items.find((i) => i.filename === filename) ?? { score: null };
-  }
-
-  layer.replaceChildren(...questions.map((q) => {
+  const layer = el('annotation-layer');
+  layer.style.width = `${img.clientWidth}px`;
+  layer.style.height = `${img.clientHeight}px`;
+  layer.replaceChildren(...sheetQuestions.map((q) => {
     const [x1, y1, x2, y2] = q.region;
+    const sc = sheetScore(q.id, filename);
     const box = document.createElement('div');
     box.className = 'region-box' +
-      (targetsByQ[q.id].score !== null ? ' scored' : '') +
+      (sc !== null ? ' scored' : '') +
       (q.id === focusedQid ? ' focused' : '');
     Object.assign(box.style, {
       left: `${x1 * sx}px`, top: `${y1 * sy}px`,
@@ -361,41 +382,243 @@ async function renderSingleSheet() {
     });
     const label = document.createElement('span');
     label.className = 'region-label';
-    const sc = targetsByQ[q.id].score;
     label.textContent = `${q.name}: ${sc === null ? '未' : sc + '点'}`;
     box.appendChild(label);
-    box.addEventListener('click', () => {
-      focusedQid = q.id;
-      renderSingleSheet();
-    });
+    box.addEventListener('click', () => { focusedQid = q.id; layoutSheet(); renderSheetSide(); });
     return box;
   }));
+}
 
-  side.replaceChildren(...questions.map((q) => {
+function renderSheetSide() {
+  const filename = sheetFiles[sheetIndex];
+  const side = el('sheet-side');
+  side.replaceChildren(...sheetQuestions.map((q) => {
     const div = document.createElement('div');
     div.className = 'side-q' + (q.id === focusedQid ? ' focused' : '');
     const h = document.createElement('h3');
-    const sc = targetsByQ[q.id].score;
-    h.textContent = `${q.name}（${q.max_score}点満点）` +
-      (sc === null ? '' : ` — ${sc}点`);
-    div.append(h, scoreButtons(q.max_score, sc, async (v) => {
-      try {
-        await call('set_descriptive_score', filename, q.id, v);
+    const sc = sheetScore(q.id, filename);
+    h.textContent = `${q.name}（${q.max_score}点満点）`;
+    if (sc !== null) {
+      const mark = document.createElement('span');
+      mark.className = 'score-mark';
+      mark.textContent = ` ${sc}点`;
+      h.appendChild(mark);
+    }
+    div.append(h, scoreButtons(q.max_score, sc,
+      (v) => setSheetScore(q.id, v)));
+    div.addEventListener('click', (e) => {
+      if (e.target === div || e.target === h) {
         focusedQid = q.id;
-        await renderSingleSheet();
-      } catch (e) { logFn(`❌ ${e.message}`); }
-    }));
+        layoutSheet();
+        renderSheetSide();
+      }
+    });
     return div;
   }));
+}
+
+async function setSheetScore(qid, v) {
+  const filename = sheetFiles[sheetIndex];
+  try {
+    await call('set_descriptive_score', filename, qid, v);
+  } catch (e) {
+    logFn(`❌ ${e.message}`);
+    return;
+  }
+  (sheetScores[qid] ??= {})[filename] = v === null ? undefined : v;
+  if (v === null) delete sheetScores[qid][filename];
+  if (v !== null) advanceSheetFocus(qid);
+  layoutSheet();
+  renderSheetSide();
+  renderSheetHead();
+}
+
+/** 採点後の自動送り: 同じ答案の次の未採点問題 → なければ次の答案へ */
+function advanceSheetFocus(fromQid) {
+  const filename = sheetFiles[sheetIndex];
+  const start = sheetQuestions.findIndex((q) => q.id === fromQid);
+  for (let k = 1; k <= sheetQuestions.length; k++) {
+    const q = sheetQuestions[(start + k) % sheetQuestions.length];
+    if (sheetScore(q.id, filename) === null) {
+      focusedQid = q.id;
+      return;
+    }
+  }
+  if (sheetIndex < sheetFiles.length - 1) {
+    gotoSheet(sheetIndex + 1);
+  } else {
+    logFn('✓ 最後の答案まで採点しました');
+  }
+}
+
+async function gotoSheet(index) {
+  sheetIndex = Math.min(sheetFiles.length - 1, Math.max(0, index));
+  const filename = sheetFiles[sheetIndex];
+  renderSheetHead();
+  const img = el('sheet-image');
+  const url = await sheetLoader.load(filename, filename);
+  await new Promise((resolve) => {
+    img.onload = resolve;
+    img.src = url;
+  });
+  // 次の答案を先読みしておく（ページ送りを待たせない）
+  if (sheetIndex + 1 < sheetFiles.length) {
+    const next = sheetFiles[sheetIndex + 1];
+    sheetLoader.load(next, next).catch(() => {});
+  }
+  // フォーカスはこの答案の最初の未採点問題へ
+  const firstUnscored = sheetQuestions.find((q) => sheetScore(q.id, filename) === null);
+  focusedQid = (firstUnscored ?? sheetQuestions[0])?.id ?? null;
+  el('sheet-stage').scrollTop = 0;
+  layoutSheet();
+  renderSheetSide();
+}
+
+/** 次の「未採点が残っている」答案へ */
+function jumpToUnfinishedSheet() {
+  const n = sheetFiles.length;
+  for (let k = 1; k <= n; k++) {
+    const idx = (sheetIndex + k) % n;
+    const f = sheetFiles[idx];
+    if (sheetQuestions.some((q) => sheetScore(q.id, f) === null)) {
+      gotoSheet(idx);
+      return;
+    }
+  }
+  logFn('✓ すべての答案が採点済みです');
+}
+
+// ── ズーム/パン ──
+function zoomBy(factor, cx, cy) {
+  const stage = el('sheet-stage');
+  const img = el('sheet-image');
+  const cur = img.clientWidth / img.naturalWidth;
+  const next = Math.min(4, Math.max(0.2, cur * factor));
+  // カーソル位置を保ったまま拡縮する
+  const rx = (stage.scrollLeft + cx) / img.clientWidth;
+  const ry = (stage.scrollTop + cy) / img.clientHeight;
+  sheetZoom = next;
+  layoutSheet();
+  stage.scrollLeft = rx * img.clientWidth - cx;
+  stage.scrollTop = ry * img.clientHeight - cy;
+}
+
+function wireSheetStage() {
+  const stage = el('sheet-stage');
+  stage.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;          // 通常ホイールはスクロールのまま
+    e.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2,
+           e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  // ドラッグでパン（領域クリックと区別するため少し動いてから発動）
+  let pan = null;
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    pan = { x: e.clientX, y: e.clientY,
+            left: stage.scrollLeft, top: stage.scrollTop, moved: false };
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!pan) return;
+    const dx = e.clientX - pan.x;
+    const dy = e.clientY - pan.y;
+    if (!pan.moved && Math.hypot(dx, dy) > 4) {
+      pan.moved = true;
+      stage.setPointerCapture(e.pointerId);
+      stage.classList.add('panning');
+    }
+    if (pan.moved) {
+      stage.scrollLeft = pan.left - dx;
+      stage.scrollTop = pan.top - dy;
+    }
+  });
+  const endPan = () => { pan = null; stage.classList.remove('panning'); };
+  stage.addEventListener('pointerup', endPan);
+  stage.addEventListener('pointercancel', endPan);
+
+  el('btn-zoom-fit').addEventListener('click', () => { sheetZoom = null; layoutSheet(); });
+  el('btn-zoom-100').addEventListener('click', () => { sheetZoom = 1; layoutSheet(); });
+}
+
+// ── キーボード ──
+function commitSheetDigits() {
+  clearTimeout(sheetDigitTimer);
+  sheetDigitTimer = null;
+  if (sheetDigitBuf === '') return;
+  const v = parseInt(sheetDigitBuf, 10);
+  sheetDigitBuf = '';
+  const q = sheetQuestions.find((x) => x.id === focusedQid);
+  if (!q) return;
+  if (v <= q.max_score) setSheetScore(q.id, v);
+  else logFn(`❌ ${v} 点は満点（${q.max_score}点）を超えています`);
+}
+
+function sheetKeyHandler(e) {
+  if (el('single-sheet-view').hidden) return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (!sheetFiles.length) return;
+
+  if (e.key >= '0' && e.key <= '9') {
+    e.preventDefault();
+    const q = sheetQuestions.find((x) => x.id === focusedQid);
+    if (!q) return;
+    if (q.max_score <= 9) {
+      const v = parseInt(e.key, 10);
+      if (v <= q.max_score) setSheetScore(q.id, v);
+      else logFn(`❌ ${v} 点は満点（${q.max_score}点）を超えています`);
+      return;
+    }
+    sheetDigitBuf += e.key;
+    if (parseInt(sheetDigitBuf + '0', 10) > q.max_score) commitSheetDigits();
+    else {
+      clearTimeout(sheetDigitTimer);
+      sheetDigitTimer = setTimeout(commitSheetDigits, 500);
+    }
+    return;
+  }
+  if (e.key === 'Enter') { e.preventDefault(); commitSheetDigits(); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    e.preventDefault();
+    sheetDigitBuf = '';
+    if (focusedQid) setSheetScore(focusedQid, null);
+    return;
+  }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); gotoSheet(sheetIndex - 1); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); gotoSheet(sheetIndex + 1); return; }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const i = sheetQuestions.findIndex((q) => q.id === focusedQid);
+    const d = e.key === 'ArrowUp' ? -1 : 1;
+    const next = sheetQuestions[
+      (i + d + sheetQuestions.length) % sheetQuestions.length];
+    focusedQid = next?.id ?? focusedQid;
+    layoutSheet();
+    renderSheetSide();
+  }
 }
 
 export async function openSingleSheet() {
   const listing = await call('list_sheet_files');
   sheetFiles = listing.files;
-  sheetIndex = 0;
-  showView('single-sheet-view');
-  await renderSingleSheet();
-  logFn('📄 一枚採点モードを開きました');
+  const state = (await call('get_state')).state;
+  sheetQuestions = state.descriptive.questions;
+  // 全問題の得点表を一括で読み込み、以後はローカルで持つ
+  // （1枚ごとに全問題を照会すると 100問×移動のたびに往復してしまう）
+  sheetScores = {};
+  for (const q of sheetQuestions) {
+    const t = await call('list_descriptive_targets', q.id);
+    sheetScores[q.id] = {};
+    for (const item of t.items) {
+      if (item.score !== null) sheetScores[q.id][item.filename] = item.score;
+    }
+  }
+  sheetZoom = null;
+  await showView('single-sheet-view');
+  await gotoSheet(sheetIndex);
+  logFn('一枚採点を開きました（←→で答案を移動、数字キーで採点）');
 }
 
 // ================================================================
@@ -437,6 +660,9 @@ export function wireDescriptive(log, stateUpdate) {
     openSingleSheet().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
   el('btn-single-close').addEventListener('click', () =>
     openDescScoring().catch((e) => { log(`❌ ${e.message}`); }));
-  el('btn-sheet-prev').addEventListener('click', () => { sheetIndex--; renderSingleSheet(); });
-  el('btn-sheet-next').addEventListener('click', () => { sheetIndex++; renderSingleSheet(); });
+  el('btn-sheet-prev').addEventListener('click', () => gotoSheet(sheetIndex - 1));
+  el('btn-sheet-next').addEventListener('click', () => gotoSheet(sheetIndex + 1));
+  el('btn-sheet-unfinished').addEventListener('click', jumpToUnfinishedSheet);
+  document.addEventListener('keydown', sheetKeyHandler);
+  wireSheetStage();
 }

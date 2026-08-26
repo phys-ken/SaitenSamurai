@@ -131,3 +131,73 @@ def test_jump_to_next_unscored(open_app):
     page.wait_for_selector("#desc-grid .entry-card.cursor[data-index='0']")
     page.click("#btn-jump-unscored")
     page.wait_for_selector("#desc-grid .entry-card.cursor[data-index='2']")
+
+
+# ── 一枚採点（キーボード動線・ズーム） ─────────────────────────
+SHEET_API = API.replace(
+    "select_image_folder: async () => ({ok: true, cancelled: true}),",
+    """select_image_folder: async () => ({ok: true, cancelled: true}),
+    list_sheet_files: async () => ({ok: true, files: files}),
+    get_sheet_image: async (f) => ({ok: true, filename: f ?? files[0],
+                                    data_url: '%(png)s'}),""" % {"png": TINY_PNG})
+
+
+def _open_single(page):
+    enter_mode(page, DESC_CARD)
+    page.click("#btn-desc-scoring")
+    page.wait_for_selector("#desc-scoring-view", state="visible")
+    page.click("#btn-single-sheet")
+    page.wait_for_selector("#single-sheet-view", state="visible")
+    page.wait_for_selector("#annotation-layer .region-box")
+
+
+def test_single_sheet_key_scoring_advances_to_next_sheet(open_app):
+    page = open_app(SHEET_API)
+    _open_single(page)
+    assert "s001.png" in page.locator("#single-sheet-name").inner_text()
+    # 問1に3点 → フォーカスが問2へ、問2に9点 → 全問済みで次の答案へ自動送り
+    page.keyboard.press("3")
+    page.wait_for_function("window.__desc.scores['s001.png'].D1 === 3")
+    page.keyboard.press("9")
+    page.wait_for_function("window.__desc.scores['s001.png'].D2 === 9")
+    page.wait_for_function(
+        "document.querySelector('#single-sheet-name').textContent.includes('s002.png')")
+    assert "全問採点済み 1 枚" in page.locator("#single-sheet-name").inner_text()
+    # ←で戻ると採点済みの朱枠とラベルが見える
+    page.keyboard.press("ArrowLeft")
+    page.wait_for_function(
+        "document.querySelector('#single-sheet-name').textContent.includes('s001.png')")
+    # ヘッダ更新→画像ロード→オーバーレイ敷設の順なので、敷設完了を待つ
+    page.wait_for_function(
+        "document.querySelectorAll('#annotation-layer .region-box.scored').length === 2")
+
+
+def test_single_sheet_zoom_buttons(open_app):
+    page = open_app(SHEET_API)
+    _open_single(page)
+    fit = page.evaluate("document.getElementById('sheet-image').clientWidth")
+    page.click("#btn-zoom-100")
+    page.wait_for_function(
+        "document.getElementById('zoom-label').textContent === '100%'")
+    natural = page.evaluate("document.getElementById('sheet-image').clientWidth")
+    assert natural == page.evaluate(
+        "document.getElementById('sheet-image').naturalWidth")
+    page.click("#btn-zoom-fit")
+    page.wait_for_function(
+        f"document.getElementById('sheet-image').clientWidth === {fit}")
+
+
+def test_jump_to_unfinished_sheet(open_app):
+    page = open_app(SHEET_API)
+    _open_single(page)
+    # s001 を全問採点 → s002 に自動送りされた状態から、s001 に戻ってジャンプ
+    page.keyboard.press("2")
+    page.keyboard.press("8")
+    page.wait_for_function(
+        "document.querySelector('#single-sheet-name').textContent.includes('s002.png')")
+    page.keyboard.press("ArrowLeft")
+    page.wait_for_function(
+        "document.querySelector('#single-sheet-name').textContent.includes('s001.png')")
+    page.click("#btn-sheet-unfinished")
+    page.wait_for_function(
+        "document.querySelector('#single-sheet-name').textContent.includes('s002.png')")

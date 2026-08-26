@@ -377,3 +377,7 @@ input, select {
   max-width: 94vw; max-height: 92vh;
   background: var(--paper); border: 1px solid var(--kei);
 }
+.sheet-stage { cursor: grab; }
+.sheet-stage.panning { cursor: grabbing; }
+.sheet-stage img { user-select: none; -webkit-user-drag: none; }
+.annotation-layer { width: 100%; height: 100%; }

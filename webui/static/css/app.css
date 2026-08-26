@@ -66,7 +66,16 @@ body {
   margin: 0;
   color: var(--sumi);
 }
-.version { font-size: 0.78rem; color: var(--usuzumi); font-weight: normal; letter-spacing: 0; }
+.version { font-size: 0.78rem; color: var(--usuzumi-2); font-weight: normal;
+           letter-spacing: 0; cursor: default; }
+/* 採点対象（答案フォルダ名）: いま何の試験を採点しているかを常に見せる */
+.current-folder {
+  font-size: 0.88rem; color: var(--sumi);
+  max-width: 22em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.current-folder:not(:empty)::before {
+  content: "採点対象："; color: var(--usuzumi); font-size: 0.8rem;
+}
 .mode-badge {
   font-family: var(--font-body);
   font-size: 0.78rem; letter-spacing: 0;
@@ -77,8 +86,8 @@ body {
   vertical-align: 0.15em;
 }
 .bridge-status { margin-left: auto; font-size: 0.8rem; color: var(--usuzumi); }
-.bridge-status[data-state="ok"] { color: var(--print-green); }
-.bridge-status[data-state="error"] { color: var(--shu-dark); }
+.bridge-status[data-state="ok"] { visibility: hidden; }  /* 正常は黙る。異常だけ知らせる */
+.bridge-status[data-state="error"] { color: var(--shu-dark); font-weight: bold; }
 
 main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
 .placeholder { color: var(--usuzumi); }

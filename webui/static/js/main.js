@@ -85,6 +85,16 @@ export function render(state) {
 
   document.getElementById('skip-input').value = state.skip_questions;
 
+  const folderEl = document.getElementById('current-folder');
+  if (state.image_folder) {
+    const name = state.image_folder.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+    folderEl.textContent = name;
+    folderEl.title = state.image_folder;
+  } else {
+    folderEl.textContent = '';
+    folderEl.title = '';
+  }
+
   // --- Step 1 ---
   document.getElementById('omr-mode').value = state.omr_mode;
   document.getElementById('threshold-inputs').hidden = state.omr_mode !== 'threshold';
@@ -464,8 +474,9 @@ async function init() {
   try {
     await call('ping');
     const info = await call('get_app_info');
-    document.getElementById('version').textContent =
-      `v${info.app_version} (webui ${info.webui_version})`;
+    document.getElementById('version').textContent = `v${info.app_version}`;
+    document.getElementById('version').title =
+      `採点侍 v${info.app_version} / webui ${info.webui_version} / Python ${info.python}`;
     status.textContent = '接続済み';
     status.dataset.state = 'ok';
     const res = await call('get_state');

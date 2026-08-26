@@ -40,10 +40,26 @@ jobs:
             "PyMuPDF>=1.20.0" `
             "matplotlib>=3.4.0" `
             "reportlab>=3.6.0" `
-            "pyinstaller>=6.0.0"
+            "pyinstaller>=6.0.0" `
+            "pywebview>=6.0"
 
       - name: Build exe
         run: pyinstaller saitensamurai.spec --noconfirm --clean
+
+      - name: Build WebUI exe
+        run: pyinstaller saitensamurai_webui.spec --noconfirm --clean
+
+      - name: Smoke test WebUI exe
+        # v4.5.1 で「依存が抜けたまま exe が公開される」事故があったため、
+        # 公開前に exe 自身を起動して import と同梱物を検証する
+        # （windowed exe なので結果は終了コードと smoke_result.txt で受ける）
+        run: |
+          $exe = Get-ChildItem "dist/SaitenSamurai_WebUI_v*.exe" | Select-Object -First 1
+          if (!$exe) { Write-Error "WebUI exe not found"; exit 1 }
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--smoke" -Wait -PassThru
+          $resultFile = Join-Path $exe.DirectoryName "smoke_result.txt"
+          if (Test-Path $resultFile) { Get-Content $resultFile }
+          if ($p.ExitCode -ne 0) { Write-Error "Smoke test failed (exit $($p.ExitCode))"; exit 1 }
 
       - name: Detect exe name
         id: exe-name
@@ -57,6 +73,14 @@ jobs:
           Write-Host "$($exe.Name): $([math]::Round($size, 1)) MB"
           "EXE_NAME=$($exe.Name)" >> $env:GITHUB_OUTPUT
           "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          $webui = Get-ChildItem "dist/SaitenSamurai_WebUI_v*.exe" | Select-Object -First 1
+          if (!$webui) {
+            Write-Error "SaitenSamurai_WebUI_v*.exe not found in dist/"
+            exit 1
+          }
+          $wsize = $webui.Length / 1MB
+          Write-Host "$($webui.Name): $([math]::Round($wsize, 1)) MB"
+          "WEBUI_EXE_NAME=$($webui.Name)" >> $env:GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -67,7 +91,16 @@ jobs:
 
             ### ダウンロード
 
-            下の **Assets** セクションから `${{ steps.exe-name.outputs.EXE_NAME }}` をダウンロードしてください。
+            下の **Assets** セクションからダウンロードしてください。
+
+            | ファイル | 内容 |
+            |---|---|
+            | `${{ steps.exe-name.outputs.WEBUI_EXE_NAME }}` | **新UI（ベータ）** — 進行バー・キーボード採点・手書きコメントなど全面刷新版 |
+            | `${{ steps.exe-name.outputs.EXE_NAME }}` | 従来UI — これまでと同じ画面（安定版と同等の操作感） |
+
+            > 新UIはベータ版です。動作に問題があれば従来UIをお使いのうえ、
+            > [バグ報告](https://github.com/phys-ken/SaitenSamurai/issues) をお寄せください。
+            > どちらの版も採点データ・フォルダ構成は完全に共通で、途中から相互に引き継げます。
 
             ### 動作環境
 
@@ -95,4 +128,6 @@ jobs:
           # タグ名にハイフンを含む場合(例: v4.6.0-beta.1)はPre-releaseとして公開する。
           # Pre-releaseは /releases/latest に含まれず、一般ユーザーの導線に影響しない
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: dist/${{ steps.exe-name.outputs.EXE_NAME }}
+          files: |
+            dist/${{ steps.exe-name.outputs.EXE_NAME }}
+            dist/${{ steps.exe-name.outputs.WEBUI_EXE_NAME }}

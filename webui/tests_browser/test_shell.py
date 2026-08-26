@@ -21,12 +21,11 @@ FAIL_API = """({
 
 def test_shell_shows_version_and_connected(open_app):
     page = open_app(OK_API)
-    status = page.locator("#bridge-status")
-    status.wait_for(state="visible")
     page.wait_for_function("document.querySelector('#bridge-status').dataset.state === 'ok'")
-    assert status.inner_text() == "接続済み"
+    # 正常時は接続表示を出さない（異常だけ知らせる方針）。詳細は version の title に
+    assert page.locator("#bridge-status").is_hidden()
     assert "9.9.9-test" in page.locator("#version").inner_text()
-    assert "webui 0.0.t" in page.locator("#version").inner_text()
+    assert "webui 0.0.t" in page.locator("#version").get_attribute("title")
 
 
 def test_shell_reports_bridge_error(open_app):

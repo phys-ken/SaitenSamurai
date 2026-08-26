@@ -29,7 +29,7 @@ from api.handwriting import HandwritingMixin  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-WEBUI_VERSION = "0.1.0"
+WEBUI_VERSION = "1.0.0"
 
 _IMAGE_SUFFIXES = ('.jpg', '.jpeg', '.png')
 _XLSX_FILE_TYPES = ("Excelファイル (*.xlsx;*.xls)",)

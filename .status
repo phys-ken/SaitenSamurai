@@ -1,0 +1,28 @@
+# Project Status File
+# LLM・AIエージェントが定期レビューに使うファイルです。git 管理対象です。
+status: develop
+created: 2026-08-05
+description: 普通紙マークシート＋記述式の採点支援ソフト「採点侍」(Windows向け, GPL-3.0) の改善開発
+github: https://github.com/phys-ken/SaitenSamurai.git
+last_reviewed: 2026-08-26
+notes: |
+  GitHub の main を clone しただけの作業クローン。正本は GitHub 側。
+  現在 v4.7.0-beta.1。tkinter 開発は凍結し、pywebview 移植（feat/webui）が完了。
+  UXフェーズ（赤ペン×答案用紙デザイン・仮想スクロール・キー採点）も完了。
+  main へのマージはユーザー承認待ち。リリース作成は禁止（tag push で exe 公開）。
+  デザイン原則は webui/docs/design.md、進捗は webui/docs/progress.md。
+
+  開発体制: 通常は Opus、重い仕事は Fable 5 に委譲する想定。
+  進め方は _dev_notes/fable-plan.md を読むこと。
+
+  この環境（kenmini/Linux）の制約:
+  - tkinter GUI アプリなので、GUI テストは DISPLAY が無いと動かない。
+    ロジック系テストのみローカルで回し、GUI 含む全体は GitHub Actions
+    (windows-latest) と Windows 実機で確認する。
+  - .venv/ は uv で作成済み（Python 3.12）。`uv pip install -r requirements.txt` 済み。
+  - exe ビルド（build_exe.bat）は Windows 専用。ここでは実行できない。
+
+  棚卸し対象:
+  - stale ブランチが 6 本。うち feature/v4.5-kmeans-recognition は main に取込済み（削除可）。
+    残り5本は main から 70 コミット遅れで独自コミット 1〜4 個。要 salvage or 削除判断。
+  - Issue / PR は 0 件。作業の起点は「やることリスト」を自分で作るところから。

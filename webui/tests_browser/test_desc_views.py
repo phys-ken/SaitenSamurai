@@ -88,23 +88,29 @@ def test_config_view_lists_questions_and_deletes(open_app):
 
 
 def test_grid_view_scores_and_updates_tabs(open_app):
+    """得点パレット選択→カードクリックで付与（tk のアクティブ得点方式）"""
     page = open_app(API)
     enter_mode(page, DESC_CARD)
     page.click("#btn-desc-scoring")
     page.wait_for_selector("#desc-scoring-view", state="visible")
+    wait_transition(page)
     tabs = page.locator("#desc-q-tabs .tab")
     assert tabs.count() == 2
     assert "問1 (0/2)" in tabs.nth(0).inner_text()
     cards = page.locator("#desc-grid .entry-card")
     assert cards.count() == 2
-    # s1.png の問1に 4 点を付ける → タブとカードが更新される
-    cards.nth(0).locator(".score-btn", has_text="4").first.click()
+    # パレットで 4 を選び、カードをクリックして付与
+    page.locator("#score-palette .palette-btn", has_text="4").first.click()
+    cards.nth(0).click()
     page.wait_for_function(
         "document.querySelector('#desc-q-tabs .tab').textContent.includes('(1/2)')")
-    assert "4 点" in page.locator("#desc-grid .entry-card").nth(0).inner_text()
+    first = page.locator("#desc-grid .entry-card[data-index='0']")
+    assert "4点" in first.inner_text()
+    assert "sc-partial" in (first.get_attribute("class") or "")   # 中間点=橙
     assert "採点済み 1 / 4" in page.locator("#desc-scoring-summary").inner_text()
-    # 「未」で未採点に戻せる
-    page.locator("#desc-grid .entry-card").nth(0).locator(".score-btn.clear").click()
+    # パレット「未」で未採点に戻せる
+    page.locator("#score-palette .palette-btn", has_text="未").first.click()
+    page.locator("#desc-grid .entry-card[data-index='0']").click()
     page.wait_for_function(
         "document.querySelector('#desc-q-tabs .tab').textContent.includes('(0/2)')")
 
@@ -121,12 +127,14 @@ def test_single_sheet_view_overlays_and_navigation(open_app):
     # 領域オーバーレイは画像ロード後に敷かれるため待機型で確認
     page.wait_for_function(
         "document.querySelectorAll('#annotation-layer .region-box').length === 2")
-    # サイドパネルで採点 → ラベルに点数が反映される
+    # サイドパネルの「満点」で採点 → ラベルと4色背景に反映される
     side1 = page.locator("#sheet-side .side-q").nth(0)
-    side1.locator(".score-btn", has_text="5").first.click()
+    side1.locator("button", has_text="満点").click()
     page.wait_for_function(
         "document.querySelector('#annotation-layer .region-label').textContent.includes('5点')")
-    assert "5点" in page.locator("#sheet-side .side-q .score-mark").first.inner_text()
+    assert "5点" in side1.locator(".score-badge").inner_text()
+    assert "sc-full" in (page.locator("#sheet-side .side-q").nth(0)
+                         .get_attribute("class") or "")
     # 次の答案へ → ファイル名が変わり、得点は答案ごとに独立
     page.click("#btn-sheet-next")
     page.wait_for_function(

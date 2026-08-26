@@ -557,3 +557,24 @@ input, select {
 #config-hint strong { color: var(--shu-dark); }
 .desc-table .btn { padding: 0.12rem 0.4rem; font-size: 0.78rem; margin: 1px 0; }
 .desc-table td:nth-child(5) { font-size: 0.72rem; color: var(--usuzumi); }
+
+/* ── 得点による4色背景（旧UIと同じ直感色） ── */
+.entry-card.sc-full, .side-q.sc-full { background: #e9f2fc; border-color: #8fb4de; }
+.entry-card.sc-zero, .side-q.sc-zero { background: #fdecec; border-color: #e5a0a0; }
+.entry-card.sc-partial, .side-q.sc-partial { background: #fdf3e2; border-color: #dfba74; }
+.entry-card.sc-none, .side-q.sc-none { background: var(--paper-dim); border-color: var(--kei-line); }
+.score-badge { font-weight: 700; font-size: 1.0rem; color: var(--sumi); }
+.sc-full .score-badge { color: #1c5da8; }
+.sc-zero .score-badge { color: #b3372c; }
+.sc-partial .score-badge { color: #a0691c; }
+
+/* 得点パレット（クリック付与モード） */
+.palette-btn { min-width: 2.2em; padding: 0.2rem 0.4rem; }
+.palette-btn.active { background: var(--shu); border-color: var(--shu);
+                      color: #fff; font-weight: 700; }
+.palette-btn.palette-off { color: var(--usuzumi); }
+.palette-input { width: 4em; font: inherit; padding: 0.15rem 0.3rem; }
+.side-ctl { display: flex; align-items: center; gap: 0.3rem; }
+.side-ctl .btn { padding: 0.15rem 0.5rem; font-size: 0.82rem; }
+.side-score-input { width: 3.6em; font: inherit; padding: 0.15rem 0.3rem; }
+.side-q h3 { display: flex; justify-content: space-between; align-items: baseline; }

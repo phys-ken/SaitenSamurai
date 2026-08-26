@@ -266,6 +266,7 @@ let gridSort = 'name';
 let gridCardWidth = 240;
 let digitBuf = '';
 let digitTimer = null;
+let activeScore = undefined;   // クリック付与モードの得点（undefined=未選択）
 
 function applyGridView() {
   let items = gridRawTargets.filter((t) => {
@@ -292,23 +293,12 @@ const cropLoader = createImageLoader(
     .then((r) => r.data_url),
   { concurrency: 6, cacheSize: 400 });
 
-function scoreButtons(maxScore, current, onSet) {
-  const wrap = document.createElement('div');
-  wrap.className = 'score-btns';
-  for (let v = 0; v <= maxScore; v++) {
-    const b = document.createElement('button');
-    b.className = 'score-btn' + (current === v ? ' active' : '');
-    b.textContent = v;
-    b.addEventListener('click', () => onSet(v));
-    wrap.appendChild(b);
-  }
-  const clear = document.createElement('button');
-  clear.className = 'score-btn clear';
-  clear.textContent = '未';
-  clear.title = '未採点に戻す';
-  clear.addEventListener('click', () => onSet(null));
-  wrap.appendChild(clear);
-  return wrap;
+/** 旧UIと同じ直感色: 満点=青 / 0点=赤 / 中間=橙 / 未=灰 */
+function scoreClass(score, maxScore) {
+  if (score === null || score === undefined) return 'sc-none';
+  if (score === 0) return 'sc-zero';
+  if (score >= maxScore) return 'sc-full';
+  return 'sc-partial';
 }
 
 async function renderQTabs(knownState) {
@@ -341,23 +331,72 @@ async function renderQTabs(knownState) {
   onStateUpdate(state);
 }
 
+/** クリック付与用の得点パレット（tk のアクティブ得点方式） */
+function renderScorePalette() {
+  const wrap = el('score-palette');
+  wrap.replaceChildren();
+  const add = (label, value, title) => {
+    const b = document.createElement('button');
+    b.className = 'btn palette-btn' + (activeScore === value ? ' active' : '');
+    b.textContent = label;
+    if (title) b.title = title;
+    b.addEventListener('click', () => {
+      activeScore = (activeScore === value) ? undefined : value;
+      renderScorePalette();
+    });
+    wrap.appendChild(b);
+  };
+  const shown = Math.min(gridMax, 10);
+  for (let v = 0; v <= shown; v++) add(String(v), v);
+  if (gridMax > 10) {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = 0;
+    input.max = gridMax;
+    input.className = 'palette-input';
+    input.placeholder = '点';
+    input.title = `11〜${gridMax} 点はここに入力して Enter`;
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const v = parseInt(input.value, 10);
+      if (Number.isInteger(v) && v >= 0 && v <= gridMax) {
+        activeScore = v;
+        renderScorePalette();
+      }
+      e.stopPropagation();
+    });
+    if (typeof activeScore === 'number' && activeScore > 10) {
+      input.value = activeScore;
+    }
+    wrap.appendChild(input);
+  }
+  add('未', null, '未採点に戻す');
+  if (activeScore !== undefined) {
+    const off = document.createElement('button');
+    off.className = 'btn palette-btn palette-off';
+    off.textContent = '選択解除';
+    off.addEventListener('click', () => {
+      activeScore = undefined;
+      renderScorePalette();
+    });
+    wrap.appendChild(off);
+  }
+}
+
 /** 問題の領域縦横比からカードの固定高さを決める（仮想化の前提） */
 function cardMetrics(q) {
   const [x1, y1, x2, y2] = q.region;
   const aspect = (y2 - y1) / Math.max(1, x2 - x1);
   const itemMinWidth = gridCardWidth;
-  const imgH = Math.min(260, Math.max(70, Math.round(itemMinWidth * aspect)));
-  const perRow = 6;                                   // 240px に収まる点数ボタン数
-  const btnRows = Math.ceil((q.max_score + 2) / perRow);
-  const itemHeight = imgH + 24 + btnRows * 32 + 22;   // meta行 + ボタン行 + 余白
+  const imgH = Math.min(280, Math.max(70, Math.round(itemMinWidth * aspect)));
+  const itemHeight = imgH + 26 + 16;   // meta行 + 余白（ボタン列は廃止）
   return { itemMinWidth, imgH, itemHeight };
 }
 
 function buildCard(i, q, metrics) {
   const t = gridTargets[i];
   const card = document.createElement('div');
-  card.className = 'entry-card'
-    + (t.score !== null ? ' scored' : '')
+  card.className = `entry-card ${scoreClass(t.score, q.max_score)}`
     + (i === gridCursor ? ' cursor' : '');
   card.dataset.index = i;
 
@@ -368,31 +407,30 @@ function buildCard(i, q, metrics) {
   cropLoader.load(`${currentQid}/${t.filename}`, currentQid, t.filename)
     .then((url) => { img.src = url; })
     .catch(() => { img.alt = '画像を読み込めません'; });
-  img.addEventListener('click', async () => {
-    gridCursor = i;
-    updateCursorClasses();
-    try {
-      const url = await cropLoader.load(`${currentQid}/${t.filename}`, currentQid, t.filename);
-      openLightbox(url, t.filename);
-    } catch { /* 画像なしはカード表示のまま */ }
-  });
 
   const meta = document.createElement('div');
   meta.className = 'entry-meta';
   const nameEl = document.createElement('span');
   nameEl.textContent = t.filename;   // 外部由来の文字列（B）
-  const noteEl = document.createElement('span');
-  noteEl.className = t.score === null ? 'score-note' : 'score-note score-mark';
-  noteEl.textContent = t.score === null ? '未採点' : `${t.score} 点`;
-  meta.append(nameEl, noteEl);
+  const badge = document.createElement('span');
+  badge.className = 'score-badge';
+  badge.textContent = t.score === null ? '未' : `${t.score}点`;
+  meta.append(nameEl, badge);
 
-  card.append(img, meta, scoreButtons(q.max_score, t.score,
-    (v) => setGridScore(i, v)));
-  card.addEventListener('click', (e) => {
-    if (e.target === card || e.target === meta) {
-      gridCursor = i;
-      updateCursorClasses();
+  card.append(img, meta);
+  // クリック: 得点パレット選択中は付与、未選択なら拡大表示
+  card.addEventListener('click', async () => {
+    gridCursor = i;
+    updateCursorClasses();
+    if (activeScore !== undefined) {
+      setGridScore(i, activeScore);
+      return;
     }
+    try {
+      const url = await cropLoader.load(
+        `${currentQid}/${t.filename}`, currentQid, t.filename);
+      openLightbox(url, t.filename);
+    } catch { /* 画像なしはカード表示のまま */ }
   });
   return card;
 }
@@ -449,6 +487,10 @@ async function renderDescGrid() {
   const q = state.descriptive.questions.find((x) => x.id === currentQid);
   if (!q) return;
   gridMax = q.max_score;
+  if (typeof activeScore === 'number' && activeScore > gridMax) {
+    activeScore = undefined;   // 満点を超える付与得点は問題切替で解除
+  }
+  renderScorePalette();
   const targets = await call('list_descriptive_targets', currentQid);
   gridRawTargets = targets.items;
   applyGridView();
@@ -641,19 +683,46 @@ function renderSheetSide() {
   const filename = sheetFiles[sheetIndex];
   const side = el('sheet-side');
   side.replaceChildren(...sheetQuestions.map((q) => {
-    const div = document.createElement('div');
-    div.className = 'side-q' + (q.id === focusedQid ? ' focused' : '');
-    const h = document.createElement('h3');
     const sc = sheetScore(q.id, filename);
+    const div = document.createElement('div');
+    div.className = `side-q ${scoreClass(sc, q.max_score)}`
+      + (q.id === focusedQid ? ' focused' : '');
+    const h = document.createElement('h3');
     h.textContent = `${q.name}（${q.max_score}点満点）`;
-    if (sc !== null) {
-      const mark = document.createElement('span');
-      mark.className = 'score-mark';
-      mark.textContent = ` ${sc}点`;
-      h.appendChild(mark);
-    }
-    div.append(h, scoreButtons(q.max_score, sc,
-      (v) => setSheetScore(q.id, v)));
+    const badge = document.createElement('span');
+    badge.className = 'score-badge';
+    badge.textContent = sc === null ? '未' : `${sc}点`;
+    h.appendChild(badge);
+
+    // 配点が大きくてもボタンが並ばないコンパクト操作（数字キーが主役）
+    const ctl = document.createElement('div');
+    ctl.className = 'side-ctl';
+    const mk = (label, v, title) => {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = label;
+      if (title) b.title = title;
+      b.addEventListener('click', () => setSheetScore(q.id, v));
+      return b;
+    };
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = 0;
+    input.max = q.max_score;
+    input.className = 'side-score-input';
+    input.placeholder = '点';
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();          // グローバルの数字キー採点と衝突させない
+      if (e.key !== 'Enter') return;
+      const v = parseInt(input.value, 10);
+      if (Number.isInteger(v) && v >= 0 && v <= q.max_score) {
+        setSheetScore(q.id, v);
+        input.value = '';
+      }
+    });
+    ctl.append(mk(`満点`, q.max_score), mk('0点', 0), input,
+               mk('未', null, '未採点に戻す'));
+    div.append(h, ctl);
     div.addEventListener('click', (e) => {
       if (e.target === div || e.target === h) {
         focusedQid = q.id;

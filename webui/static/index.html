@@ -233,6 +233,10 @@
     </div>
     <nav id="desc-q-tabs" class="checker-tabs"></nav>
     <div class="grid-toolbar">
+      <span class="hint">クリックで付ける得点:</span>
+      <span id="score-palette" class="score-palette"></span>
+    </div>
+    <div class="grid-toolbar">
       <button class="btn" id="btn-jump-unscored">次の未採点へ</button>
       <label>表示
         <select id="desc-filter">
@@ -254,7 +258,7 @@
           <option value="240" selected>中</option>
           <option value="320">大</option>
         </select></label>
-      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 b＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ クリック＝拡大</span>
+      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 b＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ カードクリック＝上の得点を付与（未選択なら拡大）</span>
     </div>
     <div id="desc-grid" class="vgrid-viewport"></div>
   </section>

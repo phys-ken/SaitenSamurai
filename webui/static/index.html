@@ -319,7 +319,7 @@
         <thead><tr><th>フォルダ / ファイル</th><th>役割</th><th>消してよい？</th></tr></thead>
         <tbody>
           <tr><td><code>00_Processing/</code></td>
-            <td>傾き補正済みの答案画像（作業用）。読み取り・記述採点はこれを使います</td>
+            <td>傾き補正とマーク枠の描画を済ませた作業用画像。読み取り・記述採点・一枚採点はこれを使います</td>
             <td>△ 消すと読み取りからやり直し</td></tr>
           <tr><td><code>01_Results/</code></td>
             <td>読み取り結果（Mark2-Result-～.xlsx）、正答・配点（answer_key.xlsx）、
@@ -337,6 +337,9 @@
           <tr><td><code>descriptive_config.json</code><br><code>descriptive_scores.json</code></td>
             <td>記述問題の設定と採点結果（01_Results 内）</td>
             <td>✕ 記述採点のデータ本体です</td></tr>
+          <tr><td><code>handwriting.json</code></td>
+            <td>手書きコメントの筆跡。「採点済み答案を生成」で返却用画像に描き込まれます</td>
+            <td>✕ 手書きコメントの本体です</td></tr>
           <tr><td><code>tmp_checking_dm_nm.csv</code></td>
             <td>マーク確認での訂正の下書き（xlsx反映までの控え）</td>
             <td>△ 反映後は消えても問題ありません</td></tr>

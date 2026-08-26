@@ -87,7 +87,8 @@
 
 ### exe 版（推奨）
 
-1. [Releases ページ](https://github.com/phys-ken/SaitenSamurai/releases/latest) から `SaitenSamurai.exe` をダウンロード
+1. [Releases ページ](https://github.com/phys-ken/SaitenSamurai/releases) から exe をダウンロード\
+   （新UIベータ: `SaitenSamurai_WebUI_….exe` ／ 従来UI: `SaitenSamurai_….exe`。採点データは両者で完全に共通）
 2. 任意のフォルダに配置してダブルクリック
 3. モード選択画面で採点モードを選んで開始
 
@@ -112,7 +113,7 @@ python main_src/saitensamurai.py
 build_exe.bat
 ```
 
-出力先: `dist/SaitenSamurai.exe`
+出力先: `dist/SaitenSamurai_v….exe`（従来UI）。新UI版は `pyinstaller saitensamurai_webui.spec` で `dist/SaitenSamurai_WebUI_v….exe`
 
 ---
 

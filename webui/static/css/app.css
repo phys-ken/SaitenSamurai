@@ -153,3 +153,26 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
 .mode-title { font-weight: bold; font-size: 1rem; }
 .mode-desc { font-size: 0.82rem; color: var(--muted); }
 .mode-badge { font-size: 0.8rem; color: var(--muted); margin-left: 0.4rem; }
+
+/* ── region picker ── */
+.picker-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(38, 50, 56, 0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.picker-dialog {
+  background: var(--panel); border-radius: 8px; padding: 0.8rem;
+  max-width: 92vw; max-height: 92vh; display: flex; flex-direction: column;
+  gap: 0.6rem;
+}
+.picker-head { display: flex; align-items: center; gap: 0.6rem; }
+.picker-head span { margin-right: auto; }
+.picker-stage { position: relative; overflow: auto; }
+.picker-stage img {
+  display: block; max-width: 86vw; max-height: 76vh;
+  user-select: none; touch-action: none; cursor: crosshair;
+}
+.picker-rect {
+  position: absolute; pointer-events: none;
+  border: 2px solid #d32f2f; background: rgba(211, 47, 47, 0.12);
+}

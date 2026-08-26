@@ -1,5 +1,6 @@
 import { call } from './bridge.js';
 import { openChecker, wireChecker } from './checker.js';
+import { pickRegion } from './region-picker.js';
 
 // ---------------------------------------------------------------
 // ログ
@@ -72,6 +73,7 @@ export function render(state) {
     Boolean(running) || !state.image_folder || !state.coord_file;
   document.getElementById('btn-open-checker').disabled =
     Boolean(running) || !state.omr_result;
+  document.getElementById('btn-total-position').disabled = Boolean(running) || !state.image_folder;
   const scoringReady = state.image_folder && state.coord_file &&
     state.answer_key && state.omr_result && state.key_summary?.ok;
   document.getElementById('btn-run-scoring').disabled =
@@ -144,6 +146,24 @@ function wireEvents() {
     .addEventListener('click', runRecognition);
   document.getElementById('btn-run-scoring')
     .addEventListener('click', () => runJob('run_scoring'));
+  document.getElementById('btn-total-position').addEventListener('click', async () => {
+    try {
+      const sheet = await call('get_sheet_image');
+      const existing = (await call('get_total_display_region')).region;
+      const region = await pickRegion(sheet.data_url, {
+        title: `合計点を表示する位置をドラッグで指定（${sheet.filename}）`,
+        existing,
+      });
+      if (region === null) return;
+      await call('set_total_display_region', region);
+      document.getElementById('total-position-hint').textContent =
+        `設定済み (${region.join(', ')})`;
+      log('📐 合計点表示位置を設定しました');
+    } catch (e) {
+      log(`❌ ${e.message}`);
+      alert(e.message);
+    }
+  });
   document.getElementById('btn-run-summary')
     .addEventListener('click', () => runJob('run_summary'));
   document.getElementById('btn-open-checker').addEventListener('click', async () => {

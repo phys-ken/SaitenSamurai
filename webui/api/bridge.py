@@ -22,6 +22,7 @@ from constants import APP_VERSION  # noqa: E402
 
 from api.jobs import JobsMixin  # noqa: E402
 from api.checker import CheckerMixin  # noqa: E402
+from api.sheets import SheetsMixin  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,7 @@ class DataSourceMixin:
         }
 
 
-class Bridge(DataSourceMixin, JobsMixin, CheckerMixin):
+class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin):
     """pywebview の js_api として渡すクラス。
 
     window_adapter: ネイティブ機能の注入点。必要なメソッド:

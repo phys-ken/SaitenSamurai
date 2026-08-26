@@ -95,6 +95,16 @@ export function render(state) {
         : `${d.questions.length} 問 / 採点済み ${total} / ${d.questions.length * d.prepared_count}`;
   }
 
+  document.getElementById('name-trim-check').checked =
+    Boolean(state.name_trim_enabled);
+  document.getElementById('btn-name-position').disabled =
+    !state.name_trim_enabled || !state.image_folder;
+  document.getElementById('name-position-hint').textContent =
+    !state.name_trim_enabled ? '' :
+      (state.name_trim_region
+        ? `指定済み (${state.name_trim_region.join(', ')})`
+        : '未指定（指定すると集計に氏名画像が入ります）');
+
   const running = state.job?.running;
   document.getElementById('btn-run-recognition').disabled =
     Boolean(running) || !state.image_folder ||
@@ -160,6 +170,7 @@ window.saitenEvents = (ev) => {
 };
 
 const JOB_START_LOG = {
+  select_pdf: '▶ PDF展開を開始しました',
   run_recognition: '▶ 認識を開始しました',
   run_prepare_images: '▶ 画像準備を開始しました',
   run_scoring: '▶ 採点を開始しました',
@@ -208,6 +219,49 @@ function wireEvents() {
   document.getElementById('btn-open-checker').addEventListener('click', async () => {
     try {
       await openChecker(log);
+    } catch (e) {
+      log(`❌ ${e.message}`);
+      alert(e.message);
+    }
+  });
+  document.getElementById('btn-select-pdf').addEventListener('click', async () => {
+    try {
+      const res = await call('select_pdf');
+      if (res.cancelled) return;
+      render(res.state);
+      log(JOB_START_LOG.select_pdf);
+    } catch (e) {
+      log(`❌ ${e.message}`);
+      alert(e.message);
+    }
+  });
+  document.getElementById('btn-calibrate').addEventListener('click', async () => {
+    try {
+      const res = await call('run_threshold_calibration');
+      render(res.state);
+      log(`🔧 自動調整: 濃さ ${res.color_threshold} / 面積 ${res.area_threshold}` +
+          `（${res.image_count}枚から推定）`);
+    } catch (e) {
+      log(`❌ ${e.message}`);
+      alert(e.message);
+    }
+  });
+  document.getElementById('name-trim-check').addEventListener('change', async (ev) => {
+    const res = await call('set_name_trim_enabled', ev.target.checked);
+    render(res.state);
+  });
+  document.getElementById('btn-name-position').addEventListener('click', async () => {
+    try {
+      const sheet = await call('get_sheet_image');
+      const state = (await call('get_state')).state;
+      const region = await pickRegion(sheet.data_url, {
+        title: `氏名欄をドラッグで指定（${sheet.filename}）`,
+        existing: state.name_trim_region,
+      });
+      if (region === null) return;
+      const res = await call('set_name_trim_region', region);
+      render(res.state);
+      log('📐 氏名欄の位置を設定しました');
     } catch (e) {
       log(`❌ ${e.message}`);
       alert(e.message);

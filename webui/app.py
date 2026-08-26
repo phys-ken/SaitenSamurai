@@ -31,6 +31,12 @@ class WindowAdapter:
             file_types=file_types or ())
         return result[0] if result else None
 
+    def open_files_dialog(self, file_types=None, directory=""):
+        result = self.window.create_file_dialog(
+            webview.FileDialog.OPEN, directory=directory,
+            allow_multiple=True, file_types=file_types or ())
+        return list(result) if result else None
+
     def open_folder_dialog(self, directory=""):
         result = self.window.create_file_dialog(
             webview.FileDialog.FOLDER, directory=directory)

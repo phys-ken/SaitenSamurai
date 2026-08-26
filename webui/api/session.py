@@ -69,10 +69,14 @@ class SessionMixin:
             "area_threshold": self.state["area_threshold"],
             "descriptive_enabled": self.state["app_mode"] in (
                 "mark_and_descriptive", "descriptive_only"),
-            "rendering_settings": {},   # webui は既定値のみ（tk 版の詳細設定は未搭載）
+            "rendering_settings": self.state["rendering_settings"] or {},
             "saved_at": datetime.datetime.now().isoformat(),
             # webui 拡張（tk は無視する）
-            "webui": {"omr_mode": self.state["omr_mode"]},
+            "webui": {
+                "omr_mode": self.state["omr_mode"],
+                "name_trim_enabled": self.state["name_trim_enabled"],
+                "name_trim_region": self.state["name_trim_region"],
+            },
         }
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,9 +140,21 @@ class SessionMixin:
                 self.state[key] = float(data.get(key, self.state[key]))
             except (TypeError, ValueError):
                 pass
-        omr_mode = (data.get("webui") or {}).get("omr_mode")
+        webui_ext = data.get("webui") or {}
+        omr_mode = webui_ext.get("omr_mode")
         if omr_mode in ("kmeans", "threshold"):
             self.state["omr_mode"] = omr_mode
+        if isinstance(webui_ext.get("name_trim_enabled"), bool):
+            self.state["name_trim_enabled"] = webui_ext["name_trim_enabled"]
+        region = webui_ext.get("name_trim_region")
+        if (isinstance(region, list) and len(region) == 4 and
+                all(isinstance(v, int) for v in region)):
+            self.state["name_trim_region"] = region
+
+        # tk セッションの描画詳細設定はそのまま引き継いで採点描画に渡す
+        rs = data.get("rendering_settings")
+        if isinstance(rs, dict) and rs:
+            self.state["rendering_settings"] = rs
 
         # パスの復元（解決できないものは warnings に落として続行）
         warnings = []

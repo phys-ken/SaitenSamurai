@@ -28,6 +28,7 @@ class RecordingAdapter:
     def __init__(self):
         self.folder_returns = []
         self.file_returns = []
+        self.files_returns = []   # open_files_dialog（複数選択）用
         self.events = []
 
     def open_folder_dialog(self, directory=""):
@@ -35,6 +36,9 @@ class RecordingAdapter:
 
     def open_file_dialog(self, file_types=None, directory=""):
         return self.file_returns.pop(0) if self.file_returns else None
+
+    def open_files_dialog(self, file_types=None, directory=""):
+        return self.files_returns.pop(0) if self.files_returns else None
 
     def eval_js(self, code):
         # window.saitenEvents({...}) から JSON部分を取り出す

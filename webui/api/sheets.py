@@ -90,3 +90,25 @@ class SheetsMixin:
         data_folder.mkdir(parents=True, exist_ok=True)
         save_total_display_config(str(config_path), region)
         return _ok(region=region)
+
+    # --- 氏名トリミング（集計シートに氏名画像を表示） --------------
+
+    def set_name_trim_enabled(self, enabled):
+        self.state["name_trim_enabled"] = bool(enabled)
+        return _ok(state=self.state)
+
+    def set_name_trim_region(self, region):
+        """氏名欄の領域を設定（None で解除）。00_Processing 座標系"""
+        if region is None:
+            self.state["name_trim_region"] = None
+            return _ok(state=self.state)
+        try:
+            region = [int(v) for v in region]
+            assert len(region) == 4
+        except (TypeError, ValueError, AssertionError):
+            return _err("領域は [x1,y1,x2,y2] で指定してください")
+        x1, y1, x2, y2 = region
+        if x2 <= x1 or y2 <= y1:
+            return _err("領域の幅と高さは正である必要があります")
+        self.state["name_trim_region"] = region
+        return _ok(state=self.state)

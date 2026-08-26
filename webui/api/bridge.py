@@ -63,6 +63,9 @@ class DataSourceMixin:
             "coord_summary": None,           # {answer_rows, marks_per_row, warning}
             "answer_key": None,
             "key_summary": None,             # {ok, errors, warnings, stats_line, ...}
+            "name_trim_enabled": True,       # 氏名画像を集計シートに表示（tk 既定 ON）
+            "name_trim_region": None,        # [x1,y1,x2,y2] 00_Processing 座標系
+            "rendering_settings": None,      # tk セッション由来の描画詳細設定（None=既定）
         }
 
     def get_state(self):

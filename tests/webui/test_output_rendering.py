@@ -227,3 +227,27 @@ class TestRenderPreview:
         img1 = decode(b.get_render_preview())
         assert img0.shape == img1.shape
         assert not np.array_equal(img0, img1), "オフセットがプレビューに反映されていない"
+
+
+class TestTotalDisplayDefault:
+    def test_default_region_and_preview(self, tmp_path):
+        """#8: 既定枠（下部マーカー間）と満点プレビューが返る"""
+        scans, coord, key = __import__('test_bridge_extras').__dict__[
+            '_build_marked_inputs'](tmp_path)
+        from test_bridge_extras import _bridge_through_recognition
+        b, _ = _bridge_through_recognition(scans, coord, key)
+        res = b.get_total_display_default()
+        assert res["ok"], res
+        r = res["default_region"]
+        assert r and r[2] > r[0] and r[3] > r[1]
+        assert r[3] <= 842 and r[1] > 842 * 0.8   # 下部にある
+        assert "得点：5 / 5" in res["preview"]     # 配点3+2=5 の満点例
+        assert "観点①" in res["preview"]
+
+    def test_desc_only_has_no_default_region(self, tmp_path):
+        b, _ = _make_desc_bridge(tmp_path)   # このファイル冒頭のヘルパー
+        b.add_descriptive_question("問1", 5, 1, [50, 50, 250, 150])
+        res = b.get_total_display_default()
+        assert res["ok"]
+        assert res["default_region"] is None       # マーカー無し → 既定なし
+        assert "得点：5 / 5" in res["preview"]

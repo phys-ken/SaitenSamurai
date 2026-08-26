@@ -11,7 +11,7 @@
 
 /**
  * @param {string} dataUrl 画像
- * @param {{title?: string, existing?: number[]}} opts
+ * @param {{title?: string, existing?: number[], previewText?: string}} opts
  * @returns {Promise<number[]|null>} [x1,y1,x2,y2]（natural座標）/ キャンセルは null
  */
 export function pickRegion(dataUrl, opts = {}) {
@@ -27,7 +27,7 @@ export function pickRegion(dataUrl, opts = {}) {
         </div>
         <div class="picker-stage">
           <img alt="answer sheet">
-          <div class="picker-rect" hidden></div>
+          <div class="picker-rect" hidden><span class="picker-preview"></span></div>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -60,6 +60,16 @@ export function pickRegion(dataUrl, opts = {}) {
         height: `${(y2 - y1) * sy}px`,
       });
       rectEl.hidden = false;
+      const pv = rectEl.querySelector('.picker-preview');
+      if (opts.previewText) {
+        pv.textContent = opts.previewText;
+        // 枠の高さの4割程度を1行の文字サイズに（tk のプレビューと同じ趣旨）
+        const lines = opts.previewText.split('\n').length;
+        pv.style.fontSize = `${Math.max(9, ((y2 - y1) * sy * 0.9) / (lines * 1.35))}px`;
+        pv.hidden = false;
+      } else {
+        pv.hidden = true;
+      }
     }
 
     // ウィンドウリサイズで画像の表示サイズが変わっても選択枠を追従させる（S12）
@@ -89,6 +99,19 @@ export function pickRegion(dataUrl, opts = {}) {
       overlay.remove();
       resolve(result);
     }
+    // Ctrl+ホイールで拡大縮小（#6: 小さい答案でも正確に囲えるように）
+    const stage = overlay.querySelector('.picker-stage');
+    let zoom = null;   // null=CSS上限に任せる / 数値=naturalWidth比
+    stage.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey || !img.naturalWidth) return;
+      e.preventDefault();
+      const cur = img.getBoundingClientRect().width / img.naturalWidth;
+      zoom = Math.min(4, Math.max(0.2, cur * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+      img.style.maxWidth = 'none';
+      img.style.maxHeight = 'none';
+      img.style.width = `${img.naturalWidth * zoom}px`;
+    }, { passive: false });
+
     // Esc でキャンセル（B: 他のモーダルと作法を揃える）
     function onKey(e) {
       if (e.key === 'Escape') {

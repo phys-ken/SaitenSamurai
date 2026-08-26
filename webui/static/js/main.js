@@ -367,9 +367,12 @@ function wireEvents() {
     try {
       const sheet = await call('get_sheet_image');
       const existing = (await call('get_total_display_region')).region;
+      const def = await call('get_total_display_default');
       const region = await pickRegion(sheet.data_url, {
-        title: `合計点を表示する位置をドラッグで指定（${sheet.filename}）`,
-        existing,
+        title: `合計点を表示する位置をドラッグで指定（${sheet.filename}）` +
+               (def.default_region && !existing ? ' — 既定位置を表示中' : ''),
+        existing: existing ?? def.default_region,   // 未設定なら既定枠から出発（#8）
+        previewText: def.preview,                   // 満点を例にした実書式プレビュー
       });
       if (region === null) return;
       const set = await call('set_total_display_region', region);

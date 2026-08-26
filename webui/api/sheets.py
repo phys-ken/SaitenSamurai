@@ -79,6 +79,68 @@ class SheetsMixin:
         region = cfg.get("total_display_region") if cfg else None
         return _ok(region=region)
 
+    def get_total_display_default(self):
+        """合計点表示の既定枠と、満点を例にしたプレビュー文字列を返す。
+
+        既定枠は tk と同じ「下部マーカー間フル幅」（マーカー前提のマーク系のみ。
+        記述のみモードは None）。プレビューは現在の表示項目設定
+        （満点表示・観点別行）を反映した実際の書式で組み立てる。
+        """
+        import cv2
+        import numpy as np
+        from constants import get_rendering_settings
+        if not self.state["image_folder"]:
+            return _err("答案画像フォルダを選択してください")
+
+        # --- 満点・観点別満点の計算（マーク＋記述） ---
+        aspect_max = {}
+        if self.state["answer_key"] and self.state["app_mode"] != "descriptive_only":
+            try:
+                from scoring_engine import load_template
+                template = load_template(self.state["answer_key"],
+                                         mark_format=self.state["mark_format"])
+                for t in template.values():
+                    aspect_max[t["観点"]] = aspect_max.get(t["観点"], 0) + t["配点"]
+            except Exception:
+                logger.exception("正答・配点の読込に失敗（プレビューは記述のみで組立）")
+        if self.state["app_mode"] != "mark_only":
+            for q in (self._desc_config or {}).get("questions", []):
+                aspect_max[q["aspect"]] = aspect_max.get(q["aspect"], 0) + q["max_score"]
+        total_max = sum(aspect_max.values())
+
+        rs = get_rendering_settings(self.state["rendering_settings"])
+        line1 = (f"得点：{total_max} / {total_max}" if rs["total_show_max"]
+                 else f"得点：{total_max}")
+        line2 = ""
+        if rs["total_show_aspects"] and aspect_max:
+            from descriptive_renderer import _combined_total_lines
+            _, line2 = _combined_total_lines(
+                total_max, total_max, aspect_max, aspect_max,
+                self.state["rendering_settings"])
+        preview = line1 + ("\n" + line2 if line2 else "")
+
+        # --- 既定枠（マーカー前提。記述のみは None） ---
+        default_region = None
+        if self.state["app_mode"] != "descriptive_only":
+            folder = self._boxed_folder()
+            files = (sorted(p.name for p in folder.iterdir()
+                            if p.suffix.lower() in ('.jpg', '.jpeg', '.png'))
+                     if folder and folder.exists() else [])
+            if files:
+                img = cv2.imdecode(
+                    np.fromfile(str(folder / files[0]), dtype=np.uint8),
+                    cv2.IMREAD_COLOR)
+                if img is not None:
+                    from descriptive_scorer import (
+                        _calculate_marker_default_region,
+                        DEFAULT_TOTAL_BOX_HEIGHT)
+                    h, w = img.shape[:2]
+                    x, y, bw, bh = _calculate_marker_default_region(
+                        w, h, DEFAULT_TOTAL_BOX_HEIGHT)
+                    default_region = [int(x), int(y), int(x + bw), int(y + bh)]
+
+        return _ok(default_region=default_region, preview=preview)
+
     def set_total_display_region(self, region):
         """合計点表示位置を保存（region=[x1,y1,x2,y2]、None でリセット）"""
         from descriptive_scorer import (save_total_display_config,

@@ -578,3 +578,9 @@ input, select {
 .side-ctl .btn { padding: 0.15rem 0.5rem; font-size: 0.82rem; }
 .side-score-input { width: 3.6em; font: inherit; padding: 0.15rem 0.3rem; }
 .side-q h3 { display: flex; justify-content: space-between; align-items: baseline; }
+
+.picker-preview {
+  position: absolute; inset: 2px; overflow: hidden;
+  color: #1d5fa8; font-weight: 700; line-height: 1.35;
+  white-space: pre; pointer-events: none;
+}

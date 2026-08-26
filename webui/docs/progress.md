@@ -16,3 +16,20 @@
 | 10b | M3-b(2): 記述UI 3ビュー＋モード別表示分岐＋`[hidden]`CSS修正 | ✅ | (このコミット) |
 | 11 | M4: セッション保存/復元 — tk互換 version 1 形式・自動保存・壊れパスwarnings・採点再開ボタン | ✅ | (このコミット) |
 | 12 | 既存機能の残り: PDF展開・しきい値自動調整・氏名トリミング・描画設定passthrough | ✅ | (このコミット) |
+
+## 移植完了サマリー（2026-08-26）
+
+M1〜M4 ＋ 既存機能の残り移植まで完了。テストは4層:
+- L1（bridge直接・CIで実行）: tests/webui/ 54件
+- L2（Playwright+Chrome・ローカルのみ）: webui/tests_browser/ 19件
+- L3（Xvfb実起動キャプチャ）: webui/tools/preview.py（--demo/--full/--checker/--descdemo）
+- L4（ゴールデン）: tk版ドライバと出力一致（マークのみ／マーク＋記述の2系統。
+  採点済み画像ピクセル一致・成績一覧セル一致）
+
+### tk 版にあって webui に未搭載のもの（意図的な後回し）
+- 描画詳細設定の編集UI（tk の「⚙ 詳細設定...」ダイアログ）。
+  ※ tk セッション由来の rendering_settings は読み込んで採点描画に反映される
+- しきい値自動調整の対話プレビュー（tk はダイアログで分布表示。webui は推定値を即適用）
+- 記述採点の「確認・修正」専用画面（webui はグリッド/一枚採点でいつでも修正できるため代替）
+- 結果フォルダREADME（write_results_readme）: feat/ux-polish 側の機能。マージ後に追随
+- Windows 検証ゲート（IME・exe化・高DPI）／コメントモード（一枚採点の annotation-layer に実装余地）

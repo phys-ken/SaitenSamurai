@@ -19,6 +19,12 @@ from test_multidigit_image_e2e import (  # noqa: E402
 )
 
 
+def _has_pymupdf():
+    from constants import HAS_PYMUPDF
+    return HAS_PYMUPDF
+
+
+@pytest.mark.skipif(not _has_pymupdf(), reason="PyMuPDF 未インストール（オプショナル依存）")
 class TestPdfImport:
     def _make_pdf(self, path: Path, pages=2):
         import fitz

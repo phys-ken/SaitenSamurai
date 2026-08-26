@@ -57,15 +57,13 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;          /* 長いパスは末尾（ファイル名側）を残して省略 */
-  text-align: left;
   color: var(--muted);
   background: #f1f3f5;
   border-radius: 4px;
   padding: 0.3rem 0.5rem;
 }
-.ds-value.selected { color: var(--text); direction: rtl; }
-.ds-value:empty::before { content: attr(data-empty); color: #b0bec5; direction: ltr; }
+.ds-value.selected { color: var(--text); }
+.ds-value:empty::before { content: attr(data-empty); color: #b0bec5; }
 .btn {
   font: inherit;
   padding: 0.35rem 0.9rem;
@@ -94,3 +92,13 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
   padding: 0.5rem;
   white-space: pre-wrap;
 }
+
+.btn-primary { background: #1565c0; border-color: #1565c0; color: #fff; }
+.btn-primary:hover { background: #0d47a1; }
+.btn-primary:disabled, .btn:disabled {
+  background: #e0e0e0; border-color: #d5d5d5; color: #8a8a8a; cursor: default;
+}
+#job-progress { flex: 1; height: 0.9rem; }
+.job-status { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+#step1-panel select, #threshold-inputs input { font: inherit; padding: 0.25rem; }
+#threshold-inputs input { width: 4.5em; }

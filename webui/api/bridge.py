@@ -20,6 +20,8 @@ if str(_REPO_ROOT / "main_src") not in sys.path:
 
 from constants import APP_VERSION  # noqa: E402
 
+from api.jobs import JobsMixin  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 WEBUI_VERSION = "0.1.0"
@@ -210,7 +212,7 @@ class DataSourceMixin:
         }
 
 
-class Bridge(DataSourceMixin):
+class Bridge(DataSourceMixin, JobsMixin):
     """pywebview の js_api として渡すクラス。
 
     window_adapter: ネイティブ機能の注入点。必要なメソッド:
@@ -222,6 +224,7 @@ class Bridge(DataSourceMixin):
     def __init__(self, window_adapter=None):
         self._win = window_adapter
         self._init_state()
+        self._init_jobs()
 
     # --- 疎通・情報 -------------------------------------------------
 

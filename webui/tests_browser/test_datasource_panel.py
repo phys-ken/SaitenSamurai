@@ -5,6 +5,8 @@ BASE_STATE = """{
   image_folder: null, image_count: 0,
   coord_file: null, coord_summary: null,
   answer_key: null, key_summary: null,
+  omr_mode: 'kmeans', color_threshold: 0.1, area_threshold: 0.4,
+  omr_result: null, job: {running: false, kind: null, current: 0, total: 0},
 }"""
 
 API_TEMPLATE = """({

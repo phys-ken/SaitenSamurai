@@ -36,6 +36,9 @@ class WindowAdapter:
             webview.FileDialog.FOLDER, directory=directory)
         return result[0] if result else None
 
+    def eval_js(self, code):
+        self.window.evaluate_js(code)
+
 
 def create_app():
     adapter = WindowAdapter()

@@ -12,11 +12,20 @@ function log(message) {
 // ---------------------------------------------------------------
 // state → 画面（UIは state の再描画だけを行う）
 // ---------------------------------------------------------------
+/** 長いパスは末尾（ファイル名側）を残して省略。RTL トリックは
+    先頭の '/' が末尾に見える bidi の副作用があるため使わない */
+function trimPath(path, max = 64) {
+  if (!path || path.length <= max) return path ?? '';
+  return '…' + path.slice(-(max - 1));
+}
+
 function setRow(rowId, summaryId, path, summaryHtmlBuilder) {
   const value = document.querySelector(`#${rowId} .ds-value`);
-  value.textContent = path ?? '';
+  value.textContent = trimPath(path);
+  value.title = path ?? '';
   value.classList.toggle('selected', Boolean(path));
-  const summary = document.getElementById(summaryId);
+  const summary = summaryId ? document.getElementById(summaryId) : null;
+  if (!summary) return;
   const built = path ? summaryHtmlBuilder() : null;
   if (built) {
     summary.textContent = built.text;
@@ -49,6 +58,19 @@ export function render(state) {
   });
 
   document.getElementById('skip-input').value = state.skip_questions;
+
+  // --- Step 1 ---
+  document.getElementById('omr-mode').value = state.omr_mode;
+  document.getElementById('threshold-inputs').hidden = state.omr_mode !== 'threshold';
+  document.getElementById('color-th').value = state.color_threshold;
+  document.getElementById('area-th').value = state.area_threshold;
+  setRow('row-omr-result', null, state.omr_result, () => null);
+
+  const running = state.job?.running;
+  document.getElementById('btn-run-recognition').disabled =
+    Boolean(running) || !state.image_folder || !state.coord_file;
+  document.getElementById('btn-cancel').hidden = !running;
+  document.getElementById('job-progress').hidden = !running;
 }
 
 // ---------------------------------------------------------------
@@ -58,6 +80,7 @@ const ACTION_LOG_LABEL = {
   select_image_folder: '画像フォルダ',
   select_coord_file: '座標ファイル',
   select_answer_key: '正答データ',
+  select_omr_result: 'OMR結果',
 };
 
 async function runAction(name) {
@@ -72,7 +95,58 @@ async function runAction(name) {
   }
 }
 
+// ---------------------------------------------------------------
+// Python からの push イベント（進捗・完了）
+// ---------------------------------------------------------------
+window.saitenEvents = (ev) => {
+  if (ev.type === 'progress') {
+    const bar = document.getElementById('job-progress');
+    bar.hidden = false;
+    bar.max = ev.total;
+    bar.value = ev.current;
+    document.getElementById('job-status').textContent = `${ev.current} / ${ev.total}`;
+  } else if (ev.type === 'job_done') {
+    document.getElementById('job-status').textContent = '';
+    log(ev.ok ? `✓ ${ev.message}` : `❌ ${ev.message}`);
+    call('get_state').then((res) => render(res.state));
+  }
+};
+
+async function runRecognition() {
+  try {
+    const res = await call('run_recognition');
+    render(res.state);
+    log('▶ 認識を開始しました');
+  } catch (e) {
+    log(`❌ ${e.message}`);
+    alert(e.message);
+  }
+}
+
 function wireEvents() {
+  document.getElementById('btn-run-recognition')
+    .addEventListener('click', runRecognition);
+  document.getElementById('btn-cancel')
+    .addEventListener('click', async () => { await call('cancel_job'); log('⏹ 中断を要求しました'); });
+  document.getElementById('omr-mode').addEventListener('change', async (ev) => {
+    const res = await call('set_omr_mode', ev.target.value);
+    render(res.state);
+  });
+  for (const id of ['color-th', 'area-th']) {
+    document.getElementById(id).addEventListener('change', async () => {
+      try {
+        const res = await call('set_thresholds',
+          document.getElementById('color-th').value,
+          document.getElementById('area-th').value);
+        render(res.state);
+      } catch (e) {
+        log(`❌ ${e.message}`);
+        const res = await call('get_state');
+        render(res.state);
+      }
+    });
+  }
+
   document.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', () => runAction(btn.dataset.action));
   });

@@ -24,6 +24,7 @@ from api.jobs import JobsMixin  # noqa: E402
 from api.checker import CheckerMixin  # noqa: E402
 from api.sheets import SheetsMixin  # noqa: E402
 from api.descriptive import DescriptiveMixin  # noqa: E402
+from api.session import SessionMixin  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,7 @@ class DataSourceMixin:
         self.state["image_folder"] = str(folder_path)
         self.state["image_count"] = count
         self._load_descriptive_state()
+        self._save_session_quietly()
         return _ok(state=self.state)
 
     def select_coord_file(self):
@@ -126,6 +128,7 @@ class DataSourceMixin:
             self.state["coord_file"] = None
             self.state["coord_summary"] = None
             return result
+        self._save_session_quietly()
         return _ok(state=self.state)
 
     def _refresh_coord_summary(self):
@@ -180,6 +183,7 @@ class DataSourceMixin:
             return _ok(state=self.state, cancelled=True)
         self.state["answer_key"] = str(path)
         self._refresh_key_summary()
+        self._save_session_quietly()
         return _ok(state=self.state)
 
     def _refresh_key_summary(self):
@@ -216,7 +220,8 @@ class DataSourceMixin:
         }
 
 
-class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin, DescriptiveMixin):
+class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin,
+             DescriptiveMixin, SessionMixin):
     """pywebview の js_api として渡すクラス。
 
     window_adapter: ネイティブ機能の注入点。必要なメソッド:

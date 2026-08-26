@@ -278,6 +278,19 @@ function showMain(state) {
 }
 
 function wireModeSelect() {
+  const resumeBtn = document.getElementById('btn-resume-session');
+  resumeBtn.hidden = false;
+  resumeBtn.addEventListener('click', async () => {
+    try {
+      const res = await call('restore_session');
+      if (res.cancelled) return;
+      showMain(res.state);
+      log(`📂 セッションを復元しました（${MODE_LABEL[`${res.state.app_mode}/${res.state.mark_format}`]}）`);
+      for (const w of res.warnings ?? []) log(`⚠ ${w}`);
+    } catch (e) {
+      alert(e.message);
+    }
+  });
   document.querySelectorAll('.mode-card').forEach((card) => {
     card.addEventListener('click', async () => {
       try {

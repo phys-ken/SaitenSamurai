@@ -95,6 +95,8 @@ class JobsMixin:
             # running=True の古い状態を読み、完了後も進捗バーが残る競合になる
             self.state["job"] = {"running": False, "kind": None,
                                  "current": 0, "total": 0}
+            if done_event.get("ok"):
+                self._save_session_quietly()  # tk 版同様、要所で自動保存
             self._push("job_done", **done_event)
 
         self._job_thread = threading.Thread(target=wrapped, daemon=True)

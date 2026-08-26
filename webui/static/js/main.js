@@ -72,6 +72,12 @@ export function render(state) {
     Boolean(running) || !state.image_folder || !state.coord_file;
   document.getElementById('btn-open-checker').disabled =
     Boolean(running) || !state.omr_result;
+  const scoringReady = state.image_folder && state.coord_file &&
+    state.answer_key && state.omr_result && state.key_summary?.ok;
+  document.getElementById('btn-run-scoring').disabled =
+    Boolean(running) || !scoringReady;
+  document.getElementById('btn-run-summary').disabled =
+    Boolean(running) || !scoringReady;
   document.getElementById('btn-cancel').hidden = !running;
   document.getElementById('job-progress').hidden = !running;
 }
@@ -115,20 +121,31 @@ window.saitenEvents = (ev) => {
   }
 };
 
-async function runRecognition() {
+const JOB_START_LOG = {
+  run_recognition: '▶ 認識を開始しました',
+  run_scoring: '▶ 採点を開始しました',
+  run_summary: '▶ 集計を開始しました',
+};
+
+async function runJob(name) {
   try {
-    const res = await call('run_recognition');
+    const res = await call(name);
     render(res.state);
-    log('▶ 認識を開始しました');
+    log(JOB_START_LOG[name]);
   } catch (e) {
     log(`❌ ${e.message}`);
     alert(e.message);
   }
 }
+const runRecognition = () => runJob('run_recognition');
 
 function wireEvents() {
   document.getElementById('btn-run-recognition')
     .addEventListener('click', runRecognition);
+  document.getElementById('btn-run-scoring')
+    .addEventListener('click', () => runJob('run_scoring'));
+  document.getElementById('btn-run-summary')
+    .addEventListener('click', () => runJob('run_summary'));
   document.getElementById('btn-open-checker').addEventListener('click', async () => {
     try {
       await openChecker(log);

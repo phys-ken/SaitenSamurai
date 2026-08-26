@@ -76,63 +76,138 @@ class JobsMixin:
 
     # --- 認識実行 ---------------------------------------------------
 
-    def run_recognition(self):
+    def _start_job(self, kind, worker):
+        """ジョブ共通の起動処理（同時実行1つ・cancel初期化・スレッド化）"""
         if self.state["job"]["running"]:
             return _err("別の処理が実行中です。完了または中断を待ってください")
+        self._cancel_event.clear()
+        self.state["job"] = {"running": True, "kind": kind,
+                             "current": 0, "total": self.state["image_count"]}
+
+        def wrapped():
+            try:
+                done_event = worker()
+            except Exception as e:
+                logger.exception("%s に失敗", kind)
+                done_event = dict(kind=kind, ok=False,
+                                  message=f"処理に失敗しました: {e}")
+            # push は state リセットの「後」。先に push すると JS の get_state が
+            # running=True の古い状態を読み、完了後も進捗バーが残る競合になる
+            self.state["job"] = {"running": False, "kind": None,
+                                 "current": 0, "total": 0}
+            self._push("job_done", **done_event)
+
+        self._job_thread = threading.Thread(target=wrapped, daemon=True)
+        self._job_thread.start()
+        return _ok(state=self.state)
+
+    def _progress_cb(self, kind):
+        def on_progress(current, total):
+            self.state["job"].update(current=current, total=total)
+            self._push("progress", kind=kind, current=current, total=total)
+        return on_progress
+
+    # --- 認識 -------------------------------------------------------
+
+    def run_recognition(self):
         if not self.state["image_folder"]:
             return _err("画像フォルダを選択してください")
         if not self.state["coord_file"]:
             return _err("座標ファイルを選択してください")
-
-        self._cancel_event.clear()
-        self.state["job"] = {"running": True, "kind": "recognition",
-                             "current": 0, "total": self.state["image_count"]}
-        self._job_thread = threading.Thread(target=self._recognition_worker,
-                                            daemon=True)
-        self._job_thread.start()
-        return _ok(state=self.state)
+        return self._start_job("recognition", self._recognition_worker)
 
     def _recognition_worker(self):
         from omr_engine import process_box_drawer
+        result = process_box_drawer(
+            self.state["image_folder"],
+            self.state["coord_file"],
+            skip_questions=self.state["skip_questions"],
+            color_threshold=self.state["color_threshold"],
+            area_threshold=self.state["area_threshold"],
+            progress_callback=self._progress_cb("recognition"),
+            cancel_event=self._cancel_event,
+            omr_mode=self.state["omr_mode"],
+            mark_format=self.state["mark_format"],
+        )
+        cancelled = self._cancel_event.is_set()
+        if not cancelled:
+            self._autoselect_omr_result()
+        return dict(
+            kind="recognition", ok=True, cancelled=cancelled,
+            success_count=result.get("success_count", 0),
+            error_count=result.get("error_count", 0),
+            omr_result=self.state["omr_result"],
+            message=("中断しました" if cancelled else
+                     f"認識完了: 成功 {result.get('success_count', 0)} 件 / "
+                     f"エラー {result.get('error_count', 0)} 件"),
+        )
 
-        def on_progress(current, total):
-            self.state["job"].update(current=current, total=total)
-            self._push("progress", kind="recognition", current=current, total=total)
+    # --- 採点（採点済み答案の生成） ---------------------------------
 
-        try:
-            result = process_box_drawer(
-                self.state["image_folder"],
-                self.state["coord_file"],
-                skip_questions=self.state["skip_questions"],
-                color_threshold=self.state["color_threshold"],
-                area_threshold=self.state["area_threshold"],
-                progress_callback=on_progress,
-                cancel_event=self._cancel_event,
-                omr_mode=self.state["omr_mode"],
-                mark_format=self.state["mark_format"],
-            )
-            cancelled = self._cancel_event.is_set()
-            if not cancelled:
-                self._autoselect_omr_result()
-            done_event = dict(
-                kind="recognition", ok=True, cancelled=cancelled,
-                success_count=result.get("success_count", 0),
-                error_count=result.get("error_count", 0),
-                omr_result=self.state["omr_result"],
-                message=("中断しました" if cancelled else
-                         f"認識完了: 成功 {result.get('success_count', 0)} 件 / "
-                         f"エラー {result.get('error_count', 0)} 件"),
-            )
-        except Exception as e:
-            logger.exception("認識実行に失敗")
-            done_event = dict(kind="recognition", ok=False,
-                              message=f"認識実行に失敗しました: {e}")
-        # push は state リセットの「後」に行う。先に push すると JS 側の
-        # get_state が running=True の古い状態を読む競合が起き、完了後も
-        # 進捗バーと中断ボタンが画面に残る（demo キャプチャで実際に発生）
-        self.state["job"] = {"running": False, "kind": None,
-                             "current": 0, "total": 0}
-        self._push("job_done", **done_event)
+    def run_scoring(self):
+        if not self.state["image_folder"]:
+            return _err("画像フォルダを選択してください")
+        if not self.state["coord_file"]:
+            return _err("座標ファイルを選択してください")
+        if not self.state["answer_key"]:
+            return _err("正答データを選択してください")
+        if not self.state["omr_result"]:
+            return _err("OMR結果がありません。先に認識を実行してください")
+        ks = self.state.get("key_summary")
+        if ks and not ks["ok"]:
+            return _err("正答データにエラーがあります。修正してから採点してください:\n"
+                        + "\n".join(ks["errors"][:3]))
+        return self._start_job("scoring", self._scoring_worker)
+
+    def _scoring_worker(self):
+        from image_renderer import process_scoring
+        process_scoring(
+            self.state["image_folder"],
+            self.state["coord_file"],
+            self.state["answer_key"],
+            self.state["omr_result"],
+            skip_questions=self.state["skip_questions"],
+            progress_callback=self._progress_cb("scoring"),
+            cancel_event=self._cancel_event,
+            mark_format=self.state["mark_format"],
+        )
+        cancelled = self._cancel_event.is_set()
+        return dict(kind="scoring", ok=True, cancelled=cancelled,
+                    message=("中断しました" if cancelled
+                             else "採点済み答案の生成が完了しました"))
+
+    # --- 集計 -------------------------------------------------------
+
+    def run_summary(self):
+        if not self.state["image_folder"]:
+            return _err("画像フォルダを選択してください")
+        if not self.state["coord_file"]:
+            return _err("座標ファイルを選択してください")
+        if not self.state["answer_key"]:
+            return _err("正答データを選択してください")
+        if not self.state["omr_result"]:
+            return _err("OMR結果がありません。先に認識を実行してください")
+        return self._start_job("summary", self._summary_worker)
+
+    def _summary_worker(self):
+        from summary_generator import process_summary_generation
+        from constants import RESULTS_FOLDER, FINAL_REPORT_FOLDER
+        process_summary_generation(
+            self.state["image_folder"],
+            self.state["coord_file"],
+            self.state["answer_key"],
+            self.state["omr_result"],
+            skip_questions=self.state["skip_questions"],
+            progress_callback=self._progress_cb("summary"),
+            cancel_event=self._cancel_event,
+            mark_format=self.state["mark_format"],
+        )
+        cancelled = self._cancel_event.is_set()
+        out = str(Path(self.state["image_folder"]) / RESULTS_FOLDER / FINAL_REPORT_FOLDER)
+        return dict(kind="summary", ok=True, cancelled=cancelled,
+                    output_folder=out,
+                    message=("中断しました" if cancelled
+                             else f"集計が完了しました → {out}"))
 
     def _autoselect_omr_result(self):
         """最新の Mark2-Result xlsx を自動選択（tk 版 main_gui.py:1079 と同じ）"""

@@ -33,10 +33,17 @@ def _setup_demo(bridge):
     for name, filled in [("s1.png", s1), ("s2.png", s2)]:
         cv2.imwrite(str(scans / name), make_sheet(filled, with_markers=True))
 
+    # 正答データも用意（採点・集計のデモ用）
+    from test_multi_digit_mode import _create_answer_key
+    key = tmp / "answer_key.xlsx"
+    _create_answer_key(key, [
+        {'問題番号': 1, '正答': '-24', '配点': 3, '観点': 1},
+    ])
+    file_queue = [str(coord), str(key)]
     real_folder = bridge._win.open_folder_dialog
     real_file = bridge._win.open_file_dialog
     bridge._win.open_folder_dialog = lambda **kw: str(scans)
-    bridge._win.open_file_dialog = lambda **kw: str(coord)
+    bridge._win.open_file_dialog = lambda **kw: file_queue.pop(0) if file_queue else None
     bridge.set_mode("mark_only", "multi_digit")
     bridge.set_skip_questions(0)
     time.sleep(2.5)  # 画面初期化を待ってから UI へ push させる
@@ -44,8 +51,15 @@ def _setup_demo(bridge):
     time.sleep(0.6)
     bridge._win.eval_js("document.querySelector('[data-action=select_coord_file]').click()")
     time.sleep(0.6)
+    bridge._win.eval_js("document.querySelector('[data-action=select_answer_key]').click()")
+    time.sleep(0.6)
     bridge._win.eval_js("document.getElementById('btn-run-recognition').click()")
     time.sleep(3)
+    if "--full" in sys.argv:
+        bridge._win.eval_js("document.getElementById('btn-run-scoring').click()")
+        time.sleep(4)
+        bridge._win.eval_js("document.getElementById('btn-run-summary').click()")
+        time.sleep(6)
     if "--checker" in sys.argv:
         bridge._win.eval_js("document.getElementById('btn-open-checker').click()")
         time.sleep(2.5)

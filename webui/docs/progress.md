@@ -3,8 +3,8 @@
 | # | ステップ | 状態 | コミット |
 |---|---|---|---|
 | 0 | ブランチ feat/webui・計画文書 | ✅ | (このコミット) |
-| 1 | 骨組み: app.py + index.html + bridge(ping) が Xvfb で起動しキャプチャ取得 | ⬜ | |
-| 2 | L2 ハーネス: Playwright+Chrome でモックbridgeのUIテストが回る | ⬜ | |
+| 1 | 骨組み: app.py + index.html + bridge(ping) が Xvfb で起動しキャプチャ取得 | ✅ | (骨組みコミット) |
+| 2 | L2 ハーネス: Playwright+Chrome でモックbridgeのUIテストが回る | ✅ | (このコミット) |
 | 3 | M1-a: データソース選択（ネイティブダイアログ・座標/正答の選択時チェック） | ⬜ | |
 | 4 | M1-b: 認識実行（進捗・中断・OMR結果表示） | ⬜ | |
 | 5 | M1-c: マークチェック画面 | ⬜ | |

@@ -20,27 +20,27 @@
         <span class="mode-desc">座標ファイルを使ったOMR認識・マーク採点を実行します</span>
       </button>
       <button class="mode-card" data-mode="mark_and_descriptive" data-format="standard">
-        <span class="mode-title">✏ マーク採点 ＋ 記述採点</span>
+        <span class="mode-title">マーク採点 ＋ 記述採点</span>
         <span class="mode-desc">マーク採点に加えて、記述式問題の採点も行います</span>
       </button>
       <button class="mode-card" data-mode="descriptive_only" data-format="standard">
-        <span class="mode-title">✏ 記述採点のみ</span>
+        <span class="mode-title">記述採点のみ</span>
         <span class="mode-desc">座標ファイル不要。答案画像から記述問題のみを採点します</span>
       </button>
       <button class="mode-card math" data-mode="mark_only" data-format="multi_digit">
-        <span class="mode-title">🔢 数学マーク採点のみ</span>
+        <span class="mode-title">数学マーク採点のみ</span>
         <span class="mode-desc">共通テスト数学式。複数のマーク行で1つの値（-24等）を完答採点します</span>
       </button>
       <button class="mode-card math" data-mode="mark_and_descriptive" data-format="multi_digit">
-        <span class="mode-title">🔢✏ 数学マーク採点 ＋ 記述採点</span>
+        <span class="mode-title">数学マーク採点 ＋ 記述採点</span>
         <span class="mode-desc">数学マーク採点に加えて、記述式問題の採点も行います</span>
       </button>
     </div>
-    <button class="btn" id="btn-resume-session" hidden>📂 採点再開（セッション復元）</button>
+    <button class="btn" id="btn-resume-session" hidden>前回の採点を再開する</button>
   </section>
 
   <section class="panel" id="datasource-panel">
-    <h2>📂 データソース</h2>
+    <h2>データソース</h2>
 
     <div class="ds-row" id="row-image-folder">
       <span class="ds-label">画像フォルダ</span>
@@ -83,7 +83,7 @@
         濃さ <input id="color-th" type="number" step="0.05" min="0.05" max="0.95">
         面積 <input id="area-th" type="number" step="0.05" min="0.05" max="0.95">
         <button class="btn" id="btn-calibrate"
-                title="サンプル画像からしきい値を推定して適用">🔧 自動調整</button>
+                title="サンプル画像からしきい値を推定して適用">自動調整</button>
       </span>
     </div>
 
@@ -95,7 +95,7 @@
     </div>
 
     <div class="ds-row">
-      <button class="btn" id="btn-open-checker">🔍 マークチェック</button>
+      <button class="btn" id="btn-open-checker">マークチェック</button>
     </div>
 
     <div class="ds-row" id="row-omr-result">
@@ -108,8 +108,8 @@
   <section class="panel" id="step2-panel">
     <h2>Step 2: 採点</h2>
     <div class="ds-row desc-only-ui" hidden>
-      <button class="btn" id="btn-desc-config">⚙ 記述問題設定</button>
-      <button class="btn" id="btn-desc-scoring">✏ 記述採点</button>
+      <button class="btn" id="btn-desc-config">記述問題設定</button>
+      <button class="btn" id="btn-desc-scoring">記述採点</button>
       <span class="hint" id="desc-progress-hint"></span>
     </div>
     <div class="ds-row">
@@ -117,7 +117,7 @@
       <span class="hint">○×・得点を描き込んだ答案画像を出力します</span>
     </div>
     <div class="ds-row">
-      <button class="btn" id="btn-total-position">📐 合計点位置設定</button>
+      <button class="btn" id="btn-total-position">合計点の位置指定</button>
       <span class="hint" id="total-position-hint">未設定（自動配置）</span>
     </div>
   </section>
@@ -127,7 +127,7 @@
     <div class="ds-row">
       <label><input type="checkbox" id="name-trim-check" checked>
         氏名画像を集計シートに表示する</label>
-      <button class="btn" id="btn-name-position">📐 氏名欄の位置指定</button>
+      <button class="btn" id="btn-name-position">氏名欄の位置指定</button>
       <span class="hint" id="name-position-hint">未指定（指定すると集計に氏名画像が入ります）</span>
     </div>
     <div class="ds-row">
@@ -144,7 +144,7 @@
   <!-- 記述問題設定ビュー -->
   <section id="desc-config-view" hidden>
     <div class="checker-head">
-      <h2>⚙ 記述問題設定</h2>
+      <h2>記述問題設定</h2>
       <span class="checker-summary" id="desc-config-summary"></span>
       <button class="btn" id="btn-desc-config-close">閉じる</button>
     </div>
@@ -163,9 +163,9 @@
   <!-- 記述採点ビュー（問題別グリッド） -->
   <section id="desc-scoring-view" hidden>
     <div class="checker-head">
-      <h2>✏ 記述採点</h2>
+      <h2>記述採点</h2>
       <span class="checker-summary" id="desc-scoring-summary"></span>
-      <button class="btn" id="btn-single-sheet">📄 一枚採点モード</button>
+      <button class="btn" id="btn-single-sheet">一枚ずつ採点する</button>
       <button class="btn" id="btn-desc-scoring-close">閉じる</button>
     </div>
     <nav id="desc-q-tabs" class="checker-tabs"></nav>
@@ -175,7 +175,7 @@
   <!-- 一枚採点ビュー（画像レイヤ＋注釈レイヤ。コメントモードの差し込み口） -->
   <section id="single-sheet-view" hidden>
     <div class="checker-head">
-      <h2>📄 一枚採点</h2>
+      <h2>一枚採点</h2>
       <span class="checker-summary" id="single-sheet-name"></span>
       <button class="btn" id="btn-sheet-prev">◀ 前の答案</button>
       <button class="btn" id="btn-sheet-next">次の答案 ▶</button>
@@ -193,7 +193,7 @@
   <!-- マークチェックビュー（開いている間は他パネルを隠す） -->
   <section id="checker-view" hidden>
     <div class="checker-head">
-      <h2>🔍 マークチェック</h2>
+      <h2>マークチェック</h2>
       <span id="checker-summary" class="checker-summary"></span>
       <button class="btn btn-primary" id="btn-apply-corrections">💾 xlsxに反映</button>
       <button class="btn" id="btn-close-checker">閉じる</button>

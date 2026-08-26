@@ -2,6 +2,7 @@ import { call } from './bridge.js';
 import { openChecker, wireChecker } from './checker.js';
 import { pickRegion } from './region-picker.js';
 import { wireDescriptive } from './descriptive.js';
+import { withTransition } from './transitions.js';
 
 // ---------------------------------------------------------------
 // ログ
@@ -317,18 +318,20 @@ const MODE_LABEL = {
 };
 
 function showMain(state) {
-  document.getElementById('mode-select').hidden = true;
-  document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
-  const label = MODE_LABEL[`${state.app_mode}/${state.mark_format}`] ?? '';
-  let badge = document.getElementById('mode-badge');
-  if (!badge) {
-    badge = document.createElement('span');
-    badge.id = 'mode-badge';
-    badge.className = 'mode-badge';
-    document.querySelector('.topbar h1').appendChild(badge);
-  }
-  badge.textContent = `— ${label}`;
-  render(state);
+  withTransition(() => {
+    document.getElementById('mode-select').hidden = true;
+    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+    const label = MODE_LABEL[`${state.app_mode}/${state.mark_format}`] ?? '';
+    let badge = document.getElementById('mode-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.id = 'mode-badge';
+      badge.className = 'mode-badge';
+      document.querySelector('.topbar h1').appendChild(badge);
+    }
+    badge.textContent = label;
+    render(state);
+  });
 }
 
 function wireModeSelect() {

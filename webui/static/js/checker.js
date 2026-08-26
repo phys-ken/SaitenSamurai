@@ -4,6 +4,7 @@
  * set_correction/apply_corrections/close）に対応する画面制御。
  */
 import { call } from './bridge.js';
+import { withTransition } from './transitions.js';
 
 const PAGE_SIZE = 24;
 let view = { category: '__errors__', page: 0, total: 0 };
@@ -19,8 +20,10 @@ export async function openChecker(log) {
   const c = res.state.checker;
   // 要確認が0件なら値タブから開く
   view = { category: c.error_count > 0 ? '__errors__' : null, page: 0, total: 0 };
-  document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
-  el('checker-view').hidden = false;
+  withTransition(() => {
+    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
+    el('checker-view').hidden = false;
+  });
   renderHead(c);
   renderTabs(c);
   await renderGrid();
@@ -29,8 +32,10 @@ export async function openChecker(log) {
 
 export async function closeChecker() {
   await call('close_mark_checker');
-  el('checker-view').hidden = true;
-  document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+  withTransition(() => {
+    el('checker-view').hidden = true;
+    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+  });
 }
 
 function renderHead(c) {

@@ -6,19 +6,22 @@
  */
 import { call } from './bridge.js';
 import { pickRegion } from './region-picker.js';
+import { withTransition } from './transitions.js';
 
 let logFn = () => {};
 let onStateUpdate = () => {};
 const el = (id) => document.getElementById(id);
 
 function showView(id) {
-  document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
-  for (const v of ['desc-config-view', 'desc-scoring-view', 'single-sheet-view']) {
-    el(v).hidden = v !== id;
-  }
-  if (id === null) {
-    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
-  }
+  withTransition(() => {
+    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
+    for (const v of ['desc-config-view', 'desc-scoring-view', 'single-sheet-view']) {
+      el(v).hidden = v !== id;
+    }
+    if (id === null) {
+      document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+    }
+  });
 }
 
 // ================================================================
@@ -130,7 +133,9 @@ async function renderDescGrid() {
     const meta = document.createElement('div');
     meta.className = 'entry-meta';
     meta.innerHTML = `<span>${t.filename}</span>` +
-      `<span class="score-note">${t.score === null ? '未採点' : `${t.score} 点`}</span>`;
+      (t.score === null
+        ? '<span class="score-note">未採点</span>'
+        : `<span class="score-note score-mark">${t.score} 点</span>`);
     card.append(img, meta,
       scoreButtons(q.max_score, t.score, async (v) => {
         try {

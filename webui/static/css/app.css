@@ -1,12 +1,35 @@
-/* 採点侍 webui — ビルドなし・素のCSS。
-   固定px幅を避け、フレックスと相対単位で組む（tk時代の見切れ問題の再発防止） */
+/* 採点侍 webui — 「赤ペン×答案用紙」の3層意味構造。
+   ビルドなし・素のCSS。固定px幅を避け、フレックスと相対単位で組む。
+
+   設計原則（webui/docs/design.md 参照）:
+     紙   … ほぼ白の地。クリームまでは寄せない
+     印刷罫… 青磁色。枠線・区切り・見出し罫など「用紙に印刷されている側」
+     朱筆 … 得点・進捗・選択枠・実行ボタンなど「先生が書き込む側」だけが朱。
+            装飾には使わない
+   書体: 見出しと得点だけ明朝、本文はUIゴシック。 */
 :root {
-  --bg: #f5f7f9;
-  --panel: #ffffff;
-  --text: #263238;
-  --muted: #78909c;
-  --accent: #1565c0;
-  --ok: #2e7d32;
+  /* 紙 */
+  --paper: #fcfbf7;
+  --paper-dim: #f5f4ee;
+  /* 印刷罫（青磁） */
+  --kei: #a9bfb2;
+  --kei-line: #c9d6cd;
+  --kei-usu: #e4ebe6;
+  --print-green: #47725d;   /* 印刷インクの緑: 確認済み・成功の文言 */
+  /* 墨 */
+  --sumi: #2b2825;
+  --usuzumi: #7a746c;
+  --usuzumi-2: #b0aaa2;
+  /* 朱（先生の書き込み） */
+  --shu: #c73e2e;
+  --shu-dark: #a93325;
+  --shu-usu: #f8e9e5;
+  --warn: #a0691c;
+
+  --font-body: "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", "Hiragino Sans", sans-serif;
+  --font-display: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN",
+                  "Noto Serif CJK JP", serif;
+  --font-mono: "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
 * { box-sizing: border-box; }
 /* display:flex 等の指定が UA の [hidden]{display:none} を上書きして
@@ -14,81 +37,141 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
-  font-family: "Yu Gothic UI", "Noto Sans CJK JP", "Hiragino Sans", sans-serif;
+  font-family: var(--font-body);
   font-size: 15px;
-  color: var(--text);
-  background: var(--bg);
+  color: var(--sumi);
+  background: var(--paper);
   display: flex;
   flex-direction: column;
 }
+:focus-visible { outline: 2px solid var(--shu); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ── 上端: 解答用紙の表題欄（二重罫で締める） ── */
 .topbar {
   display: flex;
   align-items: baseline;
   gap: 1rem;
-  padding: 0.6rem 1rem;
-  background: var(--panel);
-  border-bottom: 1px solid #e0e5e9;
+  padding: 0.55rem 1.2rem 0.45rem;
+  background: var(--paper);
+  border-bottom: 3px double var(--kei);
 }
-.topbar h1 { font-size: 1.15rem; margin: 0; color: var(--accent); }
-.version { font-size: 0.8rem; color: var(--muted); font-weight: normal; }
-.bridge-status { margin-left: auto; font-size: 0.8rem; color: var(--muted); }
-.bridge-status[data-state="ok"] { color: var(--ok); }
-.bridge-status[data-state="error"] { color: #c62828; }
-main#app { flex: 1; padding: 1rem; overflow: auto; }
-.placeholder { color: var(--muted); }
+.topbar h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  letter-spacing: 0.12em;
+  margin: 0;
+  color: var(--sumi);
+}
+.version { font-size: 0.78rem; color: var(--usuzumi); font-weight: normal; letter-spacing: 0; }
+.mode-badge {
+  font-family: var(--font-body);
+  font-size: 0.78rem; letter-spacing: 0;
+  color: var(--sumi);
+  border: 1px solid var(--kei);
+  padding: 0.1em 0.6em;
+  margin-left: 0.6rem;
+  vertical-align: 0.15em;
+}
+.bridge-status { margin-left: auto; font-size: 0.8rem; color: var(--usuzumi); }
+.bridge-status[data-state="ok"] { color: var(--print-green); }
+.bridge-status[data-state="error"] { color: var(--shu-dark); }
 
+main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
+.placeholder { color: var(--usuzumi); }
+
+/* ── パネル = 用紙の設問ブロック。枠は印刷罫 ── */
 .panel {
-  background: var(--panel);
-  border: 1px solid #e0e5e9;
-  border-radius: 6px;
-  padding: 0.8rem 1rem;
-  margin-bottom: 1rem;
+  background: var(--paper);
+  border: 1px solid var(--kei);
+  padding: 0.9rem 1.1rem 1rem;
+  margin: 0 auto 1rem;
   max-width: 60rem;
 }
-.panel h2 { font-size: 0.95rem; margin: 0 0 0.6rem; color: var(--muted); }
+.panel h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.7rem;
+  padding-bottom: 0.35rem;
+  color: var(--sumi);
+  border-bottom: 1px solid var(--kei-line);
+}
 
 .ds-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.25rem 0;
+  padding: 0.3rem 0;
 }
-.ds-label { flex: 0 0 8.5em; color: var(--text); }
+.ds-label { flex: 0 0 8.5em; color: var(--sumi); }
 .ds-value {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--muted);
-  background: #f1f3f5;
-  border-radius: 4px;
+  color: var(--usuzumi);
+  background: var(--paper-dim);
+  border-bottom: 1px solid var(--kei-line);
   padding: 0.3rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
 }
-.ds-value.selected { color: var(--text); }
-.ds-value:empty::before { content: attr(data-empty); color: #b0bec5; }
+.ds-value.selected { color: var(--sumi); }
+.ds-value:empty::before {
+  content: attr(data-empty);
+  color: var(--usuzumi-2);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+/* ボタン: 通常操作は紙×罫、採点行為（primary）だけが朱 */
 .btn {
   font: inherit;
   padding: 0.35rem 0.9rem;
-  border: 1px solid #cfd8dc;
-  border-radius: 4px;
-  background: #eceff1;
+  border: 1px solid var(--kei);
+  background: var(--paper);
+  color: var(--sumi);
   cursor: pointer;
   white-space: nowrap;     /* tk時代の「ファイル選」見切れの再発防止 */
 }
-.btn:hover { background: #e3e7ea; }
-.ds-summary { margin: 0 0 0.3rem 9.1em; font-size: 0.85rem; color: var(--ok); }
-.ds-summary.warn { color: #b26a00; }
-.ds-summary.err { color: #c62828; white-space: pre-line; }
-.ds-options { color: var(--text); }
+.btn:hover { background: var(--kei-usu); }
+.btn:active { background: var(--kei-line); }
+.btn-primary {
+  background: var(--shu);
+  border-color: var(--shu);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--shu-dark); border-color: var(--shu-dark); }
+.btn-primary:disabled, .btn:disabled {
+  background: var(--paper-dim);
+  border-color: var(--kei-usu);
+  color: var(--usuzumi-2);
+  cursor: default;
+}
+
+.ds-summary { margin: 0 0 0.3rem 9.1em; font-size: 0.85rem; color: var(--print-green); }
+.ds-summary.warn { color: var(--warn); }
+.ds-summary.err { color: var(--shu-dark); white-space: pre-line; }
+.ds-options { color: var(--sumi); }
 .ds-options input { width: 4em; font: inherit; padding: 0.2rem; text-align: center; }
+input, select {
+  font: inherit;
+  color: var(--sumi);
+  background: var(--paper);
+  border: 1px solid var(--kei);
+}
 
 .log {
-  font-family: "Consolas", "Noto Sans Mono CJK JP", monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
-  background: #fafbfc;
-  border: 1px solid #eceff1;
-  border-radius: 4px;
+  background: var(--paper-dim);
+  border: 1px solid var(--kei-usu);
   min-height: 6em;
   max-height: 14em;
   overflow-y: auto;
@@ -96,75 +179,100 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
   white-space: pre-wrap;
 }
 
-.btn-primary { background: #1565c0; border-color: #1565c0; color: #fff; }
-.btn-primary:hover { background: #0d47a1; }
-.btn-primary:disabled, .btn:disabled {
-  background: #e0e0e0; border-color: #d5d5d5; color: #8a8a8a; cursor: default;
-}
-#job-progress { flex: 1; height: 0.9rem; }
-.job-status { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+#job-progress { flex: 1; height: 0.9rem; accent-color: var(--shu); }
+.job-status { font-size: 0.85rem; color: var(--usuzumi); white-space: nowrap; }
 #step1-panel select, #threshold-inputs input { font: inherit; padding: 0.25rem; }
 #threshold-inputs input { width: 4.5em; }
 
-/* ── マークチェック ── */
-.checker-head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.6rem; }
-.checker-head h2 { margin: 0; font-size: 1.05rem; }
-.checker-summary { color: var(--muted); font-size: 0.85rem; margin-right: auto; }
-.checker-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.7rem; }
+.hint { font-size: 0.8rem; color: var(--usuzumi); }
+
+/* ── 得点の朱書き（署名要素）: 明朝太字の朱。書き込まれた瞬間だけ僅かに沈む ── */
+.score-mark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--shu);
+}
+@keyframes shu-stamp {
+  from { transform: scale(1.25); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.score-mark.fresh { animation: shu-stamp 0.16s ease-out; }
+
+/* ── モード選択 ── */
+.mode-select { max-width: 34rem; margin: 2.5rem auto; text-align: center; }
+.mode-select h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--sumi);
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+}
+.mode-cards { display: flex; flex-direction: column; gap: 0.7rem; margin: 1.4rem 0 1rem; }
+.mode-card {
+  font: inherit; text-align: left; cursor: pointer;
+  border: 1px solid var(--kei);
+  background: var(--paper);
+  padding: 0.8rem 1.1rem;
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.mode-card:hover { border-color: var(--shu); background: var(--shu-usu); }
+.mode-title { font-weight: bold; font-size: 1rem; }
+.mode-desc { font-size: 0.82rem; color: var(--usuzumi); }
+
+/* ── タブ（チェッカー・記述の問題切替） ── */
 .tab {
   font: inherit; font-size: 0.85rem;
-  padding: 0.3rem 0.7rem; border: 1px solid #cfd8dc; border-radius: 999px;
-  background: #fff; cursor: pointer;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--kei);
+  background: var(--paper);
+  color: var(--sumi);
+  cursor: pointer;
 }
-.tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.tab.error-cat { border-color: #ef9a9a; }
-.tab.error-cat.active { background: #c62828; border-color: #c62828; }
+.tab.active { background: var(--sumi); border-color: var(--sumi); color: var(--paper); }
+.tab.error-cat { border-color: var(--shu); color: var(--shu-dark); }
+.tab.error-cat.active { background: var(--shu); border-color: var(--shu); color: #fff; }
+
+/* ── マークチェック ── */
+.checker-head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.6rem; }
+.checker-head h2 {
+  margin: 0; font-size: 1.05rem;
+  font-family: var(--font-display); font-weight: 600; letter-spacing: 0.06em;
+}
+.checker-summary { color: var(--usuzumi); font-size: 0.85rem; margin-right: auto; }
+.checker-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.7rem; }
 .checker-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 0.6rem;
 }
 .entry-card {
-  background: var(--panel); border: 1px solid #e0e5e9; border-radius: 6px;
+  background: var(--paper);
+  border: 1px solid var(--kei-line);
   padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;
 }
-.entry-card.error { border-color: #ef9a9a; background: #fff8f8; }
-.entry-card.corrected { border-color: #81c784; background: #f6fdf6; }
-.entry-card img { width: 100%; border: 1px solid #eceff1; border-radius: 3px;
-                  min-height: 40px; background: #fafafa; }
+.entry-card.error { border-color: var(--shu); background: var(--shu-usu); }
+.entry-card.corrected { border-color: var(--print-green); }
+.entry-card img {
+  width: 100%; border: 1px solid var(--kei-usu);
+  min-height: 40px; background: var(--paper-dim);
+}
 .entry-meta { display: flex; justify-content: space-between; font-size: 0.78rem;
-              color: var(--muted); }
+              color: var(--usuzumi); }
 .entry-fix { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
 .entry-fix input { width: 4em; font: inherit; text-align: center; padding: 0.2rem; }
 .entry-before { font-weight: bold; }
 .checker-pager { display: flex; align-items: center; gap: 0.8rem;
                  justify-content: center; margin-top: 0.8rem; }
 
-.hint { font-size: 0.8rem; color: var(--muted); }
-
-/* ── モード選択 ── */
-.mode-select { max-width: 34rem; margin: 2rem auto; text-align: center; }
-.mode-select h2 { color: var(--muted); font-size: 1rem; }
-.mode-cards { display: flex; flex-direction: column; gap: 0.7rem; margin: 1.2rem 0; }
-.mode-card {
-  font: inherit; text-align: left; cursor: pointer;
-  border: 1px solid #cfd8dc; border-radius: 8px; background: var(--panel);
-  padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.25rem;
-}
-.mode-card:hover { border-color: var(--accent); background: #f5f9ff; }
-.mode-card.math:hover { border-color: #e65100; background: #fff8f2; }
-.mode-title { font-weight: bold; font-size: 1rem; }
-.mode-desc { font-size: 0.82rem; color: var(--muted); }
-.mode-badge { font-size: 0.8rem; color: var(--muted); margin-left: 0.4rem; }
-
 /* ── region picker ── */
 .picker-overlay {
   position: fixed; inset: 0; z-index: 100;
-  background: rgba(38, 50, 56, 0.55);
+  background: rgba(43, 40, 37, 0.55);
   display: flex; align-items: center; justify-content: center;
 }
 .picker-dialog {
-  background: var(--panel); border-radius: 8px; padding: 0.8rem;
+  background: var(--paper); border: 1px solid var(--kei);
+  padding: 0.8rem;
   max-width: 92vw; max-height: 92vh; display: flex; flex-direction: column;
   gap: 0.6rem;
 }
@@ -177,49 +285,65 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
 }
 .picker-rect {
   position: absolute; pointer-events: none;
-  border: 2px solid #d32f2f; background: rgba(211, 47, 47, 0.12);
+  border: 2px solid var(--shu);
+  background: rgba(199, 62, 46, 0.1);
 }
 
 /* ── 記述採点 ── */
-.desc-table { border-collapse: collapse; background: var(--panel); width: 100%;
+.desc-table { border-collapse: collapse; background: var(--paper); width: 100%;
               max-width: 46rem; margin-bottom: 0.8rem; }
-.desc-table th, .desc-table td { border: 1px solid #e0e5e9; padding: 0.4rem 0.6rem;
+.desc-table th, .desc-table td { border: 1px solid var(--kei-line); padding: 0.4rem 0.6rem;
                                  font-size: 0.9rem; text-align: left; }
-.desc-table th { background: #f1f3f5; color: var(--muted); font-weight: normal; }
+.desc-table th { background: var(--kei-usu); color: var(--sumi); font-weight: normal; }
 .desc-add-row input { font: inherit; padding: 0.3rem; }
 #new-q-name { width: 12em; }
 #new-q-max, #new-q-aspect { width: 4em; text-align: center; }
+
 .score-btns { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .score-btn {
   font: inherit; min-width: 2.1em; padding: 0.25rem 0.35rem;
-  border: 1px solid #cfd8dc; border-radius: 4px; background: #fff; cursor: pointer;
+  border: 1px solid var(--kei); background: var(--paper); cursor: pointer;
 }
-.score-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.score-btn.clear { color: var(--muted); }
-.entry-card .score-note { font-size: 0.8rem; color: var(--muted); }
-.entry-card.scored { border-color: #81c784; background: #f6fdf6; }
+.score-btn:hover { background: var(--kei-usu); }
+.score-btn.active {
+  background: var(--shu); border-color: var(--shu); color: #fff;
+  font-family: var(--font-display); font-weight: 700;
+}
+.score-btn.clear { color: var(--usuzumi); }
+.entry-card .score-note { font-size: 0.8rem; color: var(--usuzumi); }
+.entry-card .score-note.score-mark { font-size: 0.95rem; }
+.entry-card.scored { border-color: var(--kei); background: var(--paper); }
+
+/* 採点中カーソル（署名要素）: 朱の採点枠 */
+.entry-card.cursor {
+  border: 2px solid var(--shu);
+  padding: calc(0.5rem - 1px);
+}
 
 /* 一枚採点: 画像レイヤ + 注釈レイヤ */
 .single-layout { display: flex; gap: 0.8rem; align-items: flex-start; }
 .sheet-stage { position: relative; flex: 1; min-width: 0; overflow: auto;
-               max-height: 78vh; background: var(--panel);
-               border: 1px solid #e0e5e9; border-radius: 6px; }
+               max-height: 78vh; background: var(--paper-dim);
+               border: 1px solid var(--kei); }
 .sheet-stage img { display: block; width: 100%; }
 .annotation-layer { position: absolute; inset: 0; pointer-events: none; }
 .region-box {
-  position: absolute; border: 2px solid rgba(21, 101, 192, 0.75);
-  border-radius: 3px; pointer-events: auto; cursor: pointer;
-  background: rgba(21, 101, 192, 0.05);
+  position: absolute;
+  border: 2px solid var(--kei);          /* 未採点: 印刷罫の枠 */
+  pointer-events: auto; cursor: pointer;
+  background: transparent;
 }
-.region-box.scored { border-color: rgba(46, 125, 50, 0.8); }
-.region-box.focused { border-color: #d32f2f; background: rgba(211, 47, 47, 0.08); }
+.region-box.scored { border-color: var(--shu); }  /* 採点済み: 朱の枠 */
+.region-box.focused { border-width: 3px; border-color: var(--shu); }
 .region-label {
-  position: absolute; top: -1.4em; left: 0; font-size: 0.75rem;
-  background: rgba(21, 101, 192, 0.85); color: #fff; padding: 0 0.4em;
-  border-radius: 3px; white-space: nowrap;
+  position: absolute; top: -1.5em; left: -2px; font-size: 0.75rem;
+  background: var(--kei); color: #fff; padding: 0 0.45em;
+  white-space: nowrap;
 }
+.region-box.scored .region-label,
+.region-box.focused .region-label { background: var(--shu); }
 .sheet-side { flex: 0 0 17rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.side-q { background: var(--panel); border: 1px solid #e0e5e9; border-radius: 6px;
+.side-q { background: var(--paper); border: 1px solid var(--kei-line);
           padding: 0.5rem 0.6rem; }
-.side-q.focused { border-color: #d32f2f; }
-.side-q h3 { margin: 0 0 0.3rem; font-size: 0.9rem; }
+.side-q.focused { border: 2px solid var(--shu); padding: calc(0.5rem - 1px) calc(0.6rem - 1px); }
+.side-q h3 { margin: 0 0 0.3rem; font-size: 0.9rem; font-weight: 600; }

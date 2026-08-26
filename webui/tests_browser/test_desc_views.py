@@ -81,7 +81,8 @@ def test_config_view_lists_questions_and_deletes(open_app):
         "document.querySelectorAll('#desc-table tbody tr').length === 1")
     # 閉じるとメインに戻る
     page.click("#btn-desc-config-close")
-    assert page.locator("#desc-config-view").is_hidden()
+    # View Transition は1フレーム遅れて反映されるため待機型で確認
+    page.wait_for_selector("#desc-config-view", state="hidden")
     assert page.locator("#datasource-panel").is_visible()
 
 

@@ -40,7 +40,7 @@ export async function openChecker(log) {
   el('checker-sort').value = view.sort;
   cursor = 0;
   await withTransition(() => {
-    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
+    document.getElementById('main-cols').hidden = true;
     el('checker-view').hidden = false;
   });
   renderHead(c);
@@ -65,7 +65,7 @@ export async function closeChecker() {
   entryImageLoader.clear();
   withTransition(() => {
     el('checker-view').hidden = true;
-    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+    document.getElementById('main-cols').hidden = false;
   });
 }
 

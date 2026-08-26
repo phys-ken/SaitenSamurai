@@ -47,9 +47,9 @@ def _setup_demo(bridge):
     time.sleep(2.5)  # 画面初期化を待ってから UI 操作
     bridge._win.eval_js("document.querySelector('.mode-card.math').click()")
     time.sleep(0.5)
-    bridge.set_skip_questions(0)
     bridge._win.eval_js("document.querySelector('[data-action=select_image_folder]').click()")
     time.sleep(0.6)
+    bridge.set_skip_questions(0)   # フォルダ選択は完全クリアするので後から
     bridge._win.eval_js("document.querySelector('[data-action=select_coord_file]').click()")
     time.sleep(0.6)
     bridge._win.eval_js("document.querySelector('[data-action=select_answer_key]').click()")

@@ -3,6 +3,26 @@
 このファイルだけが pywebview を import する（bridge は import しない —
 webui/docs/plan.md の設計原則）。起動: python webui/app.py
 """
+# ── frozen(exe) ガード: 全インポートより前に置く ─────────────────
+# tk 版 saitensamurai.py と同じ既知問題への対策（Win11 実機で再発を確認）:
+# sklearn/joblib(loky) や multiprocessing が子プロセスを生成すると
+# exe 自身が再実行され、コンソールウィンドウが大量に開く。
+import multiprocessing as _mp
+import os as _os
+import sys as _sys
+
+_mp.freeze_support()
+
+if getattr(_sys, "frozen", False):
+    # console=False の exe では stdout/stderr が None → print で落ちないように
+    if _sys.stdout is None:
+        _sys.stdout = open(_os.devnull, "w", encoding="utf-8")
+    if _sys.stderr is None:
+        _sys.stderr = open(_os.devnull, "w", encoding="utf-8")
+    # loky の子プロセス生成を抑止（KMeans 等の並列化がウィンドウ乱立の原因）
+    _os.environ["LOKY_MAX_CPU_COUNT"] = "1"
+    _os.environ["JOBLIB_START_METHOD"] = "loky"
+
 import argparse
 import logging
 import sys

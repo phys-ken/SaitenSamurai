@@ -27,8 +27,8 @@
   --warn: #a0691c;
 
   --font-body: "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", "Hiragino Sans", sans-serif;
-  --font-display: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN",
-                  "Noto Serif CJK JP", serif;
+  /* 実用全振り方針（win11-feedback-plan.md）: 見出しも本文と同じゴシック太字 */
+  --font-display: var(--font-body);
   --font-mono: "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
 * { box-sizing: border-box; }
@@ -54,15 +54,14 @@ body {
   display: flex;
   align-items: baseline;
   gap: 1rem;
-  padding: 0.55rem 1.2rem 0.45rem;
+  padding: 0.4rem 1.2rem 0.35rem;
   background: var(--paper);
   border-bottom: 3px double var(--kei);
 }
 .topbar h1 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.3rem;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.06em;
   margin: 0;
   color: var(--sumi);
 }
@@ -89,24 +88,45 @@ body {
 .bridge-status[data-state="ok"] { visibility: hidden; }  /* 正常は黙る。異常だけ知らせる */
 .bridge-status[data-state="error"] { color: var(--shu-dark); font-weight: bold; }
 
-main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
+main#app { flex: 1; padding: 0.7rem 0.9rem 1rem; overflow: auto; }
+
+/* ── 2カラム: 左=操作 / 右=ログ+進捗の常設（1画面収納が目標） ── */
+.main-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 26rem);
+  gap: 0.6rem;
+  align-items: start;
+  max-width: 96rem;
+  margin: 0 auto;
+}
+.col-log { position: sticky; top: 0.5rem; }
+.log-panel { display: flex; flex-direction: column;
+             max-height: calc(100vh - 9.5rem); }
+.log-panel .log { flex: 1; max-height: none; min-height: 10em; }
+.job-panel { display: flex; align-items: center; gap: 0.5rem;
+             padding: 0.3rem 0; border-bottom: 1px solid var(--kei-usu);
+             margin-bottom: 0.4rem; }
+.job-kind { font-size: 0.85rem; font-weight: 700; color: var(--shu-dark);
+            white-space: nowrap; }
+.job-panel progress { flex: 1; height: 0.9rem; accent-color: var(--shu); }
+@media (max-width: 980px) {
+  .main-cols { grid-template-columns: 1fr; }
+  .col-log { position: static; }
+}
 .placeholder { color: var(--usuzumi); }
 
 /* ── パネル = 用紙の設問ブロック。枠は印刷罫 ── */
 .panel {
   background: var(--paper);
   border: 1px solid var(--kei);
-  padding: 0.9rem 1.1rem 1rem;
-  margin: 0 auto 1rem;
-  max-width: 60rem;
+  padding: 0.4rem 0.8rem 0.45rem;
+  margin: 0 0 0.4rem;
 }
 .panel h2 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.02rem;
-  letter-spacing: 0.06em;
-  margin: 0 0 0.7rem;
-  padding-bottom: 0.35rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+  padding-bottom: 0.2rem;
   color: var(--sumi);
   border-bottom: 1px solid var(--kei-line);
 }
@@ -114,8 +134,8 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
 .ds-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.3rem 0;
+  gap: 0.5rem;
+  padding: 0.12rem 0;
 }
 .ds-label { flex: 0 0 10.5em; color: var(--sumi); }
 .ds-value {
@@ -127,7 +147,7 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
   color: var(--usuzumi);
   background: var(--paper-dim);
   border-bottom: 1px solid var(--kei-line);
-  padding: 0.3rem 0.5rem;
+  padding: 0.2rem 0.5rem;
   font-family: var(--font-mono);
   font-size: 0.86rem;
 }
@@ -142,7 +162,7 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
 /* ボタン: 通常操作は紙×罫、採点行為（primary）だけが朱 */
 .btn {
   font: inherit;
-  padding: 0.35rem 0.9rem;
+  padding: 0.28rem 0.8rem;
   border: 1px solid var(--kei);
   background: var(--paper);
   color: var(--sumi);
@@ -151,12 +171,14 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
 }
 .btn:hover { background: var(--kei-usu); }
 .btn:active { background: var(--kei-line); }
-.btn-primary {
+.btn-primary,
+.btn.btn-next {
   background: var(--shu);
   border-color: var(--shu);
   color: #fff;
+  font-weight: 700;
 }
-.btn-primary:hover { background: var(--shu-dark); border-color: var(--shu-dark); }
+.btn-primary:hover, .btn.btn-next:hover { background: var(--shu-dark); border-color: var(--shu-dark); }
 .btn-primary:disabled, .btn:disabled {
   background: var(--paper-dim);
   border-color: var(--kei-usu);
@@ -164,7 +186,7 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
   cursor: default;
 }
 
-.ds-summary { margin: 0 0 0.3rem 11.1em; font-size: 0.85rem; color: var(--print-green); }
+.ds-summary { margin: 0 0 0.05rem 11.1em; font-size: 0.8rem; color: var(--print-green); }
 .ds-summary.warn { color: var(--warn); }
 .ds-summary.err { color: var(--shu-dark); white-space: pre-line; }
 .ds-options { color: var(--sumi); }
@@ -197,7 +219,6 @@ input, select {
 
 /* ── 得点の朱書き（署名要素）: 明朝太字の朱。書き込まれた瞬間だけ僅かに沈む ── */
 .score-mark {
-  font-family: var(--font-display);
   font-weight: 700;
   color: var(--shu);
 }
@@ -420,7 +441,7 @@ input, select {
 /* ── ステッパー（進行の常設表示） ── */
 .stepper {
   display: flex; align-items: center; gap: 1rem;
-  padding: 0.35rem 1.2rem;
+  padding: 0.25rem 1.2rem;
   border-bottom: 1px solid var(--kei-line);
   background: var(--paper-dim);
 }

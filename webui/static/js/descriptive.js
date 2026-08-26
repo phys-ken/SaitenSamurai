@@ -20,12 +20,12 @@ const el = (id) => document.getElementById(id);
 
 function showView(id) {
   return withTransition(() => {
-    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
+    document.getElementById('main-cols').hidden = true;
     for (const v of ['desc-config-view', 'desc-scoring-view', 'single-sheet-view']) {
       el(v).hidden = v !== id;
     }
     if (id === null) {
-      document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+      document.getElementById('main-cols').hidden = false;
     }
   });
 }

@@ -88,7 +88,7 @@ def test_opens_with_error_tab_active(open_app):
     page = _open_checker(open_app)
     assert "要確認 (2)" in page.locator(".tab.active").inner_text()
     assert page.locator(".entry-card").count() == 2   # エラー2件のみ表示
-    assert page.locator("main > .panel").first.is_hidden()
+    assert page.locator("#main-cols").is_hidden()
 
 
 def test_correction_input_validates_and_marks_card(open_app):
@@ -121,7 +121,7 @@ def test_close_restores_panels(open_app):
     page = _open_checker(open_app)
     page.click("#btn-close-checker")
     page.wait_for_selector("#checker-view", state="hidden")
-    assert page.locator("main > .panel").first.is_visible()
+    assert page.locator("#main-cols").is_visible()
 
 
 def test_keyboard_correction_advances_cursor(open_app):

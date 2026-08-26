@@ -54,8 +54,9 @@ def test_threshold_inputs_appear_in_threshold_mode(open_app):
 def test_run_shows_progress_then_done(open_app):
     page = _boot(open_app)
     page.click("#btn-run-recognition")
-    # 実行中: ボタン無効・中断表示
-    page.wait_for_selector("#btn-cancel:not([hidden])")
+    # 実行中: ボタン無効・右カラムのジョブ表示（中断ボタン含む）
+    page.wait_for_selector("#job-panel:not([hidden])")
+    assert "答案の読み取り" in page.locator("#job-kind").inner_text()
     assert page.locator("#btn-run-recognition").is_disabled()
 
     # Python からの進捗 push を模擬
@@ -69,5 +70,5 @@ def test_run_shows_progress_then_done(open_app):
                           message:'認識完了: 成功 2 件 / エラー 0 件'});
     """ % READY_STATE)
     page.wait_for_function("document.querySelector('#log').textContent.includes('認識完了')")
-    page.wait_for_selector("#btn-cancel[hidden]", state="attached")
+    page.wait_for_selector("#job-panel[hidden]", state="attached")
     assert "Mark2-Result-" in page.locator("#row-omr-result .ds-value").inner_text()

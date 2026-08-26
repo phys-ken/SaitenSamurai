@@ -70,7 +70,42 @@ async function updateStepper(state) {
       li.classList.toggle('current', isCurrent);
       if (isCurrent) currentSet = true;
     }
+    applyNextAction(state, p);
   } catch { /* 進行度が取れなくてもUIは動かす */ }
+}
+
+/** 「次に押すべきボタン」をひとつだけ朱にする（#3: マストの明示） */
+function applyNextAction(state, p) {
+  document.querySelectorAll('.btn-next').forEach((b) => b.classList.remove('btn-next'));
+  const running = state.job?.running;
+  if (running) return;
+  const isDescOnly = state.app_mode === 'descriptive_only';
+  const isDescMode = isDescOnly || state.app_mode === 'mark_and_descriptive';
+  const d = state.descriptive;
+  const descDone = d && d.questions.length > 0 &&
+    d.questions.reduce((n, q) => n + (d.scored_counts[q.id] ?? 0), 0)
+      >= d.questions.length * d.prepared_count;
+  let id = null;
+  if (!state.image_folder) id = null;                       // フォルダ選択は data-action
+  else if (!isDescOnly && !state.coord_file) id = null;     // 同上（下で解決）
+  else if (!p.read) id = 'btn-run-recognition';
+  else if (!isDescOnly && !state.key_summary?.ok) id = null;
+  else if (isDescMode && !(d?.questions?.length)) id = 'btn-desc-config';
+  else if (isDescMode && !descDone) id = 'btn-desc-scoring';
+  else if (!p.scored) id = 'btn-run-scoring';
+  else if (!p.summarized) id = 'btn-run-summary';
+  let el2 = id && document.getElementById(id);
+  if (!el2) {
+    // データソース系はボタン要素を直接指す
+    if (!state.image_folder) {
+      el2 = document.querySelector('[data-action=select_image_folder]');
+    } else if (!isDescOnly && !state.coord_file) {
+      el2 = document.querySelector('[data-action=select_coord_file]');
+    } else if (!isDescOnly && !state.key_summary?.ok && p.read) {
+      el2 = document.querySelector('[data-action=select_answer_key]');
+    }
+  }
+  el2?.classList.add('btn-next');
 }
 
 export function render(state) {
@@ -196,8 +231,11 @@ export function render(state) {
     Boolean(running) || !scoringReady;
   document.getElementById('btn-run-summary').disabled =
     Boolean(running) || !scoringReady;
-  document.getElementById('btn-cancel').hidden = !running;
-  document.getElementById('job-progress').hidden = !running;
+  document.getElementById('job-panel').hidden = !running;
+  if (running) {
+    document.getElementById('job-kind').textContent =
+      JOB_KIND_LABEL[state.job.kind] ?? '処理中';
+  }
   updateStepper(state);
 }
 
@@ -238,17 +276,28 @@ async function runAction(name) {
 // ---------------------------------------------------------------
 window.saitenEvents = (ev) => {
   if (ev.type === 'progress') {
+    document.getElementById('job-panel').hidden = false;
+    document.getElementById('job-kind').textContent =
+      JOB_KIND_LABEL[ev.kind] ?? '処理中';
     const bar = document.getElementById('job-progress');
-    bar.hidden = false;
     bar.max = ev.total;
     bar.value = ev.current;
     document.getElementById('job-status').textContent = `${ev.current} / ${ev.total}`;
   } else if (ev.type === 'job_done') {
     invalidateProgress();
+    document.getElementById('job-panel').hidden = true;
     document.getElementById('job-status').textContent = '';
     log(ev.ok ? `✓ ${ev.message}` : `❌ ${ev.message}`);
     call('get_state').then((res) => render(res.state));
   }
+};
+
+const JOB_KIND_LABEL = {
+  recognition: '答案の読み取り',
+  pdf_import: 'PDF展開',
+  prepare_images: '画像の準備',
+  scoring: '採点済み答案の生成',
+  summary: '集計',
 };
 
 const JOB_START_LOG = {
@@ -459,7 +508,7 @@ function showMain(state) {
   withTransition(() => {
     document.getElementById('mode-select').hidden = true;
     document.getElementById('stepper').hidden = false;
-    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+    document.getElementById('main-cols').hidden = false;
     const label = MODE_LABEL[`${state.app_mode}/${state.mark_format}`] ?? '';
     let badge = document.getElementById('mode-badge');
     if (!badge) {
@@ -516,7 +565,7 @@ async function init() {
     wireModeSelect();
     wireInfo();
     // モード選択が出ている間はメインパネルを隠す
-    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
+    document.getElementById('main-cols').hidden = true;
   } catch (e) {
     status.textContent = `接続エラー: ${e.message}`;
     status.dataset.state = 'error';

@@ -52,6 +52,8 @@
     <button class="btn" id="btn-resume-session" hidden>前回の採点を再開する</button>
   </section>
 
+  <div id="main-cols" class="main-cols">
+  <div class="col-main">
   <section class="panel" id="datasource-panel">
     <h2>データソース</h2>
 
@@ -103,10 +105,7 @@
     </div>
 
     <div class="ds-row">
-      <button class="btn btn-primary" id="btn-run-recognition">▶ 答案を読み取る</button>
-      <button class="btn" id="btn-cancel" hidden>⏹ 中断</button>
-      <progress id="job-progress" max="1" value="0" hidden></progress>
-      <span id="job-status" class="job-status"></span>
+      <button class="btn" id="btn-run-recognition">▶ 答案を読み取る</button>
     </div>
 
     <div class="ds-row">
@@ -164,7 +163,7 @@
       <span class="hint">マウスやペンタブレットで答案に手書きコメントを書けます（採点済み答案に反映）</span>
     </div>
     <div class="ds-row">
-      <button class="btn btn-primary" id="btn-run-scoring">▶ 採点済み答案を生成</button>
+      <button class="btn" id="btn-run-scoring">▶ 採点済み答案を生成</button>
       <span class="hint">○×・得点を描き込んだ答案画像を出力します</span>
       <button class="btn btn-folder" data-open-folder="scored">出力フォルダを開く</button>
     </div>
@@ -173,16 +172,27 @@
   <section class="panel" id="step3-panel">
     <h2>③ 集計してまとめる<button class="info-btn" data-info="summary">ℹ</button></h2>
     <div class="ds-row">
-      <button class="btn btn-primary" id="btn-run-summary">▶ 集計してまとめる</button>
+      <button class="btn" id="btn-run-summary">▶ 集計してまとめる</button>
       <span class="hint">成績一覧 Excel と CTT 分析レポートを出力します</span>
       <button class="btn btn-folder" data-open-folder="report">レポートフォルダを開く</button>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>処理ログ</h2>
-    <div id="log" class="log" aria-live="polite"></div>
-  </section>
+  </div><!-- /.col-main -->
+
+  <aside class="col-log">
+    <section class="panel log-panel">
+      <h2>処理ログ</h2>
+      <div id="job-panel" class="job-panel" hidden>
+        <span id="job-kind" class="job-kind"></span>
+        <progress id="job-progress" max="1" value="0" aria-label="処理の進行状況"></progress>
+        <span id="job-status" class="job-status"></span>
+        <button class="btn" id="btn-cancel">⏹ 中断</button>
+      </div>
+      <div id="log" class="log" aria-live="polite"></div>
+    </section>
+  </aside>
+  </div><!-- /#main-cols -->
 
   <!-- 記述問題設定ビュー -->
   <section id="desc-config-view" hidden>

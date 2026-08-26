@@ -73,9 +73,20 @@ class TestTotalLayoutToggles:
             white, SCORING_RESULT, config, {"D1": 7},
             rendering_settings={"total_show_max": False,
                                 "total_show_aspects": False})
-        # 満点・観点行を消すと描画ピクセルが確実に減る
-        assert (drawn_pixels(minimal, 700, 800, 300, 560)
-                < drawn_pixels(full, 700, 800, 300, 560))
+        # トグルで出力が変わる。ピクセル数の大小はフォント自動拡大で
+        # 環境により逆転する（Windows CI で顕在化）ため、内容の差だけを固定し、
+        # テキスト自体は _combined_total_lines を直接検証する
+        assert not np.array_equal(full, minimal)
+        from descriptive_renderer import _combined_total_lines
+        line1, line2 = _combined_total_lines(
+            89, 110, SCORING_RESULT["aspect_scores"],
+            SCORING_RESULT["aspect_max_scores"],
+            {"total_show_max": False, "total_show_aspects": False})
+        assert line1 == "得点：89" and line2 == ""
+        line1, line2 = _combined_total_lines(
+            89, 110, SCORING_RESULT["aspect_scores"],
+            SCORING_RESULT["aspect_max_scores"])
+        assert line1 == "得点：89 / 110" and "観点①:40/50" in line2
 
 
 class TestRenderingSettingsApi:

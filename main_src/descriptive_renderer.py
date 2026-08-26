@@ -232,6 +232,25 @@ def draw_descriptive_on_image(
     return cv2.cvtColor(np.array(result_rgb), cv2.COLOR_RGB2BGR)
 
 
+def _combined_total_lines(combined_total, combined_max, aspect_scores,
+                          aspect_max_scores, rendering_settings=None):
+    """合計点表示のテキストを組み立てる。
+
+    rendering_settings の total_show_max / total_show_aspects で
+    満点表示・観点別行を省略できる（既定はどちらも表示 = 従来通り）。
+    """
+    from constants import get_rendering_settings
+    rs = get_rendering_settings(rendering_settings)
+    line1 = (f"得点：{combined_total} / {combined_max}" if rs['total_show_max']
+             else f"得点：{combined_total}")
+    parts = []
+    if rs['total_show_aspects']:
+        for asp in sorted(aspect_max_scores.keys()):
+            circled = number_to_circled(asp)
+            parts.append(f"観点{circled}:{aspect_scores.get(asp, 0)}/{aspect_max_scores[asp]}")
+    return line1, " ".join(parts) if parts else ""
+
+
 def draw_combined_total(
     image: np.ndarray,
     mark_scoring_result: dict,
@@ -293,15 +312,9 @@ def draw_combined_total(
         if sc is not None:
             aspect_scores[asp] += sc
 
-    from constants import get_rendering_settings
-    rs = get_rendering_settings(rendering_settings)
-    sorted_aspects = sorted(aspect_max_scores.keys())
-    parts = []
-    if rs['total_show_aspects']:
-        for asp in sorted_aspects:
-            circled = number_to_circled(asp)
-            parts.append(f"観点{circled}:{aspect_scores.get(asp, 0)}/{aspect_max_scores[asp]}")
-    line2_text = " ".join(parts) if parts else ""
+    line1, line2_text = _combined_total_lines(
+        combined_total, combined_max, aspect_scores, aspect_max_scores,
+        rendering_settings)
 
     # --- 描画位置の決定 ---
     total_region = config.get("total_display_region")
@@ -335,9 +348,6 @@ def draw_combined_total(
     pil_img = Image.fromarray(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
 
-    # テキスト
-    line1 = (f"得点：{combined_total} / {combined_max}" if rs['total_show_max']
-             else f"得点：{combined_total}")
 
     # フォントサイズの自動調整（ボックスサイズ基準）
     # ボックス高さの50%をフォント上限とし、実画像サイズに適応する

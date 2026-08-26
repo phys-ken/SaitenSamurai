@@ -23,6 +23,7 @@ from constants import APP_VERSION  # noqa: E402
 from api.jobs import JobsMixin  # noqa: E402
 from api.checker import CheckerMixin  # noqa: E402
 from api.sheets import SheetsMixin  # noqa: E402
+from api.descriptive import DescriptiveMixin  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ class DataSourceMixin:
                 "スキャンした答案画像の入ったフォルダを選んでください")
         self.state["image_folder"] = str(folder_path)
         self.state["image_count"] = count
+        self._load_descriptive_state()
         return _ok(state=self.state)
 
     def select_coord_file(self):
@@ -214,7 +216,7 @@ class DataSourceMixin:
         }
 
 
-class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin):
+class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin, DescriptiveMixin):
     """pywebview の js_api として渡すクラス。
 
     window_adapter: ネイティブ機能の注入点。必要なメソッド:
@@ -228,6 +230,7 @@ class Bridge(DataSourceMixin, JobsMixin, CheckerMixin, SheetsMixin):
         self._init_state()
         self._init_jobs()
         self._init_checker()
+        self._init_descriptive()
 
     # --- 疎通・情報 -------------------------------------------------
 

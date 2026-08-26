@@ -145,42 +145,82 @@ class JobsMixin:
     # --- 採点（採点済み答案の生成） ---------------------------------
 
     def run_scoring(self):
+        mode = self.state["app_mode"]
         if not self.state["image_folder"]:
             return _err("画像フォルダを選択してください")
-        if not self.state["coord_file"]:
-            return _err("座標ファイルを選択してください")
-        if not self.state["answer_key"]:
-            return _err("正答データを選択してください")
-        if not self.state["omr_result"]:
-            return _err("OMR結果がありません。先に認識を実行してください")
-        ks = self.state.get("key_summary")
-        if ks and not ks["ok"]:
-            return _err("正答データにエラーがあります。修正してから採点してください:\n"
-                        + "\n".join(ks["errors"][:3]))
+        if mode != "descriptive_only":
+            if not self.state["coord_file"]:
+                return _err("座標ファイルを選択してください")
+            if not self.state["answer_key"]:
+                return _err("正答データを選択してください")
+            if not self.state["omr_result"]:
+                return _err("OMR結果がありません。先に認識を実行してください")
+            ks = self.state.get("key_summary")
+            if ks and not ks["ok"]:
+                return _err("正答データにエラーがあります。修正してから採点してください:\n"
+                            + "\n".join(ks["errors"][:3]))
+        if mode in ("mark_and_descriptive", "descriptive_only"):
+            desc = self.state.get("descriptive")
+            if not desc or not desc["questions"]:
+                return _err("記述問題が設定されていません。先に「記述問題設定」を行ってください")
         return self._start_job("scoring", self._scoring_worker)
 
     def _scoring_worker(self):
-        from image_renderer import process_scoring
-        process_scoring(
-            self.state["image_folder"],
-            self.state["coord_file"],
-            self.state["answer_key"],
-            self.state["omr_result"],
-            skip_questions=self.state["skip_questions"],
-            progress_callback=self._progress_cb("scoring"),
-            cancel_event=self._cancel_event,
-            mark_format=self.state["mark_format"],
-        )
+        """採点済み答案の生成。tk 版と同じモード分岐:
+        mark_only → process_scoring / mark_and_descriptive →
+        generate_return_sheets（マーク＋記述の合成描画） /
+        descriptive_only → generate_descriptive_only_sheets"""
+        from constants import RESULTS_FOLDER, SCORED_FOLDER, BOXED_FOLDER
+        mode = self.state["app_mode"]
+        out = Path(self.state["image_folder"]) / RESULTS_FOLDER / SCORED_FOLDER
+
+        if mode == "mark_only":
+            from image_renderer import process_scoring
+            process_scoring(
+                self.state["image_folder"],
+                self.state["coord_file"],
+                self.state["answer_key"],
+                self.state["omr_result"],
+                skip_questions=self.state["skip_questions"],
+                progress_callback=self._progress_cb("scoring"),
+                cancel_event=self._cancel_event,
+                mark_format=self.state["mark_format"],
+            )
+        elif mode == "mark_and_descriptive":
+            from descriptive_scorer import generate_return_sheets
+            generate_return_sheets(
+                image_folder=self.state["image_folder"],
+                config=self._desc_config,
+                descriptive_scores=self._desc_scores["scores"],
+                coord_excel_path=self.state["coord_file"],
+                template_path=self.state["answer_key"],
+                mark2_result_path=self.state["omr_result"],
+                skip_questions=self.state["skip_questions"],
+                output_folder=str(out),
+                mark_format=self.state["mark_format"],
+            )
+        else:  # descriptive_only
+            from descriptive_scorer import generate_descriptive_only_sheets
+            boxed = Path(self.state["image_folder"]) / RESULTS_FOLDER / BOXED_FOLDER
+            generate_descriptive_only_sheets(
+                str(boxed), self._desc_config, self._desc_scores["scores"],
+                str(out))
         cancelled = self._cancel_event.is_set()
         return dict(kind="scoring", ok=True, cancelled=cancelled,
                     message=("中断しました" if cancelled
-                             else "採点済み答案の生成が完了しました"))
+                             else f"採点済み答案の生成が完了しました → {out}"))
 
     # --- 集計 -------------------------------------------------------
 
     def run_summary(self):
+        mode = self.state["app_mode"]
         if not self.state["image_folder"]:
             return _err("画像フォルダを選択してください")
+        if mode == "descriptive_only":
+            desc = self.state.get("descriptive")
+            if not desc or not desc["questions"]:
+                return _err("記述問題が設定されていません。先に「記述問題設定」を行ってください")
+            return self._start_job("summary", self._summary_worker)
         if not self.state["coord_file"]:
             return _err("座標ファイルを選択してください")
         if not self.state["answer_key"]:
@@ -190,20 +230,40 @@ class JobsMixin:
         return self._start_job("summary", self._summary_worker)
 
     def _summary_worker(self):
-        from summary_generator import process_summary_generation
         from constants import RESULTS_FOLDER, FINAL_REPORT_FOLDER
-        process_summary_generation(
-            self.state["image_folder"],
-            self.state["coord_file"],
-            self.state["answer_key"],
-            self.state["omr_result"],
-            skip_questions=self.state["skip_questions"],
-            progress_callback=self._progress_cb("summary"),
-            cancel_event=self._cancel_event,
-            mark_format=self.state["mark_format"],
-        )
-        cancelled = self._cancel_event.is_set()
+        mode = self.state["app_mode"]
         out = str(Path(self.state["image_folder"]) / RESULTS_FOLDER / FINAL_REPORT_FOLDER)
+
+        if mode == "descriptive_only":
+            from summary_generator import process_descriptive_only_summary
+            result = process_descriptive_only_summary(
+                self.state["image_folder"],
+                self._desc_config,
+                self._desc_scores["scores"],
+            )
+            if not result.get("success", True):
+                return dict(kind="summary", ok=False,
+                            message=f"集計に失敗しました: {result.get('error')}")
+        else:
+            from summary_generator import process_summary_generation
+            desc = self.state.get("descriptive")
+            has_desc = (mode == "mark_and_descriptive" and desc and
+                        desc["questions"])
+            process_summary_generation(
+                self.state["image_folder"],
+                self.state["coord_file"],
+                self.state["answer_key"],
+                self.state["omr_result"],
+                skip_questions=self.state["skip_questions"],
+                descriptive_config=self._desc_config if has_desc else None,
+                descriptive_scores=(self._desc_scores["scores"]
+                                    if has_desc else None),
+                include_descriptive_in_analysis=bool(has_desc),
+                progress_callback=self._progress_cb("summary"),
+                cancel_event=self._cancel_event,
+                mark_format=self.state["mark_format"],
+            )
+        cancelled = self._cancel_event.is_set()
         return dict(kind="summary", ok=True, cancelled=cancelled,
                     output_folder=out,
                     message=("中断しました" if cancelled

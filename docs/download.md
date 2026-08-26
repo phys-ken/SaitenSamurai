@@ -3,8 +3,31 @@
 ## 最新版をダウンロード
 
 <a href="https://github.com/phys-ken/SaitenSamurai/releases/latest" class="btn-download">
-:material-download: 最新版をダウンロード
+:material-download: 最新の安定版をダウンロード
 </a>
+
+---
+
+## 新UI ベータ版（v5.0.0-beta）
+
+画面を全面刷新した**新UI 版のベータ**を公開しています。ベータ版は
+「最新の安定版」ボタンには含まれないため、こちらから入手してください。
+
+<a href="https://github.com/phys-ken/SaitenSamurai/releases/tag/v5.0.0-beta.2" class="btn-download">
+:material-flask-outline: 新UI ベータ版をダウンロード
+</a>
+
+ベータのリリースには 2 つの exe が含まれます:
+
+| ファイル | 内容 |
+|---|---|
+| `SaitenSamurai_WebUI_v5.0.0-beta.✕.exe` | **新UI（ベータ）** — 進行バー・キーボード採点・手書きコメントなど全面刷新版 |
+| `SaitenSamurai_v5.0.0-beta.✕.exe` | 従来UI — これまでと同じ画面 |
+
+!!! tip "採点データはどちらの UI でも完全に共通です"
+    フォルダ構成・保存ファイルは両版でまったく同じなので、
+    新UIで始めて従来UIで続ける（その逆も）ことができます。
+    まず新UIを試し、困ったら従来UIに戻る、という使い方が安全です。
 
 ---
 

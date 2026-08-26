@@ -111,7 +111,8 @@ jobs:
 
             ### 使い方
 
-            1. `${{ steps.exe-name.outputs.EXE_NAME }}` をダウンロード
+            1. `${{ steps.exe-name.outputs.WEBUI_EXE_NAME }}`（新UI）をダウンロード
+               ※ 従来の画面が良い場合は `${{ steps.exe-name.outputs.EXE_NAME }}`
             2. 任意のフォルダに配置
             3. ダブルクリックで起動
 

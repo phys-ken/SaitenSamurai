@@ -305,7 +305,8 @@ class SheetsMixin:
         import subprocess
         if not self.state["image_folder"]:
             return _err("答案画像フォルダを選択してください")
-        target = Path(self.state["image_folder"]) / filename
+        # 絶対パスや ../ を渡されてもフォルダ外へ出ない（B）
+        target = Path(self.state["image_folder"]) / Path(str(filename)).name
         if not target.exists():
             return _err(f"元画像が見つかりません: {target}")
         try:

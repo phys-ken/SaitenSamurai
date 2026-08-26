@@ -594,6 +594,23 @@ class TestJapaneseFontResolution:
         finally:
             constants._reset_japanese_font_cache()
 
+    def test_render_font_falls_back_but_japanese_detect_does_not(self):
+        """描画用は最後の砦（DejaVu）に落ちるが、日本語判定は None を返す
+        （CTTレポートの「日本語フォントなし」警告分岐を殺さない）"""
+        import subprocess
+        import constants
+        constants._reset_japanese_font_cache()
+        try:
+            with patch.object(constants, 'JAPANESE_FONT_CANDIDATES',
+                              ('/nonexistent/a.ttf',)), \
+                 patch.object(subprocess, 'run',
+                              side_effect=OSError('no fontconfig')):
+                assert constants.find_japanese_font() is None
+                render = constants.find_render_font()
+            assert render == constants._LAST_RESORT_FONT or render is None
+        finally:
+            constants._reset_japanese_font_cache()
+
     def test_result_is_cached(self, caplog):
         """2回目以降は再探索せず、警告も繰り返さない"""
         import subprocess

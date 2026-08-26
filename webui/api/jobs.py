@@ -383,8 +383,11 @@ class JobsMixin:
         if not boxed.exists():
             return None
         from name_trimmer import trim_images
-        temp_dir = tempfile.mkdtemp(
-            prefix="name_trim_", dir=get_app_temp_dir(self.state["image_folder"]))
+        temp_root = Path(get_app_temp_dir(self.state["image_folder"]))
+        for old_dir in temp_root.glob("name_trim_*"):   # 前回分を掃除（B）
+            import shutil
+            shutil.rmtree(old_dir, ignore_errors=True)
+        temp_dir = tempfile.mkdtemp(prefix="name_trim_", dir=str(temp_root))
         saved = trim_images(str(boxed), tuple(region), temp_dir,
                             original_image_folder=self.state["image_folder"])
         return {Path(p).name: p for p in saved} or None

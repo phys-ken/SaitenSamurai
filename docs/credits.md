@@ -90,6 +90,7 @@
 | pandas | BSD 3-Clause | データフレーム処理 |
 | Pillow | HPND | 画像描画 |
 | openpyxl | MIT | Excel 入出力 |
+| pywebview | BSD-3-Clause | 新UI（WebUI 版）のウィンドウ表示。Windows では Microsoft Edge WebView2 ランタイムを使用 |
 | PyMuPDF | AGPL-3.0 | PDF→画像変換（オプション） |
 | matplotlib | PSF/BSD 互換 | CTT グラフ描画 |
 | ReportLab | BSD 3-Clause | CTT PDF レポート |

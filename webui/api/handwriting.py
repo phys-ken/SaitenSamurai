@@ -68,6 +68,9 @@ class HandwritingMixin:
             natural_w = int(natural_w)
             natural_h = int(natural_h)
             assert natural_w > 0 and natural_h > 0
+            total_points = sum(len(s.get("points", [])) for s in strokes)
+            if total_points > 200_000:
+                return _err("筆跡が大きすぎます（この答案の書き込みを一部消してください）")
             clean = []
             for s in strokes:
                 color = str(s["color"]).lower()

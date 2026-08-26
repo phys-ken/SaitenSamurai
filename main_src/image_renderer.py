@@ -51,8 +51,8 @@ def _get_cached_font(size: int) -> ImageFont.FreeTypeFont:
     """
     font = _font_cache.get(size)
     if font is None:
-        from constants import find_japanese_font
-        font_path = find_japanese_font()
+        from constants import find_render_font
+        font_path = find_render_font()
         try:
             font = ImageFont.truetype(font_path, size)  # None なら例外→既定へ
         except Exception:

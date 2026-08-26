@@ -180,7 +180,11 @@ class CheckerMixin:
             filtered = [e for e in entries if e["category"] == category]
         else:
             filtered = entries
-        page, page_size = int(page), int(page_size)
+        try:
+            page = max(0, int(page))
+            page_size = min(max(1, int(page_size)), 1_000_000)
+        except (TypeError, ValueError):
+            return _err("ページ指定が不正です")
         start = page * page_size
         items = [{k: e[k] for k in
                   ("id", "filename", "question_no", "before", "after",

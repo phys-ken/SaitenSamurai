@@ -119,19 +119,23 @@ class SessionMixin:
                 f"画像フォルダが見つかりません:\n{base}\n"
                 "フォルダを移動・削除していないか確認してください")
 
+        # 検証をすべて済ませてから state に触る
+        # （B: 途中失敗でモードだけ書き換わった状態を残さない）
+        from api.bridge import _IMAGE_SUFFIXES
+        try:
+            count = sum(1 for f in base.iterdir()
+                        if f.is_file() and f.suffix.lower() in _IMAGE_SUFFIXES)
+        except OSError as e:
+            return _err(f"フォルダを読めません: {base}（{e}）")
+        if count == 0:
+            return _err(f"選択したフォルダに画像（jpg/png）がありません: {base}")
+
         # 旧フォルダのチェッカー等が復元先に紛れ込まないよう先に初期化（S3）
         self._reset_for_new_folder()
         res = self.set_mode(data.get("app_mode", "mark_only"),
                             data.get("mark_format", "standard"))
         if not res["ok"]:
             return res
-
-        # 画像フォルダ（select_image_folder と同じ検証）
-        from api.bridge import _IMAGE_SUFFIXES
-        count = sum(1 for f in base.iterdir()
-                    if f.is_file() and f.suffix.lower() in _IMAGE_SUFFIXES)
-        if count == 0:
-            return _err(f"選択したフォルダに画像（jpg/png）がありません: {base}")
         self.state["image_folder"] = str(base)
         self.state["image_count"] = count
         self._load_descriptive_state()

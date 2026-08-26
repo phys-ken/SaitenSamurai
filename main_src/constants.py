@@ -249,14 +249,27 @@ def find_japanese_font():
                 _japanese_font_path = path
         except Exception:
             pass
-    if _japanese_font_path is None and os.path.exists(_LAST_RESORT_FONT):
-        _japanese_font_path = _LAST_RESORT_FONT
-    if _japanese_font_path is None or _japanese_font_path == _LAST_RESORT_FONT:
+    if _japanese_font_path is None:
         logger.warning(
             "日本語フォントが見つかりません。採点結果画像の得点が極端に小さく表示され、"
             "CTTレポートの日本語が出力されない可能性があります。探索先: %s",
             ", ".join(JAPANESE_FONT_CANDIDATES))
     return _japanese_font_path
+
+
+def find_render_font():
+    """採点結果画像の描画に使うフォントパスを返す（日本語 → 最後の砦の順）。
+
+    find_japanese_font() は「日本語が描けるか」の判定に使われるため
+    （CTTレポートの警告分岐など）、日本語の無い DejaVu は返さない。
+    ビットマップ既定より読みやすい代替が欲しい描画側だけがこちらを使う。
+    """
+    path = find_japanese_font()
+    if path:
+        return path
+    if os.path.exists(_LAST_RESORT_FONT):
+        return _LAST_RESORT_FONT
+    return None
 
 
 def _reset_japanese_font_cache():

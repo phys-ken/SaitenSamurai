@@ -8,7 +8,7 @@ import { call } from './bridge.js';
 import { pickRegion } from './region-picker.js';
 import { withTransition } from './transitions.js';
 import { createVirtualGrid, createImageLoader } from './vlist.js';
-import { openLightbox } from './lightbox.js';
+import { openLightbox, isModalOpen } from './lightbox.js';
 import {
   wireHandwriting, loadHandwriting, layoutHandwriting,
   setCommentMode, isCommentMode, undoHandwriting, redoHandwriting,
@@ -77,32 +77,39 @@ async function renderConfigTable() {
     reBtn.className = 'btn';
     reBtn.textContent = '領域再指定';
     reBtn.addEventListener('click', async () => {
-      const sheet = await call('get_sheet_image');
-      const region = await pickRegion(sheet.data_url,
-        { title: `${q.name} の領域を指定（${sheet.filename}）`, existing: q.region });
-      if (region === null) return;
-      await call('update_descriptive_region', q.id, region);
-      cropLoader.clear();   // 旧領域の切り出しを表示しない（S8）
-      await renderConfigTable();
+      try {
+        const sheet = await call('get_sheet_image');
+        const region = await pickRegion(sheet.data_url,
+          { title: `${q.name} の領域を指定（${sheet.filename}）`, existing: q.region });
+        if (region === null) return;
+        await call('update_descriptive_region', q.id, region);
+        cropLoader.clear();   // 旧領域の切り出しを表示しない（S8）
+        await renderConfigTable();
+      } catch (e) { logFn(`❌ ${e.message}`); }
     });
     const delBtn = document.createElement('button');
     delBtn.className = 'btn';
     delBtn.textContent = '削除';
     delBtn.addEventListener('click', async () => {
       if (!confirm(`${q.name}（${q.id}）を削除しますか？ 採点済みの得点も消えます`)) return;
-      await call('delete_descriptive_question', q.id);
-      cropLoader.clear();
-      logFn(`🗑 ${q.id} を削除しました`);
-      await renderConfigTable();
+      try {
+        await call('delete_descriptive_question', q.id);
+        cropLoader.clear();
+        if (currentQid === q.id) currentQid = null;
+        logFn(`🗑 ${q.id} を削除しました`);
+        await renderConfigTable();
+      } catch (e) { logFn(`❌ ${e.message}`); }
     });
     const resetBtn = document.createElement('button');
     resetBtn.className = 'btn';
     resetBtn.textContent = '採点リセット';
     resetBtn.addEventListener('click', async () => {
       if (!confirm(`${q.name}（${q.id}）の採点データをすべて消しますか？\nこの操作は取り消せません`)) return;
-      const res = await call('reset_descriptive_scores', q.id);
-      logFn(`✓ ${q.id} の採点 ${res.removed} 件をリセットしました`);
-      await renderConfigTable();
+      try {
+        const res = await call('reset_descriptive_scores', q.id);
+        logFn(`✓ ${q.id} の採点 ${res.removed} 件をリセットしました`);
+        await renderConfigTable();
+      } catch (e) { logFn(`❌ ${e.message}`); }
     });
     td.append(reBtn, ' ', resetBtn, ' ', delBtn);
     tr.appendChild(td);
@@ -191,8 +198,8 @@ async function renderQTabs(knownState) {
     b.addEventListener('click', async () => {
       discardDigits();
       currentQid = q.id;
+      await renderDescGrid();   // 平均・満点は grid 側で決まるため先に（B: 前問の平均が残る）
       await renderQTabs();
-      await renderDescGrid();
     });
     return b;
   }));
@@ -246,10 +253,12 @@ function buildCard(i, q, metrics) {
 
   const meta = document.createElement('div');
   meta.className = 'entry-meta';
-  meta.innerHTML = `<span>${t.filename}</span>` +
-    (t.score === null
-      ? '<span class="score-note">未採点</span>'
-      : `<span class="score-note score-mark">${t.score} 点</span>`);
+  const nameEl = document.createElement('span');
+  nameEl.textContent = t.filename;   // 外部由来の文字列（B）
+  const noteEl = document.createElement('span');
+  noteEl.className = t.score === null ? 'score-note' : 'score-note score-mark';
+  noteEl.textContent = t.score === null ? '未採点' : `${t.score} 点`;
+  meta.append(nameEl, noteEl);
 
   card.append(img, meta, scoreButtons(q.max_score, t.score,
     (v) => setGridScore(i, v)));
@@ -286,8 +295,10 @@ async function setGridScore(i, v) {
   else grid.refresh();
   await renderQTabs(saved.state);
   if (v !== null) {
-    // フィルタで行が消えた場合は同じ位置が「次」になる
-    const next = gridFilter === 'unscored' ? i : i + 1;
+    // 並べ替え・フィルタ適用後の位置を基準に次を探す（B: ソート中の飛び防止）
+    const pos = gridTargets.indexOf(t);
+    const next = pos === -1 ? Math.min(i, Math.max(0, gridTargets.length - 1))
+                            : pos + 1;
     advanceToUnscored(Math.min(next, Math.max(0, gridTargets.length - 1)));
   }
 }
@@ -349,6 +360,7 @@ function commitDigits() {
 }
 
 function gridKeyHandler(e) {
+  if (isModalOpen()) return;   // 拡大表示などの背後に入力を通さない（B）
   if (el('desc-scoring-view').hidden) return;
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
@@ -406,14 +418,18 @@ function gridKeyHandler(e) {
 
 export async function openDescScoring() {
   discardDigits();
-  await call('start_descriptive_scoring');
-  cropLoader.clear();   // 再切り出し後は必ず新しい画像を取得（S8）
+  const trim = await call('start_descriptive_scoring');
+  if (!trim.reused) cropLoader.clear();   // 再切り出し後は新しい画像を取得（S8）
   const state = (await call('get_state')).state;
   if (!state.descriptive.questions.length) return;
+  // 削除済みの問題が currentQid に残っていたら捨てる（B: 空グリッド化防止）
+  if (!state.descriptive.questions.some((q) => q.id === currentQid)) {
+    currentQid = null;
+  }
   currentQid = currentQid ?? state.descriptive.questions[0].id;
   await showView('desc-scoring-view');
-  await renderQTabs();
   await renderDescGrid();
+  await renderQTabs();
   logFn('記述採点を開きました（数字キーで得点、自動で次の未採点へ進みます）');
 }
 
@@ -671,6 +687,7 @@ function commitSheetDigits() {
 }
 
 function sheetKeyHandler(e) {
+  if (isModalOpen()) return;
   if (el('single-sheet-view').hidden) return;
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;

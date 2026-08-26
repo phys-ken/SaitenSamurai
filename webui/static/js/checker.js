@@ -10,9 +10,10 @@
 import { call } from './bridge.js';
 import { withTransition } from './transitions.js';
 import { createVirtualGrid, createImageLoader } from './vlist.js';
-import { openLightbox } from './lightbox.js';
+import { openLightbox, isModalOpen } from './lightbox.js';
 
 let view = { category: '__errors__', sort: 'whiteness' };
+let onStateUpdate = () => {};
 let entries = [];          // 現在のタブの全件（メタデータのみ）
 let grid = null;
 let cursor = 0;
@@ -50,6 +51,7 @@ export async function openChecker(log) {
 
 export async function closeChecker() {
   const st = (await call('get_state')).state;
+  onStateUpdate(st);   // ステッパー・ボタン活性をメインへ反映（B）
   const pending = st.checker?.corrected ?? 0;
   if (pending > 0 &&
       !confirm(`「訂正をxlsxに反映」していない訂正が ${pending} 件あります。\n` +
@@ -144,14 +146,21 @@ function entryCard(i) {
 
   const meta = document.createElement('div');
   meta.className = 'entry-meta';
-  meta.innerHTML = `<span>${item.filename} / 問${item.question_no}</span>` +
-    `<span>${item.category}</span>`;
+  // ファイル名はスキャナ由来の外部文字列なので HTML として解釈しない（B）
+  const metaLeft = document.createElement('span');
+  metaLeft.textContent = `${item.filename} / 問${item.question_no}`;
+  const metaRight = document.createElement('span');
+  metaRight.textContent = item.category;
+  meta.append(metaLeft, metaRight);
   card.appendChild(meta);
 
   const fix = document.createElement('div');
   fix.className = 'entry-fix';
   const before = item.before === '' ? '（無マーク）' : item.before;
-  fix.innerHTML = `<span class="entry-before">${before}</span> →`;
+  const beforeEl = document.createElement('span');
+  beforeEl.className = 'entry-before';
+  beforeEl.textContent = before;
+  fix.append(beforeEl, ' →');
   const input = document.createElement('input');
   input.value = item.after;
   input.placeholder = '訂正';
@@ -206,6 +215,7 @@ function advance() {
 }
 
 function checkerKeyHandler(e) {
+  if (isModalOpen()) return;
   if (el('checker-view').hidden) return;
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
@@ -236,8 +246,9 @@ function checkerKeyHandler(e) {
   }
 }
 
-export function wireChecker(log) {
+export function wireChecker(log, stateUpdate) {
   logFn = log;
+  onStateUpdate = stateUpdate ?? (() => {});
   el('btn-close-checker').addEventListener('click', closeChecker);
   el('checker-sort').addEventListener('change', async (ev) => {
     view.sort = ev.target.value;
@@ -262,6 +273,7 @@ export function wireChecker(log) {
     try {
       const res = await call('apply_corrections');
       log(`訂正 ${res.applied} 件を xlsx に反映しました（バックアップ: ${res.backup}）`);
+      onStateUpdate(res.state);
       const c = res.state.checker;
       renderHead(c);
       renderTabs(c);

@@ -118,7 +118,7 @@ class DescriptiveMixin:
         self._refresh_desc_summary(recount_prepared=True)   # 枚数が変わった（A2）
         return dict(kind="prepare_images", ok=True,
                     message=f"画像準備が完了しました（{len(files)}枚）。"
-                            "次は「記述問題設定」で採点領域を設定してください")
+                            "次は「記述問題の設定」で採点領域を設定してください")
 
     # --- 記述問題設定 ----------------------------------------------
 
@@ -254,10 +254,39 @@ class DescriptiveMixin:
         boxed = Path(self.state["image_folder"]) / RESULTS_FOLDER / BOXED_FOLDER
         if not boxed.exists():
             return _err("補正済み画像がありません。先に「答案を読み取る」（または「画像を準備する」）を実行してください")
+
+        # 設定（領域）と対象画像が前回と同じなら再切り出ししない
+        # （B: ビューを開くたびに数十秒待たせない・一時フォルダを増やさない）
+        import json
+        try:
+            fingerprint = json.dumps({
+                "questions": self._desc_config["questions"],
+                "images": sorted((p.name, p.stat().st_mtime_ns)
+                                 for p in boxed.iterdir()
+                                 if p.suffix.lower() in ('.jpg', '.jpeg', '.png')),
+            }, sort_keys=True, ensure_ascii=False)
+        except OSError as e:
+            return _err(f"補正済み画像フォルダを読めません: {e}")
+        if (self._desc_crops is not None and
+                getattr(self, "_desc_crops_fingerprint", None) == fingerprint):
+            self._refresh_desc_summary()
+            return _ok(state=self.state, reused=True)
+
+        # 前回までの切り出し一時フォルダを掃除してから作る
+        # （B: 開くたびに desc_trim_* が無限に溜まる）
+        from constants import get_app_temp_dir
+        try:
+            temp_root = Path(get_app_temp_dir(self.state["image_folder"]))
+            for old_dir in temp_root.glob("desc_trim_*"):
+                shutil.rmtree(old_dir, ignore_errors=True)
+        except Exception:
+            logger.exception("一時フォルダの掃除に失敗（続行します）")
+
         try:
             self._desc_crops = trim_descriptive_regions(
                 str(boxed), self._desc_config,
                 original_image_folder=self.state["image_folder"])
+            self._desc_crops_fingerprint = fingerprint
         except Exception as e:
             logger.exception("領域切り出しに失敗")
             return _err(f"採点用の切り出しに失敗しました: {e}")
@@ -303,6 +332,9 @@ class DescriptiveMixin:
                 return _err("得点は整数で指定してください")
             if not (0 <= score <= q["max_score"]):
                 return _err(f"得点は 0〜{q['max_score']} の範囲で指定してください")
+        listing = self.list_sheet_files()
+        if listing["ok"] and str(filename) not in listing["files"]:
+            return _err(f"答案が見つかりません: {filename}")
         f_scores = self._desc_scores["scores"].setdefault(str(filename), {})
         if score is None:
             f_scores.pop(qid, None)

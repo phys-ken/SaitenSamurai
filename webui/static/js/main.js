@@ -302,8 +302,10 @@ function wireEvents() {
     });
   });
   document.getElementById('include-desc-check').addEventListener('change', async (ev) => {
-    const res = await call('set_include_descriptive_in_analysis', ev.target.checked);
-    render(res.state);
+    try {
+      const res = await call('set_include_descriptive_in_analysis', ev.target.checked);
+      render(res.state);
+    } catch (e) { log(`❌ ${e.message}`); }
   });
   document.getElementById('btn-run-recognition')
     .addEventListener('click', runRecognition);
@@ -365,8 +367,10 @@ function wireEvents() {
     }
   });
   document.getElementById('name-trim-check').addEventListener('change', async (ev) => {
-    const res = await call('set_name_trim_enabled', ev.target.checked);
-    render(res.state);
+    try {
+      const res = await call('set_name_trim_enabled', ev.target.checked);
+      render(res.state);
+    } catch (e) { log(`❌ ${e.message}`); }
   });
   document.getElementById('btn-name-position').addEventListener('click', async () => {
     try {
@@ -395,13 +399,20 @@ function wireEvents() {
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
-  wireChecker(log);
+  wireChecker(log, render);
   wireDescriptive(log, render);
   document.getElementById('btn-cancel')
-    .addEventListener('click', async () => { await call('cancel_job'); log('⏹ 中断を要求しました'); });
+    .addEventListener('click', async () => {
+      try {
+        await call('cancel_job');
+        log('⏹ 中断を要求しました');
+      } catch (e) { log(`❌ ${e.message}`); }
+    });
   document.getElementById('omr-mode').addEventListener('change', async (ev) => {
-    const res = await call('set_omr_mode', ev.target.value);
-    render(res.state);
+    try {
+      const res = await call('set_omr_mode', ev.target.value);
+      render(res.state);
+    } catch (e) { log(`❌ ${e.message}`); }
   });
   for (const id of ['color-th', 'area-th']) {
     document.getElementById(id).addEventListener('change', async () => {

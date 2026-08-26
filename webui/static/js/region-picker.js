@@ -21,7 +21,7 @@ export function pickRegion(dataUrl, opts = {}) {
     overlay.innerHTML = `
       <div class="picker-dialog">
         <div class="picker-head">
-          <span>${opts.title ?? '領域をドラッグで指定してください'}</span>
+          <span class="picker-title"></span>
           <button class="btn" data-act="cancel">キャンセル</button>
           <button class="btn btn-primary" data-act="ok" disabled>この領域に決定</button>
         </div>
@@ -32,6 +32,8 @@ export function pickRegion(dataUrl, opts = {}) {
       </div>`;
     document.body.appendChild(overlay);
 
+    overlay.querySelector('.picker-title').textContent =
+      opts.title ?? '領域をドラッグで指定してください';   // 問題名は入力由来（B）
     const img = overlay.querySelector('img');
     const rectEl = overlay.querySelector('.picker-rect');
     const okBtn = overlay.querySelector('[data-act="ok"]');
@@ -83,9 +85,18 @@ export function pickRegion(dataUrl, opts = {}) {
 
     function close(result) {
       ro.disconnect();
+      document.removeEventListener('keydown', onKey);
       overlay.remove();
       resolve(result);
     }
+    // Esc でキャンセル（B: 他のモーダルと作法を揃える）
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close(null);
+      }
+    }
+    document.addEventListener('keydown', onKey);
     overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => close(null));
     okBtn.addEventListener('click', () => close(sel));
     img.addEventListener('load', () => {

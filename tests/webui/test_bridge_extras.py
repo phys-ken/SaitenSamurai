@@ -92,10 +92,10 @@ def _bridge_through_recognition(scans, coord, key):
     adapter = RecordingAdapter()
     b = Bridge(window_adapter=adapter)
     b.set_mode("mark_only", "multi_digit")
-    b.set_skip_questions(0)
     adapter.folder_returns = [str(scans)]
     adapter.file_returns = [str(coord), str(key)]
     assert b.select_image_folder()["ok"]
+    b.set_skip_questions(0)   # フォルダ選択は完全クリアするので後から設定
     assert b.select_coord_file()["ok"]
     assert b.select_answer_key()["ok"]
     assert b.run_recognition()["ok"]
@@ -287,3 +287,71 @@ class TestResultsReadmeAndProgress:
         p = b.get_progress()["progress"]
         assert p == {"prepared": False, "read": False,
                      "scored": False, "summarized": False}
+
+
+class TestFolderSwitchReset:
+    """S1〜S4: フォルダ切替は完全クリア（grill-me 確定の運用）"""
+
+    def test_switch_clears_results_and_settings(self, tmp_path):
+        import cv2
+        import numpy as np
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b, adapter = _bridge_through_recognition(scans, coord, key)
+        assert b.open_mark_checker()["ok"]
+        b.set_skip_questions(0)
+        b.set_rendering_settings({"total_show_max": False})
+
+        # 別フォルダ（読み取り結果なし）へ切替
+        other = tmp_path / "other"
+        other.mkdir()
+        img = np.full((842, 595, 3), 255, dtype=np.uint8)
+        cv2.imwrite(str(other / "x1.png"), img)
+        adapter.folder_returns = [str(other)]
+        res = b.select_image_folder()
+        assert res["ok"]
+        st = b.state
+        assert st["coord_file"] is None and st["answer_key"] is None
+        assert st["omr_result"] is None, "旧試験の読み取り結果が残っている（S4）"
+        assert st["checker"] is None and b._checker is None, "チェッカー残留（S3）"
+        assert st["skip_questions"] == 4
+        assert st["rendering_settings"] is None
+        assert b._desc_crops is None, "旧フォルダのクロップ残留（S2）"
+
+    def test_switch_autopicks_new_folders_omr(self, tmp_path):
+        """新フォルダに読み取り結果があれば自動で拾い直す"""
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        scans_a, coord, key = _build_marked_inputs(tmp_path / "a")
+        b, adapter = _bridge_through_recognition(scans_a, coord, key)
+        omr_a = b.state["omr_result"]
+
+        scans_b, coord_b, key_b = _build_marked_inputs(tmp_path / "b")
+        b2, adapter2 = _bridge_through_recognition(scans_b, coord_b, key_b)
+        omr_b = b2.state["omr_result"]
+
+        adapter.folder_returns = [str(scans_b)]
+        assert b.select_image_folder()["ok"]
+        assert b.state["omr_result"] == omr_b != omr_a
+
+    def test_session_candidate_not_overwritten(self, tmp_path):
+        """S1: 復元候補があるときは選択直後の自動保存で上書きしない"""
+        import json
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b, _ = _bridge_through_recognition(scans, coord, key)
+        from constants import (RESULTS_FOLDER, RESULTS_DATA_FOLDER,
+                               SESSION_STATE_FILE)
+        session = scans / RESULTS_FOLDER / RESULTS_DATA_FOLDER / SESSION_STATE_FILE
+        before = session.read_text(encoding="utf-8")
+        assert json.loads(before)["coord_excel"], "前提: セッションに座標が入っている"
+
+        b2 = Bridge(window_adapter=RecordingAdapter())
+        b2.set_mode("mark_only", "multi_digit")
+        b2._win.folder_returns = [str(scans)]
+        res = b2.select_image_folder()
+        assert res["session_found"]
+        after = session.read_text(encoding="utf-8")
+        assert after == before, "復元候補のセッションが上書きされた（S1）"
+        # 復元すれば前回の座標・正答・読み取り結果が戻る
+        restored = b2.restore_session(res["session_found"])
+        assert restored["ok"] and b2.state["coord_file"] == str(coord)
+        assert b2.state["omr_result"]

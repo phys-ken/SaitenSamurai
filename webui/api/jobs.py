@@ -174,11 +174,13 @@ class JobsMixin:
             count = sum(1 for f in folder_path.iterdir()
                         if f.is_file() and f.suffix.lower()
                         in ('.jpg', '.jpeg', '.png'))
+            self._reset_for_new_folder()
             self.state["image_folder"] = str(folder_path)
             self.state["image_count"] = count
             self._load_descriptive_state()
             self._load_total_display_state()
             self._load_handwriting_state()
+            self._autoselect_omr_result()
         return dict(kind="pdf_import", ok=True, cancelled=cancelled,
                     message=("中断しました" if cancelled else
                              f"PDF展開が完了しました（{len(pdf_files)}ファイル）"

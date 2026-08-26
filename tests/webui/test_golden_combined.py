@@ -95,10 +95,10 @@ def _run_webui_pipeline(scans, coord, key):
     adapter = RecordingAdapter()
     b = Bridge(window_adapter=adapter)
     b.set_mode("mark_and_descriptive", "multi_digit")
-    b.set_skip_questions(SKIP)
     adapter.folder_returns = [str(scans)]
     adapter.file_returns = [str(coord), str(key)]
     assert b.select_image_folder()["ok"]
+    b.set_skip_questions(SKIP)   # フォルダ選択は完全クリアするので後から設定
     assert b.select_coord_file()["ok"]
     assert b.select_answer_key()["ok"]
     assert b.run_recognition()["ok"]

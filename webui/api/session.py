@@ -117,6 +117,8 @@ class SessionMixin:
                 f"画像フォルダが見つかりません:\n{base}\n"
                 "フォルダを移動・削除していないか確認してください")
 
+        # 旧フォルダのチェッカー等が復元先に紛れ込まないよう先に初期化（S3）
+        self._reset_for_new_folder()
         res = self.set_mode(data.get("app_mode", "mark_only"),
                             data.get("mark_format", "standard"))
         if not res["ok"]:

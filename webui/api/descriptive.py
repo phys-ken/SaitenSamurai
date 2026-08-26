@@ -22,6 +22,17 @@ def _err(message):
     return {"ok": False, "error": str(message)}
 
 
+def _validate_region(region):
+    """[x1,y1,x2,y2]（int・右下＞左上）に正規化。妥当でなければ None"""
+    try:
+        r = [int(v) for v in region]
+    except (TypeError, ValueError):
+        return None
+    if len(r) != 4 or r[2] <= r[0] or r[3] <= r[1]:
+        return None
+    return r
+
+
 class DescriptiveMixin:
 
     def _init_descriptive(self):
@@ -40,6 +51,7 @@ class DescriptiveMixin:
 
     def _load_descriptive_state(self):
         """image_folder 選択後に呼び、既存の設定・スコアを state に反映"""
+        self._desc_crops = None   # 旧フォルダの切り出しを配らない（S2）
         from descriptive_scorer import (load_descriptive_config,
                                         load_descriptive_scores)
         if not self.state["image_folder"]:
@@ -106,10 +118,12 @@ class DescriptiveMixin:
         try:
             max_score = int(max_score)
             aspect = int(aspect)
-            region = [int(v) for v in region]
-            assert max_score > 0 and len(region) == 4
+            assert max_score > 0
         except (TypeError, ValueError, AssertionError):
-            return _err("配点は正の整数、領域は [x1,y1,x2,y2] で指定してください")
+            return _err("配点は正の整数で指定してください")
+        region = _validate_region(region)
+        if region is None:
+            return _err("領域は [x1,y1,x2,y2]（右下＞左上）で指定してください")
         qs = self._desc_config["questions"]
         # tk 版は連番 D{n}。既存の最大番号+1 で欠番衝突を避ける
         used = [int(q["id"][1:]) for q in qs
@@ -128,11 +142,10 @@ class DescriptiveMixin:
         q = self._find_question(qid)
         if q is None:
             return _err(f"問題が見つかりません: {qid}")
-        try:
-            q["region"] = [int(v) for v in region]
-            assert len(q["region"]) == 4
-        except (TypeError, ValueError, AssertionError):
-            return _err("領域は [x1,y1,x2,y2] で指定してください")
+        region = _validate_region(region)
+        if region is None:
+            return _err("領域は [x1,y1,x2,y2]（右下＞左上）で指定してください")
+        q["region"] = region
         save_descriptive_config(str(self._desc_config_path()), self._desc_config)
         self._desc_crops = None
         self._refresh_desc_summary()

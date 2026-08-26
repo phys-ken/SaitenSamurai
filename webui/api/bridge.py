@@ -106,6 +106,26 @@ class DataSourceMixin:
 
     # --- 選択 -------------------------------------------------------
 
+    def _reset_for_new_folder(self):
+        """フォルダ切替＝新しい試験として全て初期化する（grill-me 確定: 完全クリア）。
+
+        旧フォルダの読み取り結果・チェッカー・設定が残ると、別試験のデータで
+        採点・保存してしまう（改善バックログ S1〜S4）。復元したい場合は
+        新フォルダのセッション検出→復元提案の経路で戻す。
+        """
+        self.close_mark_checker()
+        self.state.update({
+            "coord_file": None, "coord_summary": None,
+            "answer_key": None, "key_summary": None,
+            "omr_result": None,
+            "skip_questions": 4,
+            "omr_mode": "kmeans",
+            "color_threshold": 0.1, "area_threshold": 0.4,
+            "rendering_settings": None,
+            "name_trim_enabled": True, "name_trim_region": None,
+            "include_descriptive_in_analysis": True,
+        })
+
     def select_image_folder(self):
         folder = self._win.open_folder_dialog()
         if not folder:
@@ -117,11 +137,14 @@ class DataSourceMixin:
             return _err(
                 f"選択したフォルダに画像（jpg/png）がありません: {folder}\n"
                 "スキャンした答案画像の入ったフォルダを選んでください")
+        self._reset_for_new_folder()
         self.state["image_folder"] = str(folder_path)
         self.state["image_count"] = count
         self._load_descriptive_state()
         self._load_total_display_state()
         self._load_handwriting_state()
+        # 新フォルダに読み取り結果があれば自動で拾い直す
+        self._autoselect_omr_result()
         # 正答データの自動検出（tk auto_detect_template 相当）
         auto_key = None
         if not self.state["answer_key"]:
@@ -137,7 +160,10 @@ class DataSourceMixin:
         session_path = self._session_path()
         session_found = (str(session_path)
                          if session_path and session_path.exists() else None)
-        self._save_session_quietly()
+        if not session_found:
+            # 復元候補がある間は保存しない。保存すると「復元しますか？」で
+            # はい と答えても、たった今上書きした空の状態が戻ってしまう（S1）
+            self._save_session_quietly()
         return _ok(state=self.state, auto_detected_answer_key=auto_key,
                    session_found=session_found)
 

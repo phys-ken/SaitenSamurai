@@ -73,7 +73,6 @@ def ready_bridge(tmp_path):
     adapter = RecordingAdapter()
     bridge = Bridge(window_adapter=adapter)
     bridge.set_mode("mark_only", "multi_digit")
-    bridge.set_skip_questions(0)
 
     coord = make_coord_xlsx(tmp_path / "coord.xlsx", 3)
     scans = tmp_path / "scans"
@@ -87,6 +86,7 @@ def ready_bridge(tmp_path):
     adapter.folder_returns = [str(scans)]
     adapter.file_returns = [str(coord)]
     assert bridge.select_image_folder()["ok"]
+    bridge.set_skip_questions(0)   # フォルダ選択は完全クリアするので後から設定
     assert bridge.select_coord_file()["ok"]
     return bridge, adapter, tmp_path
 

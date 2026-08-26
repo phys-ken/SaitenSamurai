@@ -39,10 +39,10 @@ def _make_bridge(scans, coord, key, run_recognition=True):
     adapter = RecordingAdapter()
     b = Bridge(window_adapter=adapter)
     b.set_mode("mark_only", "multi_digit")
-    b.set_skip_questions(0)
     adapter.folder_returns = [str(scans)]
     adapter.file_returns = [str(coord), str(key)]
     assert b.select_image_folder()["ok"]
+    b.set_skip_questions(0)   # フォルダ選択は完全クリアするので後から設定
     assert b.select_coord_file()["ok"]
     assert b.select_answer_key()["ok"]
     if run_recognition:

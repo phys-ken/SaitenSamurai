@@ -112,8 +112,9 @@ class HandwritingMixin:
             logger.exception("焼き込みに必要なライブラリがありません")
             return 0
 
-        data = self._hw_load()
-        sheets = data.get("sheets", {})
+        import copy
+        # JS スレッドが保存中の dict を書き換えても落ちないようスナップショット（S9）
+        sheets = copy.deepcopy(self._hw_load().get("sheets", {}))
         if not sheets:
             return 0
         out = Path(output_folder)

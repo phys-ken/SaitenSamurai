@@ -315,6 +315,7 @@ def draw_combined_total(
     line1, line2_text = _combined_total_lines(
         combined_total, combined_max, aspect_scores, aspect_max_scores,
         rendering_settings)
+    sorted_aspects = sorted(aspect_max_scores.keys())  # 幅超過時の省略表示で使用
 
     # --- 描画位置の決定 ---
     total_region = config.get("total_display_region")

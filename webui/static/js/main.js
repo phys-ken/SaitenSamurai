@@ -3,6 +3,7 @@ import { openChecker, wireChecker } from './checker.js';
 import { pickRegion } from './region-picker.js';
 import { wireDescriptive } from './descriptive.js';
 import { withTransition } from './transitions.js';
+import { wireRenderSettings } from './render-settings.js';
 
 // ---------------------------------------------------------------
 // ログ
@@ -75,6 +76,7 @@ export function render(state) {
                      state.app_mode === 'descriptive_only';
   const isDescOnly = state.app_mode === 'descriptive_only';
   currentMode.descOnly = isDescOnly;
+  currentMode.appMode = state.app_mode;
   document.querySelectorAll('.desc-only-ui').forEach((n) => { n.hidden = !isDescMode; });
   document.getElementById('row-coord-file').hidden = isDescOnly;
   document.getElementById('summary-coord-file').hidden =
@@ -95,6 +97,11 @@ export function render(state) {
       d.questions.length === 0 ? '記述問題は未設定です'
         : `${d.questions.length} 問 / 採点済み ${total} / ${d.questions.length * d.prepared_count}`;
   }
+
+  document.getElementById('total-position-hint').textContent =
+    state.total_display_region
+      ? `設定済み (${state.total_display_region.join(', ')})`
+      : '未設定（自動配置）';
 
   document.getElementById('name-trim-check').checked =
     Boolean(state.name_trim_enabled);
@@ -188,7 +195,8 @@ async function runJob(name) {
     alert(e.message);
   }
 }
-let currentMode = { descOnly: false };
+let currentMode = { descOnly: false, appMode: 'mark_only' };
+const currentModeName = () => currentMode.appMode;
 const runRecognition = () => runJob(
   currentMode.descOnly ? 'run_prepare_images' : 'run_recognition');
 
@@ -206,10 +214,9 @@ function wireEvents() {
         existing,
       });
       if (region === null) return;
-      await call('set_total_display_region', region);
-      document.getElementById('total-position-hint').textContent =
-        `設定済み (${region.join(', ')})`;
-      log('📐 合計点表示位置を設定しました');
+      const set = await call('set_total_display_region', region);
+      render(set.state);
+      log('✓ 合計点の表示位置を設定しました');
     } catch (e) {
       log(`❌ ${e.message}`);
       alert(e.message);
@@ -267,6 +274,10 @@ function wireEvents() {
       log(`❌ ${e.message}`);
       alert(e.message);
     }
+  });
+  wireRenderSettings(log, () => {
+    const badge = document.getElementById('mode-badge');
+    return badge ? currentModeName() : 'mark_only';
   });
   wireChecker(log);
   wireDescriptive(log, render);

@@ -129,6 +129,7 @@ class SessionMixin:
         self.state["image_folder"] = str(base)
         self.state["image_count"] = count
         self._load_descriptive_state()
+        self._load_total_display_state()
 
         # 数値の復元（tk は skip を文字列で持つ）
         try:

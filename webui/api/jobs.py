@@ -153,6 +153,7 @@ class JobsMixin:
             self.state["image_folder"] = str(folder_path)
             self.state["image_count"] = count
             self._load_descriptive_state()
+            self._load_total_display_state()
         return dict(kind="pdf_import", ok=True, cancelled=cancelled,
                     message=("中断しました" if cancelled else
                              f"PDF展開が完了しました（{len(pdf_files)}ファイル）"
@@ -243,6 +244,23 @@ class JobsMixin:
                 return _err("記述問題が設定されていません。先に「記述問題設定」を行ってください")
         return self._start_job("scoring", self._scoring_worker)
 
+    def _desc_config_with_total_region(self):
+        """記述 config のコピーに合計点表示位置を注入して返す。
+
+        描画側（draw_combined_total）は config["total_display_region"] を見るが、
+        位置設定は tk 互換の total_display_config.json に別置きしている。
+        注入を忘れると位置設定が無視される（tk のマーク＋記述にもある既存バグ。
+        webui では両記述モードともここで必ず注入する）。
+        """
+        from descriptive_scorer import (load_total_display_config,
+                                        TOTAL_DISPLAY_CONFIG_FILE)
+        config = dict(self._desc_config)
+        tdc = load_total_display_config(
+            str(self._results_data_folder() / TOTAL_DISPLAY_CONFIG_FILE))
+        if tdc and "total_display_region" in tdc:
+            config["total_display_region"] = tdc["total_display_region"]
+        return config
+
     def _scoring_worker(self):
         """採点済み答案の生成。tk 版と同じモード分岐:
         mark_only → process_scoring / mark_and_descriptive →
@@ -269,7 +287,7 @@ class JobsMixin:
             from descriptive_scorer import generate_return_sheets
             generate_return_sheets(
                 image_folder=self.state["image_folder"],
-                config=self._desc_config,
+                config=self._desc_config_with_total_region(),
                 descriptive_scores=self._desc_scores["scores"],
                 coord_excel_path=self.state["coord_file"],
                 template_path=self.state["answer_key"],
@@ -283,8 +301,9 @@ class JobsMixin:
             from descriptive_scorer import generate_descriptive_only_sheets
             boxed = Path(self.state["image_folder"]) / RESULTS_FOLDER / BOXED_FOLDER
             generate_descriptive_only_sheets(
-                str(boxed), self._desc_config, self._desc_scores["scores"],
-                str(out))
+                str(boxed), self._desc_config_with_total_region(),
+                self._desc_scores["scores"], str(out),
+                rendering_settings=self.state["rendering_settings"])
         cancelled = self._cancel_event.is_set()
         return dict(kind="scoring", ok=True, cancelled=cancelled,
                     message=("中断しました" if cancelled

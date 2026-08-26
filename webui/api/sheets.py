@@ -60,6 +60,15 @@ class SheetsMixin:
 
     # --- 合計点表示位置 ---------------------------------------------
 
+    def _load_total_display_state(self):
+        """image_folder 選択/復元時に保存済みの合計点表示位置を state へ載せる"""
+        from descriptive_scorer import (load_total_display_config,
+                                        TOTAL_DISPLAY_CONFIG_FILE)
+        cfg = load_total_display_config(
+            str(self._results_data_folder() / TOTAL_DISPLAY_CONFIG_FILE))
+        self.state["total_display_region"] = (
+            cfg.get("total_display_region") if cfg else None)
+
     def get_total_display_region(self):
         from descriptive_scorer import (load_total_display_config,
                                         TOTAL_DISPLAY_CONFIG_FILE)
@@ -81,7 +90,8 @@ class SheetsMixin:
         if region is None:
             if config_path.exists():
                 config_path.unlink()
-            return _ok(region=None)
+            self.state["total_display_region"] = None
+            return _ok(region=None, state=self.state)
         try:
             region = [int(v) for v in region]
             assert len(region) == 4
@@ -89,7 +99,8 @@ class SheetsMixin:
             return _err("領域は [x1, y1, x2, y2] の数値で指定してください")
         data_folder.mkdir(parents=True, exist_ok=True)
         save_total_display_config(str(config_path), region)
-        return _ok(region=region)
+        self.state["total_display_region"] = region
+        return _ok(region=region, state=self.state)
 
     # --- 氏名トリミング（集計シートに氏名画像を表示） --------------
 
@@ -112,3 +123,40 @@ class SheetsMixin:
             return _err("領域の幅と高さは正である必要があります")
         self.state["name_trim_region"] = region
         return _ok(state=self.state)
+
+    # --- 採点結果の表示項目（描画詳細設定） --------------------------
+
+    def set_rendering_settings(self, overrides):
+        """描画詳細設定を更新する。既知のキーだけ受け付け、型を検証する。
+
+        state["rendering_settings"] には既定値との差分だけを保持する
+        （セッションに tk 互換の形でそのまま保存されるため）。
+        """
+        from constants import DEFAULT_RENDERING_SETTINGS
+        if not isinstance(overrides, dict):
+            return _err("設定は {キー: 値} の形式で指定してください")
+        current = dict(self.state["rendering_settings"] or {})
+        for key, value in overrides.items():
+            if key not in DEFAULT_RENDERING_SETTINGS:
+                return _err(f"不明な設定項目です: {key}")
+            default = DEFAULT_RENDERING_SETTINGS[key]
+            if isinstance(default, bool):
+                value = bool(value)
+            elif isinstance(default, float):
+                try:
+                    value = float(value)
+                except (TypeError, ValueError):
+                    return _err(f"{key} は数値で指定してください")
+            current[key] = value
+        # 既定値と同じものは差分から落とす
+        current = {k: v for k, v in current.items()
+                   if v != DEFAULT_RENDERING_SETTINGS[k]}
+        self.state["rendering_settings"] = current or None
+        self._save_session_quietly()
+        return _ok(state=self.state)
+
+    def get_rendering_settings(self):
+        """既定値に差分を適用した完全な設定辞書と、既定値そのものを返す"""
+        from constants import get_rendering_settings, DEFAULT_RENDERING_SETTINGS
+        return _ok(settings=get_rendering_settings(self.state["rendering_settings"]),
+                   defaults=dict(DEFAULT_RENDERING_SETTINGS))

@@ -417,6 +417,7 @@ def generate_return_sheets(
                 result_image, scoring_result, config,
                 desc_scores, coordinates,
                 output_scale=output_scale,
+                rendering_settings=rendering_settings,
             )
 
             # 保存 (JPEG品質85: 画質と容量のバランス)
@@ -565,6 +566,7 @@ def generate_descriptive_only_sheets(
                 descriptive_scores_for_image=scores_for_img,
                 coordinates=None,
                 output_scale=output_scale,
+                rendering_settings=rendering_settings,
             )
 
             # 保存（Unicode パス対応: cv2.imencode + tofile）

@@ -239,6 +239,7 @@ def draw_combined_total(
     descriptive_scores_for_image: dict,
     coordinates: list = None,
     output_scale: float = 1.0,
+    rendering_settings: dict = None,
 ) -> np.ndarray:
     """
     マーク得点 + 記述得点の合計を画像に描画する。
@@ -253,6 +254,8 @@ def draw_combined_total(
         descriptive_scores_for_image: {question_id: score, ...}
         coordinates: マーク座標リスト (total_display_region 未指定時のフォールバック用)
         output_scale: 出力スケール (1.0 = 595x842)
+        rendering_settings: 描画設定。total_show_max / total_show_aspects で
+            満点表示・観点別行を省略できる（既定はどちらも表示）
 
     Returns:
         描画済み画像
@@ -290,11 +293,14 @@ def draw_combined_total(
         if sc is not None:
             aspect_scores[asp] += sc
 
+    from constants import get_rendering_settings
+    rs = get_rendering_settings(rendering_settings)
     sorted_aspects = sorted(aspect_max_scores.keys())
     parts = []
-    for asp in sorted_aspects:
-        circled = number_to_circled(asp)
-        parts.append(f"観点{circled}:{aspect_scores.get(asp, 0)}/{aspect_max_scores[asp]}")
+    if rs['total_show_aspects']:
+        for asp in sorted_aspects:
+            circled = number_to_circled(asp)
+            parts.append(f"観点{circled}:{aspect_scores.get(asp, 0)}/{aspect_max_scores[asp]}")
     line2_text = " ".join(parts) if parts else ""
 
     # --- 描画位置の決定 ---
@@ -330,7 +336,8 @@ def draw_combined_total(
     draw = ImageDraw.Draw(pil_img)
 
     # テキスト
-    line1 = f"得点：{combined_total} / {combined_max}"
+    line1 = (f"得点：{combined_total} / {combined_max}" if rs['total_show_max']
+             else f"得点：{combined_total}")
 
     # フォントサイズの自動調整（ボックスサイズ基準）
     # ボックス高さの50%をフォント上限とし、実画像サイズに適応する

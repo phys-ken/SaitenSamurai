@@ -119,6 +119,7 @@
     <div class="ds-row">
       <button class="btn" id="btn-total-position">合計点の位置指定</button>
       <span class="hint" id="total-position-hint">未設定（自動配置）</span>
+      <button class="btn" id="btn-render-settings">表示項目の設定</button>
     </div>
   </section>
 
@@ -216,6 +217,18 @@
     <div id="checker-grid" class="vgrid-viewport"></div>
   </section>
 </main>
+
+<!-- 表示項目の設定（採点済み答案に何を描き込むか） -->
+<div class="picker-overlay" id="rs-overlay" hidden>
+  <div class="picker-dialog rs-dialog">
+    <div class="picker-head">
+      <h2 class="rs-title">表示項目の設定</h2>
+      <span class="hint">変更はすぐに保存され、次の「採点済み答案を生成」から反映されます</span>
+      <button class="btn" id="btn-rs-close">閉じる</button>
+    </div>
+    <div id="rs-body" class="rs-body"></div>
+  </div>
+</div>
 
 <script type="module" src="js/main.js"></script>
 </body>

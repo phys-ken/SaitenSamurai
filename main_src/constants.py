@@ -113,6 +113,9 @@ DEFAULT_RENDERING_SETTINGS = {
     # ○×・得点・観点・正答番号の文字背景を白塗りする
     # (マークシートの選択肢9/0の印字と文字が重なって読みづらい場合に有効化)
     'mark_result_bg_white': False,
+    # --- 合計点表示 ---
+    'total_show_max': True,        # 合計行に満点（/ NN）を表示する
+    'total_show_aspects': True,    # 観点別の行を表示する
     # --- 記述式採点結果 ---
     'descriptive_opacity': 0.50,   # 透過率
     'descriptive_show_mark': True,  # ○×△マーク

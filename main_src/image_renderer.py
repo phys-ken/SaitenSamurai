@@ -376,7 +376,8 @@ def draw_scoring_results(image, coordinates, scoring_result, skip_questions=0, o
     return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
 
-def draw_total_score(image, coordinates, scoring_result, total_display_config=None, output_scale=1.0):
+def draw_total_score(image, coordinates, scoring_result, total_display_config=None, output_scale=1.0,
+                     rendering_settings=None):
     """
     合計得点を画像に描画（2行表示）
     
@@ -392,7 +393,8 @@ def draw_total_score(image, coordinates, scoring_result, total_display_config=No
     """
     s = output_scale
     result_image = image.copy()
-    layout = _prepare_total_score_layout(result_image, scoring_result, total_display_config, s)
+    layout = _prepare_total_score_layout(result_image, scoring_result, total_display_config, s,
+                                         rendering_settings=rendering_settings)
     line1, line2, sorted_aspects, aspect_scores, box_x1, box_y1, box_w, box_h = layout
     return _draw_total_score_in_box(result_image, line1, line2, sorted_aspects,
                                     aspect_scores, box_x1, box_y1, box_w, box_h,
@@ -469,27 +471,35 @@ def _draw_total_score_on_pil(draw, line1, line2, sorted_aspects, aspect_scores,
         draw.text((box_x1 + pad_x, box_y1 + line1_h + gap_y), line2, font=font_small, fill=color)
 
 
-def _prepare_total_score_layout(image, scoring_result, total_display_config, output_scale):
+def _prepare_total_score_layout(image, scoring_result, total_display_config, output_scale,
+                                rendering_settings=None):
     """合計得点描画のテキストとボックス位置を計算する（描画は行わない）。
+
+    rendering_settings の total_show_max / total_show_aspects で
+    満点表示・観点別行を省略できる（既定はどちらも表示 = 従来通り）。
 
     Returns:
         (line1, line2, sorted_aspects, aspect_scores, box_x1, box_y1, box_w, box_h)
     """
+    from constants import get_rendering_settings
+    rs = get_rendering_settings(rendering_settings)
     s = output_scale
     total_score = scoring_result['total_score']
     total_max_score = sum(scoring_result['aspect_max_scores'].values())
-    line1 = f"得点：{total_score} / {total_max_score}"
+    line1 = (f"得点：{total_score} / {total_max_score}" if rs['total_show_max']
+             else f"得点：{total_score}")
 
     aspect_scores = scoring_result['aspect_scores']
     aspect_max_scores = scoring_result['aspect_max_scores']
     sorted_aspects = sorted(aspect_max_scores.keys())
 
     aspect_parts = []
-    for aspect in sorted_aspects:
-        circled = number_to_circled(aspect)
-        score = aspect_scores.get(aspect, 0)
-        max_score = aspect_max_scores[aspect]
-        aspect_parts.append(f"観点{circled}：{score}/{max_score}")
+    if rs['total_show_aspects']:
+        for aspect in sorted_aspects:
+            circled = number_to_circled(aspect)
+            score = aspect_scores.get(aspect, 0)
+            max_score = aspect_max_scores[aspect]
+            aspect_parts.append(f"観点{circled}：{score}/{max_score}")
     line2 = "(" + " ".join(aspect_parts) + ")" if aspect_parts else ""
 
     if total_display_config and "total_display_region" in total_display_config:
@@ -599,7 +609,8 @@ def draw_all_results(image, coordinates, scoring_result, skip_questions=0,
     _draw_scoring_on_pil(draw, coordinates, scoring_result, skip_questions, s, rendering_settings, mark_format)
 
     # 合計得点の描画
-    layout = _prepare_total_score_layout(result_image, scoring_result, total_display_config, s)
+    layout = _prepare_total_score_layout(result_image, scoring_result, total_display_config, s,
+                                         rendering_settings=rendering_settings)
     line1, line2, sorted_aspects, aspect_scores, box_x1, box_y1, box_w, box_h = layout
     _draw_total_score_on_pil(draw, line1, line2, sorted_aspects, aspect_scores,
                               box_x1, box_y1, box_w, box_h, s)

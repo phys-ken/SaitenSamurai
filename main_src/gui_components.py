@@ -2832,6 +2832,8 @@ class RenderingSettingsGUI:
         self.var_desc_show_mark = tk.BooleanVar(value=s['descriptive_show_mark'])
         self.var_desc_show_score = tk.BooleanVar(value=s['descriptive_show_score'])
         self.var_desc_show_aspect = tk.BooleanVar(value=s['descriptive_show_aspect'])
+        self.var_total_show_max = tk.BooleanVar(value=s['total_show_max'])
+        self.var_total_show_aspects = tk.BooleanVar(value=s['total_show_aspects'])
 
     # ─────────────────────────────────────────────
     # UI 構築
@@ -2867,6 +2869,8 @@ class RenderingSettingsGUI:
             ("観点を表示", self.var_show_aspect),
             ("全員正解（特例）の正答位置に★を表示", self.var_show_star),
             ("文字の背景を白塗りする（9/0マークの印字と重なる場合に有効）", self.var_bg_white),
+            ("合計点に満点も表示する（例: 得点：82 / 100）", self.var_total_show_max),
+            ("合計点に観点別の行を表示する", self.var_total_show_aspects),
         ]:
             tk.Checkbutton(chk_frame, text=text, variable=var,
                            font=FONT_S, bg=SEC_BG, anchor=tk.W,
@@ -3005,6 +3009,8 @@ class RenderingSettingsGUI:
         self.var_desc_show_mark.set(d['descriptive_show_mark'])
         self.var_desc_show_score.set(d['descriptive_show_score'])
         self.var_desc_show_aspect.set(d['descriptive_show_aspect'])
+        self.var_total_show_max.set(d['total_show_max'])
+        self.var_total_show_aspects.set(d['total_show_aspects'])
 
     def _collect_settings(self):
         """現在のGUI状態から設定辞書を作成"""
@@ -3020,6 +3026,8 @@ class RenderingSettingsGUI:
             'descriptive_show_mark': self.var_desc_show_mark.get(),
             'descriptive_show_score': self.var_desc_show_score.get(),
             'descriptive_show_aspect': self.var_desc_show_aspect.get(),
+            'total_show_max': self.var_total_show_max.get(),
+            'total_show_aspects': self.var_total_show_aspects.get(),
         }
 
     def _on_apply(self):

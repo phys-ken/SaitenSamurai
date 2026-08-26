@@ -65,7 +65,8 @@ class DataSourceMixin:
             "key_summary": None,             # {ok, errors, warnings, stats_line, ...}
             "name_trim_enabled": True,       # 氏名画像を集計シートに表示（tk 既定 ON）
             "name_trim_region": None,        # [x1,y1,x2,y2] 00_Processing 座標系
-            "rendering_settings": None,      # tk セッション由来の描画詳細設定（None=既定）
+            "rendering_settings": None,      # 描画詳細設定の差分（None=既定のまま）
+            "total_display_region": None,    # 合計点表示位置 [x1,y1,x2,y2]
         }
 
     def get_state(self):
@@ -117,6 +118,7 @@ class DataSourceMixin:
         self.state["image_folder"] = str(folder_path)
         self.state["image_count"] = count
         self._load_descriptive_state()
+        self._load_total_display_state()
         self._save_session_quietly()
         return _ok(state=self.state)
 

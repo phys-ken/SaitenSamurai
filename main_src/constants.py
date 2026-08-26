@@ -208,8 +208,15 @@ JAPANESE_FONT_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
     "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # 日本語は出ないが最後の砦
+    "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",
+    "/usr/share/fonts/truetype/vlgothic/VL-Gothic-Regular.ttf",
+    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",   # macOS
 )
+
+# 日本語は描けないが、ビットマップ既定フォントよりはましな最後の砦。
+# fc-match でも日本語フォントが見つからなかった場合のみ使う
+# （候補リストに入れると fc-match より先に拾われて豆腐になるため分離）
+_LAST_RESORT_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 _japanese_font_path = None      # 解決結果のキャッシュ（未解決なら None）
 _japanese_font_resolved = False  # 解決を試みたか（None を毎回探索し直さないため）
@@ -230,7 +237,21 @@ def find_japanese_font():
         if os.path.exists(candidate):
             _japanese_font_path = candidate
             break
-    if _japanese_font_path is None:
+    if _japanese_font_path is None and os.name != "nt":
+        # 固定候補で見つからない Linux ディストリ向け: fontconfig に問い合わせる
+        try:
+            import subprocess
+            out = subprocess.run(
+                ["fc-match", "-f", "%{file}", "sans-serif:lang=ja"],
+                capture_output=True, text=True, timeout=5)
+            path = out.stdout.strip()
+            if out.returncode == 0 and path and os.path.exists(path):
+                _japanese_font_path = path
+        except Exception:
+            pass
+    if _japanese_font_path is None and os.path.exists(_LAST_RESORT_FONT):
+        _japanese_font_path = _LAST_RESORT_FONT
+    if _japanese_font_path is None or _japanese_font_path == _LAST_RESORT_FONT:
         logger.warning(
             "日本語フォントが見つかりません。採点結果画像の得点が極端に小さく表示され、"
             "CTTレポートの日本語が出力されない可能性があります。探索先: %s",

@@ -39,16 +39,22 @@ from omr_engine import (
 # ---------------------------------------------------------------------------
 # フォントキャッシュ — サイズごとに1回だけディスクI/Oを行いキャッシュする
 # ---------------------------------------------------------------------------
-_FONT_PATH = "C:/Windows/Fonts/msgothic.ttc"
 _font_cache: dict[int, ImageFont.FreeTypeFont] = {}
 
 
 def _get_cached_font(size: int) -> ImageFont.FreeTypeFont:
-    """キャッシュ付きフォント取得。同一サイズの再読込を完全に排除する。"""
+    """キャッシュ付きフォント取得。同一サイズの再読込を完全に排除する。
+
+    以前は C:/Windows/Fonts/msgothic.ttc のハードコードで、Linux では
+    ビットマップフォントに落ちて日本語が豆腐になっていた。
+    constants.find_japanese_font()（Windows/Linux 両対応の探索）に統一。
+    """
     font = _font_cache.get(size)
     if font is None:
+        from constants import find_japanese_font
+        font_path = find_japanese_font()
         try:
-            font = ImageFont.truetype(_FONT_PATH, size)
+            font = ImageFont.truetype(font_path, size)  # None なら例外→既定へ
         except Exception:
             font = ImageFont.load_default()  # type: ignore[assignment]
         _font_cache[size] = font

@@ -173,3 +173,57 @@ class TestTotalRegionInjection:
         region = img[650:750, 300:560]
         drawn = int((region < 200).any(axis=2).sum())
         assert drawn > 50, "指定領域に合計点が描かれていない（注入漏れ）"
+
+
+class TestRenderPreview:
+    def test_preview_requires_inputs(self):
+        b = Bridge(window_adapter=RecordingAdapter())
+        res = b.get_render_preview()
+        assert not res["ok"] and "座標ファイル" in res["error"]
+
+    def test_preview_reflects_offset(self, tmp_path):
+        """プレビューは実描画関数の出力で、オフセット変更で画像が変わる"""
+        import base64
+        import cv2
+        sys.path.insert(0, str(PROJECT_ROOT / "tests"))
+        from test_multi_digit_mode import _create_answer_key
+        from test_multidigit_image_e2e import (make_coord_xlsx, make_sheet,
+                                               sym_positions)
+        coord = make_coord_xlsx(tmp_path / "coord.xlsx", 4)
+        key = tmp_path / "key.xlsx"
+        _create_answer_key(key, [
+            {'問題番号': 1, '正答': '-24', '配点': 3, '観点': 1},
+        ])
+        scans = tmp_path / "scans"
+        scans.mkdir()
+        filled = {q: p for q, p in zip([1, 2, 3], sym_positions('-24'))}
+        cv2.imwrite(str(scans / "s1.png"),
+                    make_sheet(filled, with_markers=True))
+
+        adapter = RecordingAdapter()
+        b = Bridge(window_adapter=adapter)
+        b.set_mode("mark_only", "multi_digit")
+        b.set_skip_questions(0)
+        adapter.folder_returns = [str(scans)]
+        adapter.file_returns = [str(coord), str(key)]
+        assert b.select_image_folder()["ok"]
+        assert b.select_coord_file()["ok"]
+        assert b.select_answer_key()["ok"]
+        assert b.run_recognition()["ok"]
+        _wait_job_done(b)
+
+        def decode(res):
+            raw = base64.b64decode(res["data_url"].split(",", 1)[1])
+            return cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+
+        res0 = b.get_render_preview()
+        assert res0["ok"], res0
+        img0 = decode(res0)
+        assert img0 is not None and img0.size > 0
+        # 白紙ではなく何かが描かれている
+        assert int((img0 < 200).any(axis=2).sum()) > 30
+
+        assert b.set_rendering_settings({"mark_result_offset": 2.0})["ok"]
+        img1 = decode(b.get_render_preview())
+        assert img0.shape == img1.shape
+        assert not np.array_equal(img0, img1), "オフセットがプレビューに反映されていない"

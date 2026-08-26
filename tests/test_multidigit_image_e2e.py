@@ -337,8 +337,10 @@ class TestProcessScoringSmoke:
         assert set(outs) == {'ok.png', 'ng.png'}
 
         def red_count(bgr):
+            # 実フォント（Noto等）の○×は細くアンチエイリアスがかかるため、
+            # 純赤ではなく「赤が優勢な画素」を数える
             b, g, r = bgr[:, :, 0].astype(int), bgr[:, :, 1].astype(int), bgr[:, :, 2].astype(int)
-            return int(((r > 150) & (g < 110) & (b < 110)).sum())
+            return int(((r > 120) & (r - g > 40) & (r - b > 40)).sum())
 
         # 両者とも何かしら描かれている（○× と得点）
         assert red_count(outs['ok.png']) > 0

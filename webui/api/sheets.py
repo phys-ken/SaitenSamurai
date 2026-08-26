@@ -160,3 +160,78 @@ class SheetsMixin:
         from constants import get_rendering_settings, DEFAULT_RENDERING_SETTINGS
         return _ok(settings=get_rendering_settings(self.state["rendering_settings"]),
                    defaults=dict(DEFAULT_RENDERING_SETTINGS))
+
+    def get_render_preview(self):
+        """マーク描き込みのプレビュー画像を返す（tk 版「位置プレビュー」の後継）。
+
+        最初の答案（00_Processing）に、現在の表示項目設定で
+        「正解例・不正解例・全員正解（★）例」をダミー採点結果として描画し、
+        該当行の周辺を切り出して data URL で返す。実際の描画関数を使うので
+        オフセット・白塗り・各トグルの効き方がそのまま確認できる。
+        """
+        import base64
+        import cv2
+        import numpy as np
+        if not self.state["coord_file"]:
+            return _err("座標ファイルを選択するとプレビューできます")
+        folder = self._boxed_folder()
+        files = (sorted(p.name for p in folder.iterdir()
+                        if p.suffix.lower() in ('.jpg', '.jpeg', '.png'))
+                 if folder and folder.exists() else [])
+        if not files:
+            return _err("認識実行の後にプレビューできます（補正済み画像を使うため）")
+
+        from omr_engine import parse_excel_coordinates
+        from image_renderer import draw_scoring_results
+        skip = self.state["skip_questions"]
+        coordinates, _ = parse_excel_coordinates(self.state["coord_file"], skip)
+        q_nos = sorted({c["question_no"] for c in coordinates})
+        if not q_nos:
+            return _err("座標ファイルに設問がありません")
+
+        img = cv2.imdecode(np.fromfile(str(folder / files[0]), dtype=np.uint8),
+                           cv2.IMREAD_COLOR)
+        if img is None:
+            return _err("補正済み画像を読み込めません")
+
+        # ダミー採点結果: 1問目=正解 / 2問目=不正解 / 3問目=全員正解(★)
+        samples = [
+            dict(correct=True, points=3, aspect=1, correct_answer="2"),
+            dict(correct=False, points=3, aspect=1, correct_answer="2"),
+            dict(correct=True, points=3, aspect=1, correct_answer="2",
+                 special="全員正解"),
+        ]
+        results = {}
+        for q_abs, sample in zip(q_nos, samples):
+            results[q_abs - skip] = sample
+        scoring_result = {
+            "results": results,
+            "total_score": 3, "max_score": 9,
+            "aspect_scores": {1: 3}, "aspect_max_scores": {1: 9},
+        }
+        drawn = draw_scoring_results(
+            img, coordinates, scoring_result, skip_questions=skip,
+            output_scale=1.0,
+            rendering_settings=self.state["rendering_settings"],
+            mark_format=self.state["mark_format"])
+
+        # 使った設問行の周辺を切り出す（左右にはみ出しぶんの余白を持たせる）
+        used = [c for c in coordinates
+                if c["question_no"] in list(results.keys()) or
+                   c["question_no"] in [q + skip for q in results.keys()]]
+        ys = [c["y"] for c in used] + [c["y"] + c["height"] for c in used]
+        xs = [c["x"] for c in used] + [c["x"] + c["width"] for c in used]
+        h = img.shape[0]; w = img.shape[1]
+        row_h = used[0]["height"]
+        y1 = max(0, int(min(ys) - row_h * 0.8))
+        y2 = min(h, int(max(ys) + row_h * 0.8))
+        cell_w = used[0]["width"]
+        x1 = max(0, int(min(xs) - cell_w * 3))
+        x2 = min(w, int(max(xs) + cell_w * 3))
+        crop = drawn[y1:y2, x1:x2]
+        ok, buf = cv2.imencode(".png", crop)
+        if not ok:
+            return _err("プレビュー画像の生成に失敗しました")
+        b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+        return _ok(data_url=f"data:image/png;base64,{b64}",
+                   sample_note="上から: 正解例 / 不正解例 / 全員正解（★）の例")

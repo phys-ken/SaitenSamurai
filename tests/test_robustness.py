@@ -566,18 +566,42 @@ class TestJapaneseFontResolution:
         assert Path(path).exists()
 
     def test_warns_when_no_font_found(self, caplog):
+        """固定候補も fc-match も日本語フォントを返せないときは警告する"""
+        import subprocess
         import constants
         constants._reset_japanese_font_cache()
-        with patch.object(constants, 'JAPANESE_FONT_CANDIDATES', ('/nonexistent/a.ttf',)):
+        with patch.object(constants, 'JAPANESE_FONT_CANDIDATES', ('/nonexistent/a.ttf',)), \
+             patch.object(constants, '_LAST_RESORT_FONT', '/nonexistent/dejavu.ttf'), \
+             patch.object(subprocess, 'run', side_effect=OSError('no fontconfig')):
             with caplog.at_level('WARNING', logger='constants'):
                 assert constants.find_japanese_font() is None
         assert any('日本語フォントが見つかりません' in r.message for r in caplog.records)
 
+    def test_fc_match_fallback_when_candidates_missing(self):
+        """固定候補が全滅しても fontconfig 経由で日本語フォントを見つける"""
+        import shutil
+        import constants
+        if shutil.which('fc-match') is None:
+            import pytest
+            pytest.skip('fontconfig なし')
+        constants._reset_japanese_font_cache()
+        try:
+            with patch.object(constants, 'JAPANESE_FONT_CANDIDATES',
+                              ('/nonexistent/a.ttf',)):
+                path = constants.find_japanese_font()
+            assert path is not None and Path(path).exists()
+            assert path != constants._LAST_RESORT_FONT
+        finally:
+            constants._reset_japanese_font_cache()
+
     def test_result_is_cached(self, caplog):
         """2回目以降は再探索せず、警告も繰り返さない"""
+        import subprocess
         import constants
         constants._reset_japanese_font_cache()
-        with patch.object(constants, 'JAPANESE_FONT_CANDIDATES', ('/nonexistent/a.ttf',)):
+        with patch.object(constants, 'JAPANESE_FONT_CANDIDATES', ('/nonexistent/a.ttf',)), \
+             patch.object(constants, '_LAST_RESORT_FONT', '/nonexistent/dejavu.ttf'), \
+             patch.object(subprocess, 'run', side_effect=OSError('no fontconfig')):
             with caplog.at_level('WARNING', logger='constants'):
                 constants.find_japanese_font()
                 constants.find_japanese_font()

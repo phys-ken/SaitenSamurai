@@ -399,3 +399,7 @@ input, select {
           padding: 0.18rem 0; font-size: 0.9rem; }
 .rs-row input[type="number"] { width: 5em; padding: 0.15rem 0.3rem; }
 .rs-note { font-size: 0.78rem; color: var(--usuzumi); margin-left: 0.4rem; }
+.rs-step { min-width: 2.4em; padding: 0.2rem 0.3rem; }
+.rs-offset-value { min-width: 2.6em; text-align: center; font-size: 1.05rem; }
+.rs-preview-img { max-width: 100%; border: 1px solid var(--kei-line);
+                  background: var(--paper); display: block; }

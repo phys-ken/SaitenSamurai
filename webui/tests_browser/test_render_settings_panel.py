@@ -32,6 +32,9 @@ API = """(() => {
       Object.assign(window.__rs, ov);
       return {ok: true, state: state()};
     },
+    get_render_preview: async () => ({ok: true,
+      data_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      sample_note: '上から: 正解例 / 不正解例 / 全員正解（★）の例'}),
     select_image_folder: async () => ({ok: true, cancelled: true}),
   };
 })()"""
@@ -63,3 +66,22 @@ def test_dialog_sections_follow_mode_and_saves_change(open_app):
     page.wait_for_function("window.__rs.total_show_max === false")
     page.click("#btn-rs-close")
     page.wait_for_selector("#rs-overlay", state="hidden")
+
+
+def test_offset_steppers_and_preview(open_app):
+    page = open_app(API)
+    enter_mode(page)
+    page.click("#btn-render-settings")
+    page.wait_for_selector("#rs-overlay:not([hidden])")
+    # プレビューが実描画APIから読み込まれる
+    page.wait_for_function(
+        "document.querySelector('.rs-preview-img')?.src.startsWith('data:image/png')")
+    assert "正解例" in page.locator(".rs-preview-note").inner_text()
+    # ステッパーでオフセットが 0.0 → 0.5 になり保存される
+    row = page.locator(".rs-row", has_text="描き込み位置のオフセット")
+    assert "0.0" in row.locator(".rs-offset-value").inner_text()
+    row.locator("button", has_text="▶").nth(1).click()   # ▶ (+0.5)
+    page.wait_for_function("window.__rs.mark_result_offset === 0.5")
+    assert "0.5" in row.locator(".rs-offset-value").inner_text()
+    # ★の説明が不適切問題に言及している
+    assert "不適切問題" in page.locator(".rs-row", has_text="全員正解").inner_text()

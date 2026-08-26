@@ -64,9 +64,9 @@ jobs:
       - name: Detect exe name
         id: exe-name
         run: |
-          $exe = Get-ChildItem "dist/SaitenSamurai_v*.exe" | Select-Object -First 1
+          $exe = Get-ChildItem "dist/SaitenSamurai_Legacy_v*.exe" | Select-Object -First 1
           if (!$exe) {
-            Write-Error "SaitenSamurai_v*.exe not found in dist/"
+            Write-Error "SaitenSamurai_Legacy_v*.exe not found in dist/"
             exit 1
           }
           $size = $exe.Length / 1MB
@@ -96,7 +96,7 @@ jobs:
             | ファイル | 内容 |
             |---|---|
             | `${{ steps.exe-name.outputs.WEBUI_EXE_NAME }}` | **新UI（ベータ）** — 進行バー・キーボード採点・手書きコメントなど全面刷新版 |
-            | `${{ steps.exe-name.outputs.EXE_NAME }}` | 従来UI — これまでと同じ画面（安定版と同等の操作感） |
+            | `${{ steps.exe-name.outputs.EXE_NAME }}` | 従来UI（Legacy）— これまでと同じ画面。新UIで困ったときの代替 |
 
             > 新UIはベータ版です。動作に問題があれば従来UIをお使いのうえ、
             > [バグ報告](https://github.com/phys-ken/SaitenSamurai/issues) をお寄せください。

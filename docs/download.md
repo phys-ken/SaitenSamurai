@@ -13,7 +13,7 @@
 画面を全面刷新した**新UI 版のベータ**を公開しています。ベータ版は
 「最新の安定版」ボタンには含まれないため、こちらから入手してください。
 
-<a href="https://github.com/phys-ken/SaitenSamurai/releases/tag/v5.0.0-beta.2" class="btn-download">
+<a href="https://github.com/phys-ken/SaitenSamurai/releases/tag/v5.0.0-beta.3" class="btn-download">
 :material-flask-outline: 新UI ベータ版をダウンロード
 </a>
 
@@ -22,7 +22,7 @@
 | ファイル | 内容 |
 |---|---|
 | `SaitenSamurai_WebUI_v5.0.0-beta.✕.exe` | **新UI（ベータ）** — 進行バー・キーボード採点・手書きコメントなど全面刷新版 |
-| `SaitenSamurai_v5.0.0-beta.✕.exe` | 従来UI — これまでと同じ画面 |
+| `SaitenSamurai_Legacy_v5.0.0-beta.✕.exe` | 従来UI（Legacy）— これまでと同じ画面 |
 
 !!! tip "採点データはどちらの UI でも完全に共通です"
     フォルダ構成・保存ファイルは両版でまったく同じなので、

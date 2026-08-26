@@ -88,7 +88,7 @@
 ### exe 版（推奨）
 
 1. [Releases ページ](https://github.com/phys-ken/SaitenSamurai/releases) から exe をダウンロード\
-   （新UIベータ: `SaitenSamurai_WebUI_….exe` ／ 従来UI: `SaitenSamurai_….exe`。採点データは両者で完全に共通）
+   （新UIベータ: `SaitenSamurai_WebUI_….exe` ／ 従来UI: `SaitenSamurai_Legacy_….exe`。採点データは両者で完全に共通）
 2. 任意のフォルダに配置してダブルクリック
 3. モード選択画面で採点モードを選んで開始
 

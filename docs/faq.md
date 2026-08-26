@@ -34,7 +34,7 @@
 ??? question "exe ファイルをダブルクリックしても起動しません"
     アンチウイルスソフトに誤検出されている可能性があります。
     
-    - アンチウイルスの除外設定に `SaitenSamurai_WebUI_….exe`（または `SaitenSamurai_….exe`）を追加してください
+    - アンチウイルスの除外設定に `SaitenSamurai_WebUI_….exe`（または `SaitenSamurai_Legacy_….exe`）を追加してください
     - それでも解決しない場合は、Python 環境から直接実行する方法もあります
 
 ??? question "Mac や Linux で使えますか？"
@@ -158,7 +158,7 @@
 
     **方法 1: 起動時に「採点再開」を選ぶ（最も簡単）**
 
-    1. `SaitenSamurai_WebUI_….exe`（または `SaitenSamurai_….exe`）を起動
+    1. `SaitenSamurai_WebUI_….exe`（または `SaitenSamurai_Legacy_….exe`）を起動
     2. モード選択画面の下にある **「前回の採点を再開する」** ボタンをクリック
     3. 前回のセッションファイル（`session_state.json`）を選択
     4. 前回の続きから自動的に復元されます

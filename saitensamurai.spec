@@ -26,7 +26,7 @@ _version_file = os.path.join(MAIN_SRC, 'saitensamurai.py')
 with open(_version_file, 'r', encoding='utf-8') as _f:
     _m = re.search(r'バージョン:\s*(\S+)', _f.read())
     _version = _m.group(1) if _m else 'unknown'
-EXE_NAME = f'SaitenSamurai_v{_version}'
+EXE_NAME = f'SaitenSamurai_Legacy_v{_version}'   # 旧UI版と明示（v5系から）
 
 a = Analysis(
     ['main_src/saitensamurai.py'],

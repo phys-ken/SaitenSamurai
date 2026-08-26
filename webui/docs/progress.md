@@ -33,6 +33,8 @@
 
 | 20 | docs 全面改稿: quickstart/usage3本/features/faq/index/files-map を新UI前提＋従来UIタブに。新UIスクショ8枚（--docs撮影シーン）。mkdocs strict 警告ゼロ | ✅ | (このコミット) |
 
+| 21 | Win11実機フィードバック対応（win11-feedback-plan.md P1〜P6）: CLIウィンドウ根治・2カラム・4色記述採点・ドラッグ即追加・ピッカーズーム・合計点既定枠・Legacy命名 → v5.0.0-beta.3 | ✅ | (このコミット) |
+
 ## 移植完了サマリー（2026-08-26）
 
 M1〜M4 ＋ 既存機能の残り移植まで完了。テストは4層:

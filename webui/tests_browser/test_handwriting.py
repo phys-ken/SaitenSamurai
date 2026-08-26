@@ -107,3 +107,26 @@ def test_c_key_toggles_and_close_returns_main(open_app):
     page.click("#btn-single-close")
     page.wait_for_selector("#single-sheet-view", state="hidden")
     assert page.locator("#datasource-panel").is_visible()
+
+
+def test_eraser_drag_erases_and_undo_restores(open_app):
+    """S6: 消しゴムはドラッグ中も例外なく効き、Ctrl+Z で戻せる"""
+    page = open_app(API)
+    _open_annotate(page)
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.click("#btn-hw-toggle")
+    _draw_line(page)
+    page.wait_for_function("(window.__hw['s1.png'] ?? []).length === 1")
+    page.click("#btn-hw-eraser")
+    # ストロークの上をドラッグで通過して消す（押下点は線から外し、move 中に消させる）
+    box = page.locator("#hw-canvas").bounding_box()
+    y = box["y"] + box["height"] * 0.3 + 5
+    page.mouse.move(box["x"] + box["width"] * 0.2, y - 60)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] * 0.35, y, steps=12)
+    page.mouse.up()
+    page.wait_for_function("(window.__hw['s1.png'] ?? []).length === 0")
+    assert errors == [], f"消しゴム中に例外: {errors}"
+    page.keyboard.press("Control+z")
+    page.wait_for_function("(window.__hw['s1.png'] ?? []).length === 1")

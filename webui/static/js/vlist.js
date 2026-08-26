@@ -126,6 +126,7 @@ export function createImageLoader(fetcher, { concurrency = 6, cacheSize = 400 } 
   const pending = new Map();   // key -> Promise
   const queue = [];
   let active = 0;
+  let generation = 0;          // clear() で世代を進め、仕掛かり中の結果を捨てる
 
   function pump() {
     while (active < concurrency && queue.length) {
@@ -133,6 +134,10 @@ export function createImageLoader(fetcher, { concurrency = 6, cacheSize = 400 } 
       active++;
       fetcher(...job.args)
         .then((url) => {
+          if (job.generation !== generation) {
+            job.reject(new Error('stale'));   // clear 後に着弾した旧データ（S8）
+            return;
+          }
           if (cache.size >= cacheSize) {
             cache.delete(cache.keys().next().value);
           }
@@ -158,12 +163,18 @@ export function createImageLoader(fetcher, { concurrency = 6, cacheSize = 400 } 
       }
       if (pending.has(key)) return pending.get(key);
       const p = new Promise((resolve, reject) => {
-        queue.push({ key, args, resolve, reject });
+        queue.push({ key, args, resolve, reject, generation });
       });
       pending.set(key, p);
       pump();
       return p;
     },
-    clear() { cache.clear(); },
+    clear() {
+      generation++;
+      cache.clear();
+      // 待ち行列も破棄（clear 直後に旧画像がキャッシュへ戻るのを防ぐ）
+      for (const job of queue.splice(0)) job.reject(new Error('cleared'));
+      pending.clear();
+    },
   };
 }

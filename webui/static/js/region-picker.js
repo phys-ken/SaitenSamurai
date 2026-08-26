@@ -60,6 +60,10 @@ export function pickRegion(dataUrl, opts = {}) {
       rectEl.hidden = false;
     }
 
+    // ウィンドウリサイズで画像の表示サイズが変わっても選択枠を追従させる（S12）
+    const ro = new ResizeObserver(() => { if (sel) showRect(sel); });
+    ro.observe(img);
+
     let dragStart = null;
     img.addEventListener('pointerdown', (ev) => {
       dragStart = toNatural(ev);
@@ -78,6 +82,7 @@ export function pickRegion(dataUrl, opts = {}) {
     });
 
     function close(result) {
+      ro.disconnect();
       overlay.remove();
       resolve(result);
     }

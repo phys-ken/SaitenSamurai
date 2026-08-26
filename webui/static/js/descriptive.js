@@ -82,6 +82,7 @@ async function renderConfigTable() {
         { title: `${q.name} の領域を指定（${sheet.filename}）`, existing: q.region });
       if (region === null) return;
       await call('update_descriptive_region', q.id, region);
+      cropLoader.clear();   // 旧領域の切り出しを表示しない（S8）
       await renderConfigTable();
     });
     const delBtn = document.createElement('button');
@@ -90,6 +91,7 @@ async function renderConfigTable() {
     delBtn.addEventListener('click', async () => {
       if (!confirm(`${q.name}（${q.id}）を削除しますか？ 採点済みの得点も消えます`)) return;
       await call('delete_descriptive_question', q.id);
+      cropLoader.clear();
       logFn(`🗑 ${q.id} を削除しました`);
       await renderConfigTable();
     });
@@ -185,6 +187,7 @@ async function renderQTabs() {
     b.className = 'tab' + (q.id === currentQid ? ' active' : '');
     b.textContent = `${q.name} (${done}/${desc.prepared_count})`;
     b.addEventListener('click', async () => {
+      discardDigits();
       currentQid = q.id;
       await renderQTabs();
       await renderDescGrid();
@@ -322,6 +325,16 @@ async function renderDescGrid() {
   updateCursorClasses();
 }
 
+function discardDigits() {
+  // 対象が切り替わるときは打ちかけの得点を捨てる（S7: 別対象への誤確定防止）
+  clearTimeout(digitTimer);
+  digitTimer = null;
+  digitBuf = '';
+  clearTimeout(sheetDigitTimer);
+  sheetDigitTimer = null;
+  sheetDigitBuf = '';
+}
+
 function commitDigits() {
   clearTimeout(digitTimer);
   digitTimer = null;
@@ -389,7 +402,9 @@ function gridKeyHandler(e) {
 }
 
 export async function openDescScoring() {
+  discardDigits();
   await call('start_descriptive_scoring');
+  cropLoader.clear();   // 再切り出し後は必ず新しい画像を取得（S8）
   const state = (await call('get_state')).state;
   if (!state.descriptive.questions.length) return;
   currentQid = currentQid ?? state.descriptive.questions[0].id;
@@ -538,16 +553,23 @@ function advanceSheetFocus(fromQid) {
   }
 }
 
+let sheetToken = 0;
+
 async function gotoSheet(index) {
+  discardDigits();
+  const token = ++sheetToken;   // 連打時は最後の呼び出しだけを画面に反映（S5）
   sheetIndex = Math.min(sheetFiles.length - 1, Math.max(0, index));
   const filename = sheetFiles[sheetIndex];
   renderSheetHead();
   const img = el('sheet-image');
   const url = await sheetLoader.load(filename, filename);
+  if (token !== sheetToken) return;
   await new Promise((resolve) => {
     img.onload = resolve;
+    img.onerror = resolve;   // 読めない画像でビューが固まらないように
     img.src = url;
   });
+  if (token !== sheetToken) return;
   // 次の答案を先読みしておく（ページ送りを待たせない）
   if (sheetIndex + 1 < sheetFiles.length) {
     const next = sheetFiles[sheetIndex + 1];
@@ -558,6 +580,7 @@ async function gotoSheet(index) {
   focusedQid = (firstUnscored ?? sheetQuestions[0])?.id ?? null;
   el('sheet-stage').scrollTop = 0;
   await loadHandwriting(filename);
+  if (token !== sheetToken) return;
   layoutSheet();
   renderSheetSide();
 }
@@ -801,6 +824,10 @@ export function wireDescriptive(log, stateUpdate) {
     if (!sheetQuestions.length) { showView(null); return; }
     openDescScoring().catch((e) => { log(`❌ ${e.message}`); });
   });
+  new ResizeObserver(() => {
+    // ウィンドウ幅の変化で領域枠・筆跡キャンバスを敷き直す（S12）
+    if (!el('single-sheet-view').hidden) layoutSheet();
+  }).observe(el('sheet-stage'));
   el('btn-sheet-prev').addEventListener('click', () => gotoSheet(sheetIndex - 1));
   el('btn-sheet-next').addEventListener('click', () => gotoSheet(sheetIndex + 1));
   el('btn-sheet-unfinished').addEventListener('click', jumpToUnfinishedSheet);

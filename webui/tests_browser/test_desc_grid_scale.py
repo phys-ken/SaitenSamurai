@@ -239,3 +239,21 @@ def test_m_key_gives_full_score_and_space_skips(open_app):
     page.keyboard.press(" ")
     page.wait_for_function(
         f"document.querySelector('#desc-grid .entry-card.cursor').dataset.index !== '{idx_before}'")
+
+
+def test_digit_buffer_discarded_on_tab_switch(open_app):
+    """S7: 打ちかけの2桁バッファはタブ切替で破棄され、誤確定しない"""
+    page = open_app(API)
+    _open_grid(page)
+    page.locator("#desc-q-tabs .tab", has_text="問2").click()   # 満点12
+    page.wait_for_function(
+        "document.querySelector('#desc-q-tabs .tab.active').textContent.includes('問2')")
+    page.wait_for_selector("#desc-grid .entry-card")
+    page.keyboard.press("1")                     # バッファに「1」
+    page.locator("#desc-q-tabs .tab", has_text="問1").click()   # 500ms 以内に切替
+    page.wait_for_function(
+        "document.querySelector('#desc-q-tabs .tab.active').textContent.includes('問1')")
+    page.wait_for_timeout(700)                   # 旧タイマーが生きていれば確定してしまう
+    assert page.evaluate(
+        "Object.values(window.__desc.scores).every(s => Object.keys(s).length === 0)"), \
+        "打ちかけの得点がタブ切替後に確定された（S7）"

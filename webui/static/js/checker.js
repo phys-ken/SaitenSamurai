@@ -34,8 +34,9 @@ export async function openChecker(log) {
   logFn = log;
   const res = await call('open_mark_checker');
   const c = res.state.checker;
-  // 要確認が0件なら値タブから開く
-  view = { category: c.error_count > 0 ? '__errors__' : null };
+  // 要確認が0件なら値タブから開く（sort は保持する — S11）
+  view.category = c.error_count > 0 ? '__errors__' : null;
+  el('checker-sort').value = view.sort;
   cursor = 0;
   await withTransition(() => {
     document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });

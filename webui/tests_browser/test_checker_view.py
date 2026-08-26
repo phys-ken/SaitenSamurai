@@ -142,3 +142,16 @@ def test_keyboard_correction_advances_cursor(open_app):
     page.keyboard.press("Enter")
     page.wait_for_function(
         "document.activeElement.tagName === 'INPUT'")
+
+
+def test_default_sort_matches_select(open_app):
+    """S11: 既定ソート（白さ順）が内部状態とセレクト表示で一致する"""
+    page = _open_checker(open_app)
+    assert page.locator("#checker-sort").input_value() == "whiteness"
+    # 並び替えを変えて閉じ→再度開いても、表示と実態が食い違わない
+    page.select_option("#checker-sort", "name")
+    page.click("#btn-close-checker")
+    page.wait_for_selector("#checker-view", state="hidden")
+    page.click("#btn-open-checker")
+    page.wait_for_selector("#checker-view:not([hidden])")
+    assert page.locator("#checker-sort").input_value() == "name"

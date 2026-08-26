@@ -66,7 +66,8 @@ export function redrawHandwriting() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const k = scaleFactor();
   for (const s of strokes) drawStroke(ctx, s, k);
-  if (drawing) drawStroke(ctx, drawing, k);
+  // 消しゴム中の drawing は points を持たない（S6: 描こうとすると例外→undo喪失）
+  if (drawing && !drawing.eraser) drawStroke(ctx, drawing, k);
 }
 
 /** layoutSheet から呼ぶ: 画像の表示サイズ・実サイズに合わせて敷き直す */

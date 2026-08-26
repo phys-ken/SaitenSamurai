@@ -1,6 +1,7 @@
 import { call } from './bridge.js';
 import { openChecker, wireChecker } from './checker.js';
 import { pickRegion } from './region-picker.js';
+import { wireDescriptive } from './descriptive.js';
 
 // ---------------------------------------------------------------
 // ログ
@@ -68,14 +69,49 @@ export function render(state) {
   document.getElementById('area-th').value = state.area_threshold;
   setRow('row-omr-result', null, state.omr_result, () => null);
 
+  // --- モード別の表示分岐 ---
+  const isDescMode = state.app_mode === 'mark_and_descriptive' ||
+                     state.app_mode === 'descriptive_only';
+  const isDescOnly = state.app_mode === 'descriptive_only';
+  currentMode.descOnly = isDescOnly;
+  document.querySelectorAll('.desc-only-ui').forEach((n) => { n.hidden = !isDescMode; });
+  document.getElementById('row-coord-file').hidden = isDescOnly;
+  document.getElementById('summary-coord-file').hidden =
+    isDescOnly || !state.coord_file || !state.coord_summary;
+  document.getElementById('row-answer-key').hidden = isDescOnly;
+  document.getElementById('summary-answer-key').hidden =
+    isDescOnly || !state.answer_key || !state.key_summary;
+  document.querySelector('.ds-options').hidden = isDescOnly;
+  document.getElementById('omr-mode').parentElement.hidden = isDescOnly;
+  document.getElementById('row-omr-result').hidden = isDescOnly;
+  document.getElementById('btn-open-checker').parentElement.hidden = isDescOnly;
+  document.getElementById('btn-run-recognition').textContent =
+    isDescOnly ? '▶ 画像準備' : '▶ 認識実行';
+  if (state.descriptive) {
+    const d = state.descriptive;
+    const total = d.questions.reduce((n, q) => n + (d.scored_counts[q.id] ?? 0), 0);
+    document.getElementById('desc-progress-hint').textContent =
+      d.questions.length === 0 ? '記述問題は未設定です'
+        : `${d.questions.length} 問 / 採点済み ${total} / ${d.questions.length * d.prepared_count}`;
+  }
+
   const running = state.job?.running;
   document.getElementById('btn-run-recognition').disabled =
-    Boolean(running) || !state.image_folder || !state.coord_file;
+    Boolean(running) || !state.image_folder ||
+    (!isDescOnly && !state.coord_file);
   document.getElementById('btn-open-checker').disabled =
     Boolean(running) || !state.omr_result;
   document.getElementById('btn-total-position').disabled = Boolean(running) || !state.image_folder;
-  const scoringReady = state.image_folder && state.coord_file &&
+  const hasPrepared = (state.descriptive?.prepared_count ?? 0) > 0;
+  document.getElementById('btn-desc-config').disabled =
+    Boolean(running) || !hasPrepared;
+  document.getElementById('btn-desc-scoring').disabled =
+    Boolean(running) || !(state.descriptive?.questions?.length);
+  const markReady = state.image_folder && state.coord_file &&
     state.answer_key && state.omr_result && state.key_summary?.ok;
+  const descReady = Boolean(state.descriptive?.questions?.length);
+  const scoringReady = isDescOnly ? descReady
+    : (isDescMode ? (markReady && descReady) : markReady);
   document.getElementById('btn-run-scoring').disabled =
     Boolean(running) || !scoringReady;
   document.getElementById('btn-run-summary').disabled =
@@ -125,6 +161,7 @@ window.saitenEvents = (ev) => {
 
 const JOB_START_LOG = {
   run_recognition: '▶ 認識を開始しました',
+  run_prepare_images: '▶ 画像準備を開始しました',
   run_scoring: '▶ 採点を開始しました',
   run_summary: '▶ 集計を開始しました',
 };
@@ -139,7 +176,9 @@ async function runJob(name) {
     alert(e.message);
   }
 }
-const runRecognition = () => runJob('run_recognition');
+let currentMode = { descOnly: false };
+const runRecognition = () => runJob(
+  currentMode.descOnly ? 'run_prepare_images' : 'run_recognition');
 
 function wireEvents() {
   document.getElementById('btn-run-recognition')
@@ -175,6 +214,7 @@ function wireEvents() {
     }
   });
   wireChecker(log);
+  wireDescriptive(log, render);
   document.getElementById('btn-cancel')
     .addEventListener('click', async () => { await call('cancel_job'); log('⏹ 中断を要求しました'); });
   document.getElementById('omr-mode').addEventListener('change', async (ev) => {
@@ -273,3 +313,9 @@ async function init() {
 }
 
 init();
+
+// テスト・デモ用: bridge 側を直接操作した後に UI を state と同期させるフック
+window.__refreshState = async () => {
+  const res = await call('get_state');
+  render(res.state);
+};

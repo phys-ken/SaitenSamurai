@@ -68,12 +68,63 @@ def _setup_demo(bridge):
     bridge._win.open_file_dialog = real_file
 
 
+def _setup_desc_demo(bridge, out_prefix):
+    """記述のみモード: 画像準備→問題設定→採点グリッド→一枚採点をキャプチャ"""
+    import tempfile
+    import cv2
+    import numpy as np
+    from PIL import ImageGrab
+
+    tmp = Path(tempfile.mkdtemp(prefix="saiten_desc_"))
+    scans = tmp / "scans"
+    scans.mkdir()
+    for i, name in enumerate(["s1.png", "s2.png", "s3.png"]):
+        img = np.full((842, 595, 3), 255, dtype=np.uint8)
+        cv2.putText(img, f"Answer {i+1}", (80, 200), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.4, (40, 40, 40), 3)
+        cv2.line(img, (60, 320), (520, 320 + i * 30), (60, 60, 60), 2)
+        cv2.putText(img, "x = " + str(3 + i), (100, 500),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (30, 30, 90), 3)
+        cv2.imwrite(str(scans / name), img)
+
+    bridge._win.open_folder_dialog = lambda **kw: str(scans)
+    time.sleep(2.5)
+    bridge._win.eval_js("document.querySelector('.mode-card[data-mode=descriptive_only]').click()")
+    time.sleep(0.5)
+    bridge._win.eval_js("document.querySelector('[data-action=select_image_folder]').click()")
+    time.sleep(0.6)
+    bridge._win.eval_js("document.getElementById('btn-run-recognition').click()")  # =画像準備
+    time.sleep(2)
+    bridge.add_descriptive_question("問1", 5, 1, [60, 120, 540, 250])
+    bridge.add_descriptive_question("問2", 3, 1, [60, 400, 540, 560])
+    # bridge を直接叩いた変更は UI に伝わらないので再同期してからボタンを押す
+    bridge._win.eval_js("window.__refreshState()")
+    time.sleep(0.5)
+    ImageGrab.grab(xdisplay="").save(f"{out_prefix}_main.png")
+    print(f"saved: {out_prefix}_main.png")
+    bridge._win.eval_js("document.getElementById('btn-desc-scoring').click()")
+    time.sleep(2.5)
+    ImageGrab.grab(xdisplay="").save(f"{out_prefix}_grid.png")
+    print(f"saved: {out_prefix}_grid.png")
+    bridge.set_descriptive_score("s1.png", "D1", 5)
+    bridge._win.eval_js("window.__refreshState()")
+    time.sleep(0.5)
+    bridge._win.eval_js("document.getElementById('btn-single-sheet').click()")
+    time.sleep(2.5)
+    ImageGrab.grab(xdisplay="").save(f"{out_prefix}_single.png")
+    print(f"saved: {out_prefix}_single.png")
+
+
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "webui_preview.png")
     demo = "--demo" in sys.argv
     window, bridge = create_app()
 
     def shoot():
+        if "--descdemo" in sys.argv:
+            _setup_desc_demo(bridge, str(out.with_suffix("")))
+            window.destroy()
+            return
         if demo:
             _setup_demo(bridge)
             time.sleep(2)

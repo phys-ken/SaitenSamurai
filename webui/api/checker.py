@@ -40,6 +40,8 @@ class CheckerMixin:
 
     # ----------------------------------------------------------------
     def open_mark_checker(self):
+        if self.state["job"]["running"]:
+            return _err("別の処理が実行中です。完了または中断を待ってください")
         from constants import RESULTS_FOLDER, RESULTS_DATA_FOLDER
         from mark_checker import (
             detect_all_entries_checker, load_errors_checker,
@@ -244,19 +246,39 @@ class CheckerMixin:
                    ("id", "before", "after", "category")})
 
     def _save_corrections_csv(self):
-        """訂正の入った行だけを tk 互換のCSVへ保存"""
+        """訂正の入った行だけを tk 互換のCSVへアトミック保存する。
+
+        1打鍵ごとに全件を書き直すため、直書きだと書き込み途中の異常終了で
+        目視訂正が丸ごと失われる（A5）。同一フォルダの一時ファイルへ書いて
+        os.replace で差し替える（atomic_json_save と同じ手順のCSV版）
+        """
+        import os
+        import tempfile
         import pandas as pd
-        from mark_checker import save_errors_checker
         rows = [{"filename": e["filename"], "question_no": e["question_no"],
                  "before": e["before"], "after": e["after"],
                  "error_type": e["error_type"]}
                 for e in self._checker["entries"] if e["after"]]
         df = pd.DataFrame(rows, columns=["filename", "question_no", "before",
                                          "after", "error_type"])
-        save_errors_checker(df, self._checker["csv_path"])
+        target = Path(self._checker["csv_path"])
+        fd, tmp = tempfile.mkstemp(prefix=target.stem + "_",
+                                   suffix=".tmp", dir=str(target.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8-sig", newline="") as f:
+                df.to_csv(f, index=False)
+            os.replace(tmp, str(target))
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def apply_corrections(self):
         """訂正を xlsx に反映（バックアップ作成込み）→ エントリ再読込"""
+        if self.state["job"]["running"]:
+            return _err("採点・集計の実行中は反映できません。完了を待ってください")
         from mark_checker import apply_corrections_checker
         if not self._checker:
             return _err("マークチェックが開かれていません")

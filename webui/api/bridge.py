@@ -75,6 +75,8 @@ class DataSourceMixin:
         return _ok(state=self.state)
 
     def set_mode(self, app_mode, mark_format):
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は変更できません。完了または中断を待ってください")
         from constants import (MODE_MARK_ONLY, MODE_MARK_AND_DESCRIPTIVE,
                                MODE_DESCRIPTIVE_ONLY,
                                MARK_FORMAT_STANDARD, MARK_FORMAT_MULTI_DIGIT)
@@ -93,6 +95,8 @@ class DataSourceMixin:
         return _ok(state=self.state)
 
     def set_skip_questions(self, n):
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は変更できません。完了または中断を待ってください")
         try:
             n = int(n)
             if n < 0:
@@ -127,6 +131,8 @@ class DataSourceMixin:
         })
 
     def select_image_folder(self):
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は変更できません。完了または中断を待ってください")
         folder = self._win.open_folder_dialog()
         if not folder:
             return _ok(state=self.state, cancelled=True)
@@ -168,6 +174,8 @@ class DataSourceMixin:
                    session_found=session_found)
 
     def select_coord_file(self):
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は変更できません。完了または中断を待ってください")
         path = self._win.open_file_dialog(file_types=_XLSX_FILE_TYPES)
         if not path:
             return _ok(state=self.state, cancelled=True)
@@ -228,6 +236,8 @@ class DataSourceMixin:
         return _ok()
 
     def select_answer_key(self):
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は変更できません。完了または中断を待ってください")
         path = self._win.open_file_dialog(file_types=_XLSX_FILE_TYPES)
         if not path:
             return _ok(state=self.state, cancelled=True)

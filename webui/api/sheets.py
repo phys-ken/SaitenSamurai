@@ -169,6 +169,8 @@ class SheetsMixin:
         該当行の周辺を切り出して data URL で返す。実際の描画関数を使うので
         オフセット・白塗り・各トグルの効き方がそのまま確認できる。
         """
+        if self.state["job"]["running"]:
+            return _err("別の処理が実行中はプレビューできません")
         import base64
         import cv2
         import numpy as np

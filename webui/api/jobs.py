@@ -25,6 +25,7 @@ def _err(message):
 class JobsMixin:
 
     def _init_jobs(self):
+        self._job_lock = threading.Lock()   # 二重起動ガード（A4）
         self.state.update({
             "omr_mode": "kmeans",        # tk 版の既定（推奨クラスタリング）
             "color_threshold": 0.1,
@@ -67,6 +68,8 @@ class JobsMixin:
 
     def select_omr_result(self):
         """OMR結果 xlsx の手動選択（過去の結果で採点し直すケース）"""
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は変更できません。完了または中断を待ってください")
         from api.bridge import _XLSX_FILE_TYPES
         path = self._win.open_file_dialog(file_types=_XLSX_FILE_TYPES)
         if not path:
@@ -78,11 +81,12 @@ class JobsMixin:
 
     def _start_job(self, kind, worker):
         """ジョブ共通の起動処理（同時実行1つ・cancel初期化・スレッド化）"""
-        if self.state["job"]["running"]:
-            return _err("別の処理が実行中です。完了または中断を待ってください")
-        self._cancel_event.clear()
-        self.state["job"] = {"running": True, "kind": kind,
-                             "current": 0, "total": self.state["image_count"]}
+        with self._job_lock:   # check-then-set を原子化（A4: 二重クリック対策）
+            if self.state["job"]["running"]:
+                return _err("別の処理が実行中です。完了または中断を待ってください")
+            self._cancel_event.clear()
+            self.state["job"] = {"running": True, "kind": kind,
+                                 "current": 0, "total": self.state["image_count"]}
 
         def wrapped():
             try:
@@ -190,6 +194,8 @@ class JobsMixin:
 
     def run_threshold_calibration(self):
         """サンプル画像から推奨しきい値を推定して適用する（tk 🔧自動調整と同じ計算）"""
+        if self.state["job"]["running"]:
+            return _err("別の処理が実行中です。完了または中断を待ってください")
         if not self.state["image_folder"]:
             return _err("画像フォルダを選択してください")
         if not self.state["coord_file"]:
@@ -239,6 +245,7 @@ class JobsMixin:
         if not cancelled:
             self._autoselect_omr_result()
             self._write_results_readme()
+            self._refresh_desc_summary(recount_prepared=True)
         return dict(
             kind="recognition", ok=True, cancelled=cancelled,
             success_count=result.get("success_count", 0),

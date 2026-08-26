@@ -102,6 +102,8 @@ class SessionMixin:
 
         戻り値: {ok, state, warnings: [壊れていて適用しなかった項目の説明]}
         """
+        if self.state["job"]["running"]:
+            return _err("処理の実行中は復元できません。完了または中断を待ってください")
         from constants import load_json_safe
         if path is None:
             path = self._win.open_file_dialog(file_types=_SESSION_FILE_TYPES)

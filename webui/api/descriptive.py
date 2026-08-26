@@ -52,6 +52,7 @@ class DescriptiveMixin:
     def _load_descriptive_state(self):
         """image_folder 選択後に呼び、既存の設定・スコアを state に反映"""
         self._desc_crops = None   # 旧フォルダの切り出しを配らない（S2）
+        self._prepared_count = None   # フォルダが変わったので数え直す（A2）
         from descriptive_scorer import (load_descriptive_config,
                                         load_descriptive_scores)
         if not self.state["image_folder"]:
@@ -65,9 +66,18 @@ class DescriptiveMixin:
         self._desc_scores = scores_data
         self._refresh_desc_summary()
 
-    def _refresh_desc_summary(self):
-        listing = self.list_sheet_files()
-        prepared = len(listing["files"]) if listing["ok"] else 0
+    def _refresh_desc_summary(self, recount_prepared=False):
+        """state["descriptive"] を更新する。
+
+        prepared_count のフォルダ走査は読み込み時と画像枚数が変わる契機
+        （画像準備・認識）だけ行い、採点1打ごとの呼び出しでは
+        キャッシュを使う（A2: 打鍵ごとの iterdir を排除）
+        """
+        if recount_prepared or getattr(self, "_prepared_count", None) is None:
+            listing = self.list_sheet_files()
+            self._prepared_count = (len(listing["files"])
+                                    if listing["ok"] else 0)
+        prepared = self._prepared_count
         scores = self._desc_scores["scores"]
         per_q = {}
         for q in self._desc_config["questions"]:
@@ -105,6 +115,7 @@ class DescriptiveMixin:
                 shutil.copy2(str(p), str(dst))
             self._progress_cb("prepare_images")(i, len(files))
         self._load_descriptive_state()
+        self._refresh_desc_summary(recount_prepared=True)   # 枚数が変わった（A2）
         return dict(kind="prepare_images", ok=True,
                     message=f"画像準備が完了しました（{len(files)}枚）。"
                             "次は「記述問題設定」で採点領域を設定してください")
@@ -232,6 +243,8 @@ class DescriptiveMixin:
 
     def start_descriptive_scoring(self):
         """領域切り出しを行い、採点ビューを開ける状態にする"""
+        if self.state["job"]["running"]:
+            return _err("別の処理が実行中です。完了または中断を待ってください")
         from descriptive_scorer import trim_descriptive_regions
         from constants import RESULTS_FOLDER, BOXED_FOLDER
         if self.state["descriptive"] is None:
@@ -252,20 +265,25 @@ class DescriptiveMixin:
         return _ok(state=self.state)
 
     def list_descriptive_targets(self, qid):
-        """指定問題の採点対象一覧（ファイル名と現在の得点）"""
-        if self._desc_crops is None:
-            return _err("先に start_descriptive_scoring を実行してください")
-        crops = self._desc_crops.get(qid)
-        if crops is None:
+        """指定問題の採点対象一覧（ファイル名と現在の得点）。
+
+        切り出し画像には依存しない（A10: 一枚採点やコメント専用ビューを
+        先に開いても内部APIエラーを見せない）。画像が要るのは
+        get_descriptive_crop だけ
+        """
+        if self._find_question(qid) is None:
             return _err(f"問題が見つかりません: {qid}")
+        listing = self.list_sheet_files()
+        if not listing["ok"]:
+            return listing
         scores = self._desc_scores["scores"]
         items = [{"filename": f, "score": scores.get(f, {}).get(qid)}
-                 for f in sorted(crops.keys())]
+                 for f in listing["files"]]
         return _ok(items=items)
 
     def get_descriptive_crop(self, qid, filename):
         if self._desc_crops is None:
-            return _err("先に start_descriptive_scoring を実行してください")
+            return _err("切り出し画像の準備中です。「記述を採点する」を開き直してください")
         path = (self._desc_crops.get(qid) or {}).get(filename)
         if not path or not Path(path).exists():
             return _err(f"切り出し画像がありません: {qid}/{filename}")

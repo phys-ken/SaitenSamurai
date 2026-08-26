@@ -33,3 +33,64 @@ body {
 .bridge-status[data-state="error"] { color: #c62828; }
 main#app { flex: 1; padding: 1rem; overflow: auto; }
 .placeholder { color: var(--muted); }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid #e0e5e9;
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+  max-width: 60rem;
+}
+.panel h2 { font-size: 0.95rem; margin: 0 0 0.6rem; color: var(--muted); }
+
+.ds-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.25rem 0;
+}
+.ds-label { flex: 0 0 8.5em; color: var(--text); }
+.ds-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;          /* 長いパスは末尾（ファイル名側）を残して省略 */
+  text-align: left;
+  color: var(--muted);
+  background: #f1f3f5;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}
+.ds-value.selected { color: var(--text); direction: rtl; }
+.ds-value:empty::before { content: attr(data-empty); color: #b0bec5; direction: ltr; }
+.btn {
+  font: inherit;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #cfd8dc;
+  border-radius: 4px;
+  background: #eceff1;
+  cursor: pointer;
+  white-space: nowrap;     /* tk時代の「ファイル選」見切れの再発防止 */
+}
+.btn:hover { background: #e3e7ea; }
+.ds-summary { margin: 0 0 0.3rem 9.1em; font-size: 0.85rem; color: var(--ok); }
+.ds-summary.warn { color: #b26a00; }
+.ds-summary.err { color: #c62828; white-space: pre-line; }
+.ds-options { color: var(--text); }
+.ds-options input { width: 4em; font: inherit; padding: 0.2rem; text-align: center; }
+
+.log {
+  font-family: "Consolas", "Noto Sans Mono CJK JP", monospace;
+  font-size: 0.82rem;
+  background: #fafbfc;
+  border: 1px solid #eceff1;
+  border-radius: 4px;
+  min-height: 6em;
+  max-height: 14em;
+  overflow-y: auto;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+}

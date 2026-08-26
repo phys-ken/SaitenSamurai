@@ -4,6 +4,11 @@
 OK_API = """({
   ping: async () => ({ok: true, pong: true}),
   get_app_info: async () => ({ok: true, app_version: '9.9.9-test', webui_version: '0.0.t'}),
+  get_state: async () => ({ok: true, state: {
+    app_mode: 'mark_only', mark_format: 'standard', skip_questions: 4,
+    image_folder: null, image_count: 0, coord_file: null, coord_summary: null,
+    answer_key: null, key_summary: null,
+  }}),
 })"""
 
 FAIL_API = """({

@@ -12,9 +12,40 @@
 </header>
 
 <main id="app">
-  <p class="placeholder">
-    ここに採点フロー（データソース → 認識 → マークチェック → 採点 → 集計）が入ります。
-  </p>
+  <section class="panel" id="datasource-panel">
+    <h2>📂 データソース</h2>
+
+    <div class="ds-row" id="row-image-folder">
+      <span class="ds-label">画像フォルダ</span>
+      <span class="ds-value" data-empty="未選択"></span>
+      <button class="btn" data-action="select_image_folder">フォルダ選択</button>
+    </div>
+    <p class="ds-summary" id="summary-image-folder" hidden></p>
+
+    <div class="ds-row" id="row-coord-file">
+      <span class="ds-label">座標ファイル</span>
+      <span class="ds-value" data-empty="未選択"></span>
+      <button class="btn" data-action="select_coord_file">ファイル選択</button>
+    </div>
+    <p class="ds-summary" id="summary-coord-file" hidden></p>
+
+    <div class="ds-row" id="row-answer-key">
+      <span class="ds-label">正答データ</span>
+      <span class="ds-value" data-empty="未選択"></span>
+      <button class="btn" data-action="select_answer_key">ファイル選択</button>
+    </div>
+    <p class="ds-summary" id="summary-answer-key" hidden></p>
+
+    <div class="ds-row ds-options">
+      <label for="skip-input">Skip（ID欄の数）</label>
+      <input id="skip-input" type="number" min="0" value="4"> 欄
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>処理ログ</h2>
+    <div id="log" class="log" aria-live="polite"></div>
+  </section>
 </main>
 
 <script type="module" src="js/main.js"></script>

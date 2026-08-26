@@ -178,9 +178,11 @@ function scoreButtons(maxScore, current, onSet) {
   return wrap;
 }
 
-async function renderQTabs() {
-  const res = await call('get_state');
-  const desc = res.state.descriptive;
+async function renderQTabs(knownState) {
+  // 採点1打ごとに get_state を叩き直さない（A2: set_descriptive_score の
+  // 応答 state をそのまま使う）
+  const state = knownState ?? (await call('get_state')).state;
+  const desc = state.descriptive;
   el('desc-q-tabs').replaceChildren(...desc.questions.map((q) => {
     const b = document.createElement('button');
     const done = desc.scored_counts[q.id] ?? 0;
@@ -203,7 +205,7 @@ async function renderQTabs() {
   el('desc-scoring-summary').textContent =
     `採点済み ${total} / ${desc.questions.length * desc.prepared_count}` +
     (avg !== null ? ` ／ この問題の平均 ${avg} / ${gridMax}` : '');
-  onStateUpdate(res.state);
+  onStateUpdate(state);
 }
 
 /** 問題の領域縦横比からカードの固定高さを決める（仮想化の前提） */
@@ -270,8 +272,9 @@ function updateCursorClasses() {
 async function setGridScore(i, v) {
   const t = gridTargets[i];
   if (!t) return;
+  let saved;
   try {
-    await call('set_descriptive_score', t.filename, currentQid, v);
+    saved = await call('set_descriptive_score', t.filename, currentQid, v);
   } catch (e) {
     logFn(`❌ ${e.message}`);
     return;
@@ -280,8 +283,8 @@ async function setGridScore(i, v) {
   const wasFiltered = gridFilter !== 'all';
   applyGridView();
   if (wasFiltered) grid.setCount(gridTargets.length);
-  grid.refresh();
-  await renderQTabs();
+  else grid.refresh();
+  await renderQTabs(saved.state);
   if (v !== null) {
     // フィルタで行が消えた場合は同じ位置が「次」になる
     const next = gridFilter === 'unscored' ? i : i + 1;
@@ -445,7 +448,8 @@ function renderSheetHead() {
   const filename = sheetFiles[sheetIndex];
   el('single-sheet-name').textContent =
     `${filename}（${sheetIndex + 1} / ${sheetFiles.length}）` +
-    ` ─ 全問採点済み ${sheetCompleteCount()} 枚`;
+    (sheetQuestions.length
+      ? ` ─ 全問採点済み ${sheetCompleteCount()} 枚` : '');
   el('btn-sheet-prev').disabled = sheetIndex === 0;
   el('btn-sheet-next').disabled = sheetIndex >= sheetFiles.length - 1;
 }
@@ -738,12 +742,13 @@ function sheetKeyHandler(e) {
   }
 }
 
-export async function openSingleSheet() {
+export async function openSingleSheet(commentOnly = false) {
   const listing = await call('list_sheet_files');
   sheetFiles = listing.files;
   const state = (await call('get_state')).state;
-  // マーク系モードでは記述設定が無い → コメント専用ビューとして開く
-  sheetQuestions = state.descriptive?.questions ?? [];
+  // 「答案に書き込む」から開いたときは記述設定があってもコメント専用（A9）
+  sheetQuestions = commentOnly ? []
+    : (state.descriptive?.questions ?? []);
   // 全問題の得点表を一括で読み込み、以後はローカルで持つ
   // （1枚ごとに全問題を照会すると 100問×移動のたびに往復してしまう）
   sheetScores = {};
@@ -809,7 +814,7 @@ export function wireDescriptive(log, stateUpdate) {
   });
   wireHandwriting(log);
   el('btn-annotate').addEventListener('click', () =>
-    openSingleSheet().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
+    openSingleSheet(true).catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
   el('btn-open-original').addEventListener('click', async () => {
     try {
       await call('open_original_image', sheetFiles[sheetIndex]);

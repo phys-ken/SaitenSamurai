@@ -42,14 +42,25 @@ function setRow(rowId, summaryId, path, summaryHtmlBuilder) {
   }
 }
 
+let progressCache = { at: 0, value: null };
+
+/** ジョブ完了・ビュー遷移などで進行度を確実に取り直したいときに呼ぶ */
+export function invalidateProgress() {
+  progressCache.at = 0;
+}
+
 async function updateStepper(state) {
   const stepper = document.getElementById('stepper');
-  stepper.hidden = false;
+  // モード選択中はステッパーを出さない（A6）。表示は showMain が行う
   document.getElementById('step-read-label').textContent =
     state.app_mode === 'descriptive_only' ? '画像準備' : '読み取り';
   try {
-    const res = await call('get_progress');
-    const p = res.progress;
+    // 進行度はフォルダ走査を伴うため短時間メモ化する（A2）
+    const now = Date.now();
+    if (!progressCache.value || now - progressCache.at > 3000) {
+      progressCache = { at: now, value: (await call('get_progress')).progress };
+    }
+    const p = progressCache.value;
     const order = ['prepared', 'read', 'scored', 'summarized'];
     let currentSet = false;
     for (const li of stepper.querySelectorAll('li')) {
@@ -153,6 +164,14 @@ export function render(state) {
         : '未指定（指定すると集計に氏名画像が入ります）');
 
   const running = state.job?.running;
+  // 実行中のフォルダ/ファイル変更はワーカーの読む state を壊すため止める（A4）
+  document.querySelectorAll('[data-action]').forEach((b) => {
+    b.disabled = Boolean(running);
+  });
+  document.getElementById('btn-select-pdf').disabled = Boolean(running);
+  document.getElementById('btn-recheck-key').disabled =
+    Boolean(running) || !state.answer_key;
+  document.getElementById('skip-input').disabled = Boolean(running);
   document.getElementById('btn-run-recognition').disabled =
     Boolean(running) || !state.image_folder ||
     (!isDescOnly && !state.coord_file);
@@ -186,10 +205,10 @@ export function render(state) {
 // 操作
 // ---------------------------------------------------------------
 const ACTION_LOG_LABEL = {
-  select_image_folder: '画像フォルダ',
-  select_coord_file: '座標ファイル',
-  select_answer_key: '正答データ',
-  select_omr_result: 'OMR結果',
+  select_image_folder: '答案画像フォルダ',
+  select_coord_file: 'マーク位置の定義',
+  select_answer_key: '正答・配点',
+  select_omr_result: '読み取り結果',
 };
 
 async function runAction(name) {
@@ -225,6 +244,7 @@ window.saitenEvents = (ev) => {
     bar.value = ev.current;
     document.getElementById('job-status').textContent = `${ev.current} / ${ev.total}`;
   } else if (ev.type === 'job_done') {
+    invalidateProgress();
     document.getElementById('job-status').textContent = '';
     log(ev.ok ? `✓ ${ev.message}` : `❌ ${ev.message}`);
     call('get_state').then((res) => render(res.state));
@@ -496,6 +516,7 @@ init();
 
 // テスト・デモ用: bridge 側を直接操作した後に UI を state と同期させるフック
 window.__refreshState = async () => {
+  invalidateProgress();
   const res = await call('get_state');
   render(res.state);
 };

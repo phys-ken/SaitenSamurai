@@ -74,8 +74,12 @@ export function redrawHandwriting() {
 export function layoutHandwriting(clientW, clientH, naturalW, naturalH) {
   if (!canvas) return;
   natural = { w: naturalW, h: naturalH };
-  canvas.width = Math.max(1, Math.round(clientW));
-  canvas.height = Math.max(1, Math.round(clientH));
+  // 高DPI（Windows の 125/150% 表示など）でも筆跡がぼけないよう、
+  // ビットマップは物理ピクセルで確保する（A1）。描画座標系は
+  // canvas.width / natural.w のスケールなので追加の変換は不要
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.max(1, Math.round(clientW * dpr));
+  canvas.height = Math.max(1, Math.round(clientH * dpr));
   canvas.style.width = `${clientW}px`;
   canvas.style.height = `${clientH}px`;
   redrawHandwriting();

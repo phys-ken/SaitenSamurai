@@ -202,7 +202,7 @@ class TestParityAdditions:
         b, _ = _bridge_through_recognition(scans, coord, key)
         assert b.recheck_answer_key()["ok"]
         b2 = Bridge(window_adapter=RecordingAdapter())
-        assert "正答データ" in b2.recheck_answer_key()["error"]
+        assert "正答・配点" in b2.recheck_answer_key()["error"]
 
     def test_include_descriptive_setting_and_session(self, tmp_path):
         scans, coord, key = _build_marked_inputs(tmp_path)

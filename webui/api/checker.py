@@ -49,13 +49,13 @@ class CheckerMixin:
         )
 
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         if not self.state["omr_result"]:
-            return _err("OMR結果がありません。先に認識を実行してください")
+            return _err("読み取り結果がありません。先に「答案を読み取る」を実行してください")
         coords_csv = (Path(self.state["image_folder"]) / RESULTS_FOLDER /
                       RESULTS_DATA_FOLDER / "coordinates.csv")
         if not coords_csv.exists():
-            return _err("coordinates.csv が見つかりません。先に認識を実行してください")
+            return _err("coordinates.csv が見つかりません。先に「答案を読み取る」を実行してください")
 
         registered = None
         if self.state["answer_key"]:

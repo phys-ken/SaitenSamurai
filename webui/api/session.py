@@ -42,7 +42,7 @@ class SessionMixin:
         from constants import atomic_json_save
         path = self._session_path()
         if path is None:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         img_folder = Path(self.state["image_folder"])
         if not img_folder.exists():
             return _err(f"画像フォルダが見つかりません: {img_folder}")
@@ -182,9 +182,9 @@ class SessionMixin:
             return False   # 記録はあるが見つからない
 
         for key, state_key, label in (
-                ("coord_excel", "coord_file", "座標ファイル"),
-                ("template", "answer_key", "正答データ"),
-                ("omr_result", "omr_result", "OMR読取結果")):
+                ("coord_excel", "coord_file", "マーク位置の定義"),
+                ("template", "answer_key", "正答・配点"),
+                ("omr_result", "omr_result", "読み取り結果")):
             resolved = _resolve(data.get(key, ""))
             if resolved is False:
                 warnings.append(

@@ -129,7 +129,7 @@ class TestRestore:
         b2 = Bridge(window_adapter=RecordingAdapter())
         res = b2.restore_session(str(_session_file(scans)))
         assert res["ok"]
-        assert any("座標ファイル" in w for w in res["warnings"])
+        assert any("マーク位置の定義" in w for w in res["warnings"])
         assert b2.state["coord_file"] is None      # 壊れたパスは適用しない
         assert b2.state["answer_key"] == str(key)  # 生きているパスは適用する
 

@@ -179,7 +179,7 @@ class TestRenderPreview:
     def test_preview_requires_inputs(self):
         b = Bridge(window_adapter=RecordingAdapter())
         res = b.get_render_preview()
-        assert not res["ok"] and "座標ファイル" in res["error"]
+        assert not res["ok"] and "マーク位置の定義" in res["error"]
 
     def test_preview_reflects_offset(self, tmp_path):
         """プレビューは実描画関数の出力で、オフセット変更で画像が変わる"""

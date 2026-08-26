@@ -100,8 +100,19 @@ export function createVirtualGrid(viewport, opts) {
   layout();
   render();
 
+  function refreshItem(i) {
+    // 1件だけ再生成する（A3: 全再生成は入力中のフォーカスを壊す）
+    const el = mounted.get(i);
+    if (!el) return;
+    const next = renderItem(i);
+    place(next, i);
+    el.replaceWith(next);
+    mounted.set(i, next);
+  }
+
   return {
     refresh,
+    refreshItem,
     render,
     scrollToIndex,
     itemAt: (i) => mounted.get(i) ?? null,

@@ -45,7 +45,7 @@ export async function openChecker(log) {
   renderHead(c);
   renderTabs(c);
   await renderGrid();
-  logFn(`マークチェックを開きました（全 ${c.total} 件 / 要確認 ${c.error_count} 件）`);
+  logFn(`マークの確認を開きました（全 ${c.total} 件 / 要確認 ${c.error_count} 件）`);
 }
 
 export async function closeChecker() {
@@ -107,7 +107,7 @@ async function setCorrection(i, value) {
     const res = await call('set_correction', item.id, value);
     item.after = res.entry.after;
     renderHead(res.state.checker);
-    grid.refresh();
+    grid.refreshItem(i);   // 全再生成は入力中のフォーカスを壊す（A3）
     updateCursorClasses();
     return true;
   } catch (e) {

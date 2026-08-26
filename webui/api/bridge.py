@@ -102,7 +102,7 @@ class DataSourceMixin:
             if n < 0:
                 raise ValueError
         except (TypeError, ValueError):
-            return _err("Skip（ID欄の数）は 0 以上の整数で指定してください")
+            return _err("ID欄の列数は 0 以上の整数で指定してください")
         self.state["skip_questions"] = n
         if self.state["coord_file"]:
             self._refresh_coord_summary()
@@ -202,7 +202,7 @@ class DataSourceMixin:
         except Exception as e:
             logger.warning("座標ファイルの読み込みに失敗: %s", e)
             return _err(
-                "座標ファイルを読み込めませんでした。\n"
+                "マーク位置の定義（座標ファイル）を読み込めませんでした。\n"
                 "Mark2 で書き出した座標 Excel を選んでいるか確認してください"
                 f"（正答データや読取結果を間違えて選んでいませんか？）\n詳細: {e}")
 
@@ -215,7 +215,7 @@ class DataSourceMixin:
         if not answer_counts:
             self.state["coord_summary"] = {
                 "answer_rows": 0, "marks_per_row": 0,
-                "warning": "採点対象の設問が見つかりません（Skip 数が大きすぎませんか？）",
+                "warning": "採点対象の設問が見つかりません（ID欄の列数が大きすぎませんか？）",
             }
             return _ok()
 
@@ -249,7 +249,7 @@ class DataSourceMixin:
     def recheck_answer_key(self):
         """正答データを再チェックする（Excel を編集した後の再検証用）"""
         if not self.state["answer_key"]:
-            return _err("正答データを選択してください")
+            return _err("正答・配点（answer_key.xlsx）を選択してください")
         self._refresh_key_summary()
         return _ok(state=self.state)
 

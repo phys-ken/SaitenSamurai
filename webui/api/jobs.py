@@ -197,9 +197,9 @@ class JobsMixin:
         if self.state["job"]["running"]:
             return _err("別の処理が実行中です。完了または中断を待ってください")
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         if not self.state["coord_file"]:
-            return _err("座標ファイルを選択してください")
+            return _err("マーク位置の定義（座標ファイル）を選択してください")
         from threshold_calibrator import run_threshold_calibration
         try:
             result = run_threshold_calibration(
@@ -223,9 +223,9 @@ class JobsMixin:
 
     def run_recognition(self):
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         if not self.state["coord_file"]:
-            return _err("座標ファイルを選択してください")
+            return _err("マーク位置の定義（座標ファイル）を選択してください")
         return self._start_job("recognition", self._recognition_worker)
 
     def _recognition_worker(self):
@@ -261,22 +261,22 @@ class JobsMixin:
     def run_scoring(self):
         mode = self.state["app_mode"]
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         if mode != "descriptive_only":
             if not self.state["coord_file"]:
-                return _err("座標ファイルを選択してください")
+                return _err("マーク位置の定義（座標ファイル）を選択してください")
             if not self.state["answer_key"]:
-                return _err("正答データを選択してください")
+                return _err("正答・配点（answer_key.xlsx）を選択してください")
             if not self.state["omr_result"]:
-                return _err("OMR結果がありません。先に認識を実行してください")
+                return _err("読み取り結果がありません。先に「答案を読み取る」を実行してください")
             ks = self.state.get("key_summary")
             if ks and not ks["ok"]:
-                return _err("正答データにエラーがあります。修正してから採点してください:\n"
+                return _err("正答・配点にエラーがあります。修正してから採点してください:\n"
                             + "\n".join(ks["errors"][:3]))
         if mode in ("mark_and_descriptive", "descriptive_only"):
             desc = self.state.get("descriptive")
             if not desc or not desc["questions"]:
-                return _err("記述問題が設定されていません。先に「記述問題設定」を行ってください")
+                return _err("記述問題が設定されていません。先に「記述問題の設定」を行ってください")
         return self._start_job("scoring", self._scoring_worker)
 
     def _desc_config_with_total_region(self):
@@ -353,18 +353,18 @@ class JobsMixin:
     def run_summary(self):
         mode = self.state["app_mode"]
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         if mode == "descriptive_only":
             desc = self.state.get("descriptive")
             if not desc or not desc["questions"]:
-                return _err("記述問題が設定されていません。先に「記述問題設定」を行ってください")
+                return _err("記述問題が設定されていません。先に「記述問題の設定」を行ってください")
             return self._start_job("summary", self._summary_worker)
         if not self.state["coord_file"]:
-            return _err("座標ファイルを選択してください")
+            return _err("マーク位置の定義（座標ファイル）を選択してください")
         if not self.state["answer_key"]:
-            return _err("正答データを選択してください")
+            return _err("正答・配点（answer_key.xlsx）を選択してください")
         if not self.state["omr_result"]:
-            return _err("OMR結果がありません。先に認識を実行してください")
+            return _err("読み取り結果がありません。先に「答案を読み取る」を実行してください")
         return self._start_job("summary", self._summary_worker)
 
     def _trim_name_images(self):

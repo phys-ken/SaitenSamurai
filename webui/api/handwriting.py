@@ -51,7 +51,7 @@ class HandwritingMixin:
     def get_handwriting(self, filename):
         """1枚ぶんの筆跡を返す（無ければ空）"""
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         sheet = self._hw_load()["sheets"].get(str(filename))
         return _ok(strokes=(sheet or {}).get("strokes", []))
 
@@ -63,7 +63,7 @@ class HandwritingMixin:
         """
         from constants import atomic_json_save
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         try:
             natural_w = int(natural_w)
             natural_h = int(natural_h)

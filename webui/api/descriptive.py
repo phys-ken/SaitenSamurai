@@ -96,7 +96,7 @@ class DescriptiveMixin:
         """記述のみモード: 画像を 00_Processing へコピーする
         （tk 版 _run_prepare_images_thread と同じ「補正なしコピー」）"""
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         return self._start_job("prepare_images", self._prepare_images_worker)
 
     def _prepare_images_worker(self):
@@ -125,7 +125,7 @@ class DescriptiveMixin:
     def add_descriptive_question(self, name, max_score, aspect, region):
         from descriptive_scorer import save_descriptive_config
         if self.state["descriptive"] is None:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         try:
             max_score = int(max_score)
             aspect = int(aspect)
@@ -248,12 +248,12 @@ class DescriptiveMixin:
         from descriptive_scorer import trim_descriptive_regions
         from constants import RESULTS_FOLDER, BOXED_FOLDER
         if self.state["descriptive"] is None:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         if not self._desc_config["questions"]:
-            return _err("記述問題が設定されていません。先に「記述問題設定」を行ってください")
+            return _err("記述問題が設定されていません。先に「記述問題の設定」を行ってください")
         boxed = Path(self.state["image_folder"]) / RESULTS_FOLDER / BOXED_FOLDER
         if not boxed.exists():
-            return _err("補正済み画像がありません。先に認識（または画像準備）を実行してください")
+            return _err("補正済み画像がありません。先に「答案を読み取る」（または「画像を準備する」）を実行してください")
         try:
             self._desc_crops = trim_descriptive_regions(
                 str(boxed), self._desc_config,

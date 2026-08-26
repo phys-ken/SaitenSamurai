@@ -36,11 +36,11 @@ class SheetsMixin:
         """補正済み画像（00_Processing）の一覧"""
         folder = self._boxed_folder()
         if not folder or not folder.exists():
-            return _err("補正済み画像がありません。先に認識（または画像準備）を実行してください")
+            return _err("補正済み画像がありません。先に「答案を読み取る」（または「画像を準備する」）を実行してください")
         files = sorted(p.name for p in folder.iterdir()
                        if p.suffix.lower() in ('.jpg', '.jpeg', '.png'))
         if not files:
-            return _err("補正済み画像がありません。先に認識（または画像準備）を実行してください")
+            return _err("補正済み画像がありません。先に「答案を読み取る」（または「画像を準備する」）を実行してください")
         return _ok(files=files)
 
     def get_sheet_image(self, filename=None):
@@ -73,7 +73,7 @@ class SheetsMixin:
         from descriptive_scorer import (load_total_display_config,
                                         TOTAL_DISPLAY_CONFIG_FILE)
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         cfg = load_total_display_config(
             str(self._results_data_folder() / TOTAL_DISPLAY_CONFIG_FILE))
         region = cfg.get("total_display_region") if cfg else None
@@ -84,7 +84,7 @@ class SheetsMixin:
         from descriptive_scorer import (save_total_display_config,
                                         TOTAL_DISPLAY_CONFIG_FILE)
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         data_folder = self._results_data_folder()
         config_path = data_folder / TOTAL_DISPLAY_CONFIG_FILE
         if region is None:
@@ -175,13 +175,13 @@ class SheetsMixin:
         import cv2
         import numpy as np
         if not self.state["coord_file"]:
-            return _err("座標ファイルを選択するとプレビューできます")
+            return _err("マーク位置の定義を選択するとプレビューできます")
         folder = self._boxed_folder()
         files = (sorted(p.name for p in folder.iterdir()
                         if p.suffix.lower() in ('.jpg', '.jpeg', '.png'))
                  if folder and folder.exists() else [])
         if not files:
-            return _err("認識実行の後にプレビューできます（補正済み画像を使うため）")
+            return _err("答案を読み取ったあとにプレビューできます（補正済み画像を使うため）")
 
         from omr_engine import parse_excel_coordinates
         from image_renderer import draw_scoring_results
@@ -281,7 +281,7 @@ class SheetsMixin:
         from constants import (RESULTS_FOLDER, BOXED_FOLDER, SCORED_FOLDER,
                                FINAL_REPORT_FOLDER, RESULTS_DATA_FOLDER)
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         sub = {"boxed": BOXED_FOLDER, "scored": SCORED_FOLDER,
                "report": FINAL_REPORT_FOLDER,
                "results_data": RESULTS_DATA_FOLDER}.get(kind)
@@ -304,7 +304,7 @@ class SheetsMixin:
         import os
         import subprocess
         if not self.state["image_folder"]:
-            return _err("画像フォルダを選択してください")
+            return _err("答案画像フォルダを選択してください")
         target = Path(self.state["image_folder"]) / filename
         if not target.exists():
             return _err(f"元画像が見つかりません: {target}")

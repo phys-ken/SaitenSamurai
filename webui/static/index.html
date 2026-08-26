@@ -30,7 +30,7 @@
     <div class="mode-cards">
       <button class="mode-card" data-mode="mark_only" data-format="standard">
         <span class="mode-title">マーク採点のみ</span>
-        <span class="mode-desc">座標ファイルを使ったOMR認識・マーク採点を実行します</span>
+        <span class="mode-desc">マーク位置の定義ファイルを使って答案を読み取り、マーク採点します</span>
       </button>
       <button class="mode-card" data-mode="mark_and_descriptive" data-format="standard">
         <span class="mode-title">マーク採点 ＋ 記述採点</span>
@@ -38,7 +38,7 @@
       </button>
       <button class="mode-card" data-mode="descriptive_only" data-format="standard">
         <span class="mode-title">記述採点のみ</span>
-        <span class="mode-desc">座標ファイル不要。答案画像から記述問題のみを採点します</span>
+        <span class="mode-desc">マーク位置の定義は不要。答案画像から記述問題のみを採点します</span>
       </button>
       <button class="mode-card math" data-mode="mark_only" data-format="multi_digit">
         <span class="mode-title">数学マーク採点のみ</span>
@@ -116,7 +116,7 @@
 
     <div class="ds-row" id="row-omr-result">
       <span class="ds-label">読み取り結果<button class="info-btn" data-info="omr-result">ℹ</button></span>
-      <span class="ds-value" data-empty="未生成（認識実行で自動設定）"></span>
+      <span class="ds-value" data-empty="未生成（答案を読み取ると自動設定）"></span>
       <button class="btn" data-action="select_omr_result">ファイル選択</button>
     </div>
   </section>
@@ -234,7 +234,7 @@
           <option value="240" selected>中</option>
           <option value="320">大</option>
         </select></label>
-      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 ／ 0＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ クリック＝拡大</span>
+      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 b＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ クリック＝拡大</span>
     </div>
     <div id="desc-grid" class="vgrid-viewport"></div>
   </section>
@@ -254,7 +254,7 @@
       <button class="btn" id="btn-zoom-fit">幅に合わせる</button>
       <button class="btn" id="btn-zoom-100">原寸</button>
       <span class="hint" id="zoom-label">100%</span>
-      <span class="hint">Ctrl＋ホイール＝拡大縮小 ／ ドラッグ＝移動 ／ ←→＝答案 ／ ↑↓＝設問 ／ 数字キー＝採点</span>
+      <span class="hint">Ctrl＋ホイール＝拡大縮小 ／ ドラッグ＝移動 ／ ←→＝答案 ／ ↑↓＝設問 ／ 数字＝採点 m＝満点 b＝0点 ／ Ctrl+Z＝手書きを戻す</span>
       <span id="hw-toolbar" class="hw-toolbar">
         <button class="btn" id="btn-hw-toggle" title="マウスで書き込む（C）。ペンはいつでも書けます">✎ コメント</button>
         <span id="hw-colors"></span>
@@ -278,7 +278,7 @@
   <!-- マークチェックビュー（開いている間は他パネルを隠す） -->
   <section id="checker-view" hidden>
     <div class="checker-head">
-      <h2>マークチェック</h2>
+      <h2>マークの確認</h2>
       <span id="checker-summary" class="checker-summary"></span>
       <button class="btn btn-primary" id="btn-apply-corrections">訂正をxlsxに反映</button>
       <button class="btn" id="btn-close-checker">閉じる</button>

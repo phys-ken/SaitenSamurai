@@ -5,6 +5,7 @@ TINY_PNG = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
 
 API = """({
   ping: async () => ({ok: true}),
+  set_mode: async () => ({ok: true, state: (await window.__mockApi.get_state()).state}),
   get_app_info: async () => ({ok: true, app_version: 't', webui_version: 't'}),
   get_state: async () => ({ok: true, state: {
     app_mode: 'mark_only', mark_format: 'multi_digit', skip_questions: 0,
@@ -71,10 +72,13 @@ window.__checkerState = {open: true, total: 3, corrected: 0, error_count: 2,
 """
 
 
+from conftest import enter_mode
+
+
 def _open_checker(open_app):
     page = open_app(API)
     page.evaluate(SEED)
-    page.wait_for_function("document.querySelector('#bridge-status').dataset.state === 'ok'")
+    enter_mode(page, ".mode-card.math")
     page.click("#btn-open-checker")
     page.wait_for_selector("#checker-view:not([hidden])")
     return page

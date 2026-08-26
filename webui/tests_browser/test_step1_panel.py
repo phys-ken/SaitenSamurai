@@ -12,6 +12,7 @@ READY_STATE = """{
 
 API = """({
   ping: async () => ({ok: true}),
+  set_mode: async () => ({ok: true, state: (await window.__mockApi.get_state()).state}),
   get_app_info: async () => ({ok: true, app_version: 't', webui_version: 't'}),
   get_state: async () => ({ok: true, state: window.__state ?? %(ready)s}),
   run_recognition: async () => {
@@ -29,9 +30,12 @@ API = """({
 })""" % {"ready": READY_STATE}
 
 
+from conftest import enter_mode
+
+
 def _boot(open_app):
     page = open_app(API)
-    page.wait_for_function("document.querySelector('#bridge-status').dataset.state === 'ok'")
+    enter_mode(page)
     return page
 
 

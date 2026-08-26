@@ -12,6 +12,33 @@
 </header>
 
 <main id="app">
+  <section id="mode-select" class="mode-select">
+    <h2>採点モードを選択してください</h2>
+    <div class="mode-cards">
+      <button class="mode-card" data-mode="mark_only" data-format="standard">
+        <span class="mode-title">マーク採点のみ</span>
+        <span class="mode-desc">座標ファイルを使ったOMR認識・マーク採点を実行します</span>
+      </button>
+      <button class="mode-card" data-mode="mark_and_descriptive" data-format="standard">
+        <span class="mode-title">✏ マーク採点 ＋ 記述採点</span>
+        <span class="mode-desc">マーク採点に加えて、記述式問題の採点も行います</span>
+      </button>
+      <button class="mode-card" data-mode="descriptive_only" data-format="standard">
+        <span class="mode-title">✏ 記述採点のみ</span>
+        <span class="mode-desc">座標ファイル不要。答案画像から記述問題のみを採点します</span>
+      </button>
+      <button class="mode-card math" data-mode="mark_only" data-format="multi_digit">
+        <span class="mode-title">🔢 数学マーク採点のみ</span>
+        <span class="mode-desc">共通テスト数学式。複数のマーク行で1つの値（-24等）を完答採点します</span>
+      </button>
+      <button class="mode-card math" data-mode="mark_and_descriptive" data-format="multi_digit">
+        <span class="mode-title">🔢✏ 数学マーク採点 ＋ 記述採点</span>
+        <span class="mode-desc">数学マーク採点に加えて、記述式問題の採点も行います</span>
+      </button>
+    </div>
+    <button class="btn" id="btn-resume-session" hidden>📂 採点再開（セッション復元）</button>
+  </section>
+
   <section class="panel" id="datasource-panel">
     <h2>📂 データソース</h2>
 

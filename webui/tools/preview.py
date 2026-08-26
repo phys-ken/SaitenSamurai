@@ -44,9 +44,10 @@ def _setup_demo(bridge):
     real_file = bridge._win.open_file_dialog
     bridge._win.open_folder_dialog = lambda **kw: str(scans)
     bridge._win.open_file_dialog = lambda **kw: file_queue.pop(0) if file_queue else None
-    bridge.set_mode("mark_only", "multi_digit")
+    time.sleep(2.5)  # 画面初期化を待ってから UI 操作
+    bridge._win.eval_js("document.querySelector('.mode-card.math').click()")
+    time.sleep(0.5)
     bridge.set_skip_questions(0)
-    time.sleep(2.5)  # 画面初期化を待ってから UI へ push させる
     bridge._win.eval_js("document.querySelector('[data-action=select_image_folder]').click()")
     time.sleep(0.6)
     bridge._win.eval_js("document.querySelector('[data-action=select_coord_file]').click()")

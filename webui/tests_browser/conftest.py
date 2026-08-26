@@ -32,3 +32,11 @@ def open_app(page):
         page.goto(INDEX_URL)
         return page
     return _open
+
+
+def enter_mode(page, selector=".mode-card"):
+    """モード選択画面を通過してメイン画面に入る（L2共通の前段）"""
+    page.wait_for_function(
+        "document.querySelector('#bridge-status').dataset.state === 'ok'")
+    page.click(selector)
+    page.wait_for_selector("#mode-select", state="hidden")

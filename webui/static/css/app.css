@@ -138,3 +138,18 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
                  justify-content: center; margin-top: 0.8rem; }
 
 .hint { font-size: 0.8rem; color: var(--muted); }
+
+/* ── モード選択 ── */
+.mode-select { max-width: 34rem; margin: 2rem auto; text-align: center; }
+.mode-select h2 { color: var(--muted); font-size: 1rem; }
+.mode-cards { display: flex; flex-direction: column; gap: 0.7rem; margin: 1.2rem 0; }
+.mode-card {
+  font: inherit; text-align: left; cursor: pointer;
+  border: 1px solid #cfd8dc; border-radius: 8px; background: var(--panel);
+  padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.25rem;
+}
+.mode-card:hover { border-color: var(--accent); background: #f5f9ff; }
+.mode-card.math:hover { border-color: #e65100; background: #fff8f2; }
+.mode-title { font-weight: bold; font-size: 1rem; }
+.mode-desc { font-size: 0.82rem; color: var(--muted); }
+.mode-badge { font-size: 0.8rem; color: var(--muted); margin-left: 0.4rem; }

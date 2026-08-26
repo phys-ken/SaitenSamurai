@@ -194,6 +194,43 @@ function wireEvents() {
 // ---------------------------------------------------------------
 // 起動
 // ---------------------------------------------------------------
+const MODE_LABEL = {
+  'mark_only/standard': 'マーク採点',
+  'mark_and_descriptive/standard': 'マーク採点＋記述採点',
+  'descriptive_only/standard': '記述採点',
+  'mark_only/multi_digit': '数学マーク採点（複数桁）',
+  'mark_and_descriptive/multi_digit': '数学マーク採点＋記述採点',
+};
+
+function showMain(state) {
+  document.getElementById('mode-select').hidden = true;
+  document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
+  const label = MODE_LABEL[`${state.app_mode}/${state.mark_format}`] ?? '';
+  let badge = document.getElementById('mode-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'mode-badge';
+    badge.className = 'mode-badge';
+    document.querySelector('.topbar h1').appendChild(badge);
+  }
+  badge.textContent = `— ${label}`;
+  render(state);
+}
+
+function wireModeSelect() {
+  document.querySelectorAll('.mode-card').forEach((card) => {
+    card.addEventListener('click', async () => {
+      try {
+        const res = await call('set_mode', card.dataset.mode, card.dataset.format);
+        showMain(res.state);
+        log(`モード: ${MODE_LABEL[`${res.state.app_mode}/${res.state.mark_format}`]}`);
+      } catch (e) {
+        alert(e.message);
+      }
+    });
+  });
+}
+
 async function init() {
   const status = document.getElementById('bridge-status');
   try {
@@ -206,6 +243,9 @@ async function init() {
     const res = await call('get_state');
     render(res.state);
     wireEvents();
+    wireModeSelect();
+    // モード選択が出ている間はメインパネルを隠す
+    document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
   } catch (e) {
     status.textContent = `接続エラー: ${e.message}`;
     status.dataset.state = 'error';

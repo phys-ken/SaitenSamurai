@@ -169,7 +169,11 @@
       <button class="btn" id="btn-desc-scoring-close">閉じる</button>
     </div>
     <nav id="desc-q-tabs" class="checker-tabs"></nav>
-    <div id="desc-grid" class="checker-grid"></div>
+    <div class="grid-toolbar">
+      <button class="btn" id="btn-jump-unscored">次の未採点へ</button>
+      <span class="hint">数字キー＝得点を書いて次へ ／ ←→↑↓＝移動 ／ BackSpace＝未採点に戻す ／ クリック＝画像を拡大</span>
+    </div>
+    <div id="desc-grid" class="vgrid-viewport"></div>
   </section>
 
   <!-- 一枚採点ビュー（画像レイヤ＋注釈レイヤ。コメントモードの差し込み口） -->
@@ -195,7 +199,7 @@
     <div class="checker-head">
       <h2>マークチェック</h2>
       <span id="checker-summary" class="checker-summary"></span>
-      <button class="btn btn-primary" id="btn-apply-corrections">💾 xlsxに反映</button>
+      <button class="btn btn-primary" id="btn-apply-corrections">訂正をxlsxに反映</button>
       <button class="btn" id="btn-close-checker">閉じる</button>
     </div>
     <nav id="checker-tabs" class="checker-tabs"></nav>

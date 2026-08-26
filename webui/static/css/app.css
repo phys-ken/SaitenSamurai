@@ -347,3 +347,33 @@ input, select {
           padding: 0.5rem 0.6rem; }
 .side-q.focused { border: 2px solid var(--shu); padding: calc(0.5rem - 1px) calc(0.6rem - 1px); }
 .side-q h3 { margin: 0 0 0.3rem; font-size: 0.9rem; font-weight: 600; }
+
+/* ── 仮想グリッド ── */
+.grid-toolbar { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem; }
+.vgrid-viewport {
+  position: relative;
+  overflow-y: auto;
+  height: calc(100vh - 15rem);
+  min-height: 16rem;
+  border: 1px solid var(--kei-line);
+  background: var(--paper-dim);
+  padding: 10px;
+}
+.vgrid-spacer { position: relative; width: 100%; }
+.vgrid-viewport .entry-card { margin: 0; overflow: hidden; }
+.entry-card .crop-img {
+  width: 100%; object-fit: contain; background: var(--paper);
+  border: 1px solid var(--kei-usu); flex: 1; min-height: 0;
+}
+
+/* 画像拡大（ライトボックス） */
+.lightbox {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(43, 40, 37, 0.75);
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: 94vw; max-height: 92vh;
+  background: var(--paper); border: 1px solid var(--kei);
+}

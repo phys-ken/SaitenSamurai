@@ -91,12 +91,15 @@ class JobsMixin:
                 logger.exception("%s に失敗", kind)
                 done_event = dict(kind=kind, ok=False,
                                   message=f"処理に失敗しました: {e}")
+            # 自動保存は state リセットの「前」に行う。リセットと push の間に
+            # 処理を挟むと「running=False なのに job_done 未着」の窓が広がる
+            # （Windows CI で顕在化した競合）
+            if done_event.get("ok"):
+                self._save_session_quietly()  # tk 版同様、要所で自動保存
             # push は state リセットの「後」。先に push すると JS の get_state が
             # running=True の古い状態を読み、完了後も進捗バーが残る競合になる
             self.state["job"] = {"running": False, "kind": None,
                                  "current": 0, "total": 0}
-            if done_event.get("ok"):
-                self._save_session_quietly()  # tk 版同様、要所で自動保存
             self._push("job_done", **done_event)
 
         self._job_thread = threading.Thread(target=wrapped, daemon=True)

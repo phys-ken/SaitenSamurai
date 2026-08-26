@@ -47,11 +47,23 @@ class RecordingAdapter:
 
 
 def _wait_job_done(bridge, timeout=60):
+    """running=False かつ job_done イベント到着まで待つ。
+
+    リセット→push の間には僅かな窓があるため、running だけを見ると
+    イベント未着のまま抜けることがある（Windows CI で顕在化）"""
     deadline = time.time() + timeout
+    events = getattr(bridge._win, "events", None)
+    n_done_before = (sum(1 for e in events if e["type"] == "job_done")
+                     if events is not None else 0)
     while bridge.state["job"]["running"]:
         if time.time() > deadline:
             pytest.fail("ジョブがタイムアウトしました")
         time.sleep(0.1)
+    if events is not None:
+        while sum(1 for e in events if e["type"] == "job_done") <= n_done_before:
+            if time.time() > deadline:
+                pytest.fail("job_done イベントが届きませんでした")
+            time.sleep(0.05)
 
 
 @pytest.fixture

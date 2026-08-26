@@ -127,6 +127,30 @@ class JobsMixin:
         self._pdf_files = list(pdfs)
         return self._start_job("pdf_import", self._pdf_import_worker)
 
+    def _write_results_readme(self):
+        """結果フォルダに短い README.txt を書く（「この中は何か」の迷い対策）。
+
+        アプリ内「用語とファイルの地図」・docs/files-map.md と同じ内容の要約。
+        失敗しても処理は止めない。
+        """
+        from constants import RESULTS_FOLDER
+        try:
+            base = Path(self.state["image_folder"]) / RESULTS_FOLDER
+            (base / "README.txt").write_text(
+                "このフォルダは採点侍が自動で作った「採点結果フォルダ」です。\n"
+                "元の答案画像には一切書き込んでいません。\n"
+                "\n"
+                "  00_Processing/    傾き補正済みの答案画像（作業用。消すと読み取りからやり直し）\n"
+                "  01_Results/       読み取り結果・正答・設定（採点の元データ。消さないでください）\n"
+                "  02_Graded_Detail/ 採点済み答案画像（返却用。いつでも作り直せます）\n"
+                "  03_Final_Report/  成績一覧・統計・分析（提出用。いつでも作り直せます）\n"
+                "\n"
+                "中断しても、採点侍で同じ答案画像フォルダを選び直せば続きから再開できます\n"
+                "（01_Results/session_state.json に自動保存されています）。\n",
+                encoding="utf-8")
+        except Exception:
+            logger.exception("README.txt の書き出しに失敗")
+
     def _pdf_import_worker(self):
         from constants import extract_pdf_to_images
         pdf_files = self._pdf_files
@@ -211,6 +235,7 @@ class JobsMixin:
         cancelled = self._cancel_event.is_set()
         if not cancelled:
             self._autoselect_omr_result()
+            self._write_results_readme()
         return dict(
             kind="recognition", ok=True, cancelled=cancelled,
             success_count=result.get("success_count", 0),

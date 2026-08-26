@@ -9,7 +9,18 @@
 <header class="topbar">
   <h1>採点侍 <span id="version" class="version"></span></h1>
   <span id="bridge-status" class="bridge-status" data-state="connecting">接続中…</span>
+  <button class="btn btn-small" id="btn-open-map">用語とファイルの地図</button>
 </header>
+
+<nav id="stepper" class="stepper" hidden aria-label="採点の進行状況">
+  <ol>
+    <li data-step="prepared" data-target="datasource-panel"><span class="step-mark"></span>準備</li>
+    <li data-step="read" data-target="step1-panel"><span class="step-mark"></span><span id="step-read-label">読み取り</span></li>
+    <li data-step="scored" data-target="step2-panel"><span class="step-mark"></span>採点</li>
+    <li data-step="summarized" data-target="step3-panel"><span class="step-mark"></span>集計</li>
+  </ol>
+  <span class="stepper-note">ここまでの選択と設定は自動保存されています<button class="info-btn" data-info="session">ℹ</button></span>
+</nav>
 
 <main id="app">
   <section id="mode-select" class="mode-select">
@@ -43,7 +54,7 @@
     <h2>データソース</h2>
 
     <div class="ds-row" id="row-image-folder">
-      <span class="ds-label">画像フォルダ</span>
+      <span class="ds-label">答案画像フォルダ<button class="info-btn" data-info="image-folder">ℹ</button></span>
       <span class="ds-value" data-empty="未選択"></span>
       <button class="btn" data-action="select_image_folder">フォルダ選択</button>
       <button class="btn" id="btn-select-pdf" title="PDFを画像に展開して読み込む">PDF選択</button>
@@ -51,14 +62,14 @@
     <p class="ds-summary" id="summary-image-folder" hidden></p>
 
     <div class="ds-row" id="row-coord-file">
-      <span class="ds-label">座標ファイル</span>
+      <span class="ds-label">マーク位置の定義<button class="info-btn" data-info="coord-file">ℹ</button></span>
       <span class="ds-value" data-empty="未選択"></span>
       <button class="btn" data-action="select_coord_file">ファイル選択</button>
     </div>
     <p class="ds-summary" id="summary-coord-file" hidden></p>
 
     <div class="ds-row" id="row-answer-key">
-      <span class="ds-label">正答データ</span>
+      <span class="ds-label">正答・配点<button class="info-btn" data-info="answer-key">ℹ</button></span>
       <span class="ds-value" data-empty="未選択"></span>
       <button class="btn" data-action="select_answer_key">ファイル選択</button>
       <button class="btn" id="btn-recheck-key"
@@ -67,16 +78,16 @@
     <p class="ds-summary" id="summary-answer-key" hidden></p>
 
     <div class="ds-row ds-options">
-      <label for="skip-input">Skip（ID欄の数）</label>
+      <label for="skip-input">ID欄の列数<button class="info-btn" data-info="skip">ℹ</button></label>
       <input id="skip-input" type="number" min="0" value="4"> 欄
     </div>
   </section>
 
   <section class="panel" id="step1-panel">
-    <h2>Step 1: 認識</h2>
+    <h2>① 答案を読み取る<button class="info-btn" data-info="omr-mode">ℹ</button></h2>
 
     <div class="ds-row">
-      <label for="omr-mode">認識方式</label>
+      <label for="omr-mode">読み取り方式</label>
       <select id="omr-mode">
         <option value="kmeans">（推奨）クラスタリング</option>
         <option value="threshold">しきい値による識別（従来式）</option>
@@ -90,57 +101,73 @@
     </div>
 
     <div class="ds-row">
-      <button class="btn btn-primary" id="btn-run-recognition">▶ 認識実行</button>
+      <button class="btn btn-primary" id="btn-run-recognition">▶ 答案を読み取る</button>
       <button class="btn" id="btn-cancel" hidden>⏹ 中断</button>
       <progress id="job-progress" max="1" value="0" hidden></progress>
       <span id="job-status" class="job-status"></span>
     </div>
 
     <div class="ds-row">
-      <button class="btn" id="btn-open-checker">マークチェック</button>
+      <button class="btn" id="btn-open-checker">マークを確認する</button><button class="info-btn" data-info="checker">ℹ</button>
       <button class="btn btn-folder" data-open-folder="boxed">補正画像フォルダを開く</button>
     </div>
 
     <div class="ds-row" id="row-omr-result">
-      <span class="ds-label">OMR結果</span>
+      <span class="ds-label">読み取り結果<button class="info-btn" data-info="omr-result">ℹ</button></span>
       <span class="ds-value" data-empty="未生成（認識実行で自動設定）"></span>
       <button class="btn" data-action="select_omr_result">ファイル選択</button>
     </div>
   </section>
 
+  <section class="panel" id="output-settings-panel">
+    <details id="output-settings">
+      <summary><h2 class="inline-h2">出力の設定<button class="info-btn" data-info="output-settings">ℹ</button></h2>
+        <span class="hint">既定のままで使えます。答案への描き込みや集計の載せ方を変えたいときに開いてください</span>
+      </summary>
+      <div class="ds-row">
+        <span class="ds-label">答案に描くもの</span>
+        <button class="btn" id="btn-render-settings">表示項目の設定</button>
+        <span class="hint">○×・得点・合計点などの描き込み内容とプレビュー</span>
+      </div>
+      <div class="ds-row">
+        <span class="ds-label">合計点の位置<button class="info-btn" data-info="total-position">ℹ</button></span>
+        <button class="btn" id="btn-total-position">位置をドラッグで指定</button>
+        <span class="hint" id="total-position-hint">未設定（自動配置）</span>
+      </div>
+      <div class="ds-row">
+        <span class="ds-label">集計シート<button class="info-btn" data-info="name-trim">ℹ</button></span>
+        <label><input type="checkbox" id="name-trim-check" checked>
+          氏名画像を表示する</label>
+        <button class="btn" id="btn-name-position">氏名欄の位置指定</button>
+        <span class="hint" id="name-position-hint">未指定（指定すると集計に氏名画像が入ります）</span>
+      </div>
+      <div class="ds-row" id="row-include-desc" hidden>
+        <span class="ds-label">分析の範囲<button class="info-btn" data-info="include-desc">ℹ</button></span>
+        <label><input type="checkbox" id="include-desc-check" checked>
+          記述採点の結果を分析ファイルに含める</label>
+      </div>
+    </details>
+  </section>
+
   <section class="panel" id="step2-panel">
-    <h2>Step 2: 採点</h2>
+    <h2>② 採点する<button class="info-btn" data-info="scoring">ℹ</button></h2>
     <div class="ds-row desc-only-ui" hidden>
-      <button class="btn" id="btn-desc-config">記述問題設定</button>
-      <button class="btn" id="btn-desc-scoring">記述採点</button>
+      <button class="btn" id="btn-desc-config">記述問題の設定</button>
+      <button class="btn" id="btn-desc-scoring">記述を採点する</button>
       <span class="hint" id="desc-progress-hint"></span>
+      <button class="info-btn" data-info="desc-config">ℹ</button>
     </div>
     <div class="ds-row">
       <button class="btn btn-primary" id="btn-run-scoring">▶ 採点済み答案を生成</button>
       <span class="hint">○×・得点を描き込んだ答案画像を出力します</span>
       <button class="btn btn-folder" data-open-folder="scored">出力フォルダを開く</button>
     </div>
-    <div class="ds-row">
-      <button class="btn" id="btn-total-position">合計点の位置指定</button>
-      <span class="hint" id="total-position-hint">未設定（自動配置）</span>
-      <button class="btn" id="btn-render-settings">表示項目の設定</button>
-    </div>
   </section>
 
   <section class="panel" id="step3-panel">
-    <h2>Step 3: 集計</h2>
+    <h2>③ 集計してまとめる<button class="info-btn" data-info="summary">ℹ</button></h2>
     <div class="ds-row">
-      <label><input type="checkbox" id="name-trim-check" checked>
-        氏名画像を集計シートに表示する</label>
-      <button class="btn" id="btn-name-position">氏名欄の位置指定</button>
-      <span class="hint" id="name-position-hint">未指定（指定すると集計に氏名画像が入ります）</span>
-    </div>
-    <div class="ds-row" id="row-include-desc" hidden>
-      <label><input type="checkbox" id="include-desc-check" checked>
-        記述採点の結果を分析ファイルに含める</label>
-    </div>
-    <div class="ds-row">
-      <button class="btn btn-primary" id="btn-run-summary">▶ 集計実行</button>
+      <button class="btn btn-primary" id="btn-run-summary">▶ 集計してまとめる</button>
       <span class="hint">成績一覧 Excel と CTT 分析レポートを出力します</span>
       <button class="btn btn-folder" data-open-folder="report">レポートフォルダを開く</button>
     </div>
@@ -259,6 +286,59 @@
     <div id="checker-grid" class="vgrid-viewport"></div>
   </section>
 </main>
+
+<!-- 用語とファイルの地図 -->
+<div class="picker-overlay" id="map-overlay" hidden>
+  <div class="picker-dialog map-dialog">
+    <div class="picker-head">
+      <h2 class="rs-title">用語とファイルの地図</h2>
+      <span class="hint">結果フォルダに何ができるか・消してよいかの一覧</span>
+      <button class="btn" id="btn-map-close">閉じる</button>
+    </div>
+    <div class="map-body">
+      <p>処理結果はすべて、選んだ答案画像フォルダの中の
+        <code>_saiten_grading_results</code>（採点結果フォルダ）に入ります。
+        <strong>元の答案画像には一切書き込みません。</strong></p>
+      <table class="map-table">
+        <thead><tr><th>フォルダ / ファイル</th><th>役割</th><th>消してよい？</th></tr></thead>
+        <tbody>
+          <tr><td><code>00_Processing/</code></td>
+            <td>傾き補正済みの答案画像（作業用）。読み取り・記述採点はこれを使います</td>
+            <td>△ 消すと読み取りからやり直し</td></tr>
+          <tr><td><code>01_Results/</code></td>
+            <td>読み取り結果（Mark2-Result-～.xlsx）、正答・配点（answer_key.xlsx）、
+              各種設定（session_state.json ほか）</td>
+            <td>✕ 採点の元データです</td></tr>
+          <tr><td><code>02_Graded_Detail/</code></td>
+            <td>○×・得点を描き込んだ採点済み答案画像（返却用）</td>
+            <td>○ いつでも作り直せます</td></tr>
+          <tr><td><code>03_Final_Report/</code></td>
+            <td>成績一覧 Excel・統計・分析レポート（提出用）</td>
+            <td>○ いつでも作り直せます</td></tr>
+          <tr><td><code>session_state.json</code></td>
+            <td>中断・再開のための自動保存。フォルダを選び直すと再開を提案します</td>
+            <td>△ 消すと再開できなくなるだけ（採点データは無事）</td></tr>
+          <tr><td><code>descriptive_config.json</code><br><code>descriptive_scores.json</code></td>
+            <td>記述問題の設定と採点結果（01_Results 内）</td>
+            <td>✕ 記述採点のデータ本体です</td></tr>
+          <tr><td><code>tmp_checking_dm_nm.csv</code></td>
+            <td>マーク確認での訂正の下書き（xlsx反映までの控え）</td>
+            <td>△ 反映後は消えても問題ありません</td></tr>
+        </tbody>
+      </table>
+      <h3>用語の対応</h3>
+      <table class="map-table">
+        <thead><tr><th>画面の言葉</th><th>従来の呼び方 / 実体</th></tr></thead>
+        <tbody>
+          <tr><td>マーク位置の定義</td><td>座標ファイル（mark_areas.xlsx など）</td></tr>
+          <tr><td>読み取り結果</td><td>OMR結果（Mark2-Result-～.xlsx）</td></tr>
+          <tr><td>ID欄の列数</td><td>Skip</td></tr>
+          <tr><td>マークを確認する</td><td>マークチェック / マークエラーチェック</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <!-- 表示項目の設定（採点済み答案に何を描き込むか） -->
 <div class="picker-overlay" id="rs-overlay" hidden>

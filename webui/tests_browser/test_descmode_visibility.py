@@ -31,5 +31,5 @@ def test_desc_only_hides_mark_rows(open_app):
     assert page.locator("#row-coord-file").is_hidden()
     assert page.locator("#row-answer-key").is_hidden()
     assert page.locator("#row-omr-result").is_hidden()
-    assert page.locator("#btn-run-recognition").inner_text() == "▶ 画像準備"
+    assert page.locator("#btn-run-recognition").inner_text() == "▶ 画像を準備する"
     assert page.locator(".desc-only-ui").first.is_visible()

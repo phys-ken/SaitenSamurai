@@ -236,6 +236,32 @@ class SheetsMixin:
         return _ok(data_url=f"data:image/png;base64,{b64}",
                    sample_note="上から: 正解例 / 不正解例 / 全員正解（★）の例")
 
+    def get_progress(self):
+        """ステッパー用の進行度（既存 state と出力フォルダからの読み取り専用導出）"""
+        from constants import (RESULTS_FOLDER, SCORED_FOLDER,
+                               FINAL_REPORT_FOLDER, STUDENT_SUMMARY_FILE)
+        mode = self.state["app_mode"]
+        if mode == "descriptive_only":
+            prepared = bool(self.state["image_folder"])
+            read_done = ((self.state.get("descriptive") or {})
+                         .get("prepared_count", 0) or 0) > 0
+        else:
+            prepared = bool(self.state["image_folder"] and
+                            self.state["coord_file"])
+            read_done = bool(self.state["omr_result"])
+        scored = False
+        summarized = False
+        if self.state["image_folder"]:
+            base = Path(self.state["image_folder"]) / RESULTS_FOLDER
+            sf = base / SCORED_FOLDER
+            scored = sf.exists() and any(
+                p.suffix.lower() in ('.jpg', '.jpeg', '.png')
+                for p in sf.iterdir())
+            summarized = (base / FINAL_REPORT_FOLDER /
+                          STUDENT_SUMMARY_FILE).exists()
+        return _ok(progress={"prepared": prepared, "read": read_done,
+                             "scored": scored, "summarized": summarized})
+
     def set_include_descriptive_in_analysis(self, enabled):
         self.state["include_descriptive_in_analysis"] = bool(enabled)
         return _ok(state=self.state)

@@ -108,7 +108,7 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
   gap: 0.6rem;
   padding: 0.3rem 0;
 }
-.ds-label { flex: 0 0 8.5em; color: var(--sumi); }
+.ds-label { flex: 0 0 10.5em; color: var(--sumi); }
 .ds-value {
   flex: 1;
   min-width: 0;
@@ -155,7 +155,7 @@ main#app { flex: 1; padding: 1.2rem 1.2rem 2rem; overflow: auto; }
   cursor: default;
 }
 
-.ds-summary { margin: 0 0 0.3rem 9.1em; font-size: 0.85rem; color: var(--print-green); }
+.ds-summary { margin: 0 0 0.3rem 11.1em; font-size: 0.85rem; color: var(--print-green); }
 .ds-summary.warn { color: var(--warn); }
 .ds-summary.err { color: var(--shu-dark); white-space: pre-line; }
 .ds-options { color: var(--sumi); }
@@ -407,3 +407,82 @@ input, select {
              font: inherit; padding: 0.1rem 0.2rem; width: 100%; }
 .desc-edit:hover { border-bottom-color: var(--kei-line); }
 .desc-edit:focus { border-bottom-color: var(--shu); outline: none; }
+
+/* ── ステッパー（進行の常設表示） ── */
+.stepper {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.35rem 1.2rem;
+  border-bottom: 1px solid var(--kei-line);
+  background: var(--paper-dim);
+}
+.stepper ol { display: flex; list-style: none; margin: 0; padding: 0; gap: 0; }
+.stepper li {
+  display: flex; align-items: center; gap: 0.35rem;
+  font-size: 0.85rem; color: var(--usuzumi);
+  cursor: pointer; padding: 0.1rem 0.2rem;
+}
+.stepper li + li::before {
+  content: ""; display: inline-block; width: 2.2rem; height: 1px;
+  background: var(--kei-line); margin: 0 0.5rem;
+}
+.step-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.15em; height: 1.15em; border-radius: 50%;
+  border: 1px solid var(--kei); font-size: 0.75em; color: var(--paper);
+  background: var(--paper);
+}
+.stepper li.done { color: var(--sumi); }
+.stepper li.done .step-mark { background: var(--kei); border-color: var(--kei); }
+.stepper li.done .step-mark::after { content: "✓"; }
+.stepper li.current { color: var(--shu-dark); font-weight: bold; }
+.stepper li.current .step-mark { background: var(--shu); border-color: var(--shu); }
+.stepper-note { margin-left: auto; font-size: 0.75rem; color: var(--usuzumi); }
+
+/* ── ℹ ポップオーバー ── */
+.info-btn {
+  font: inherit; font-size: 0.72em;
+  width: 1.5em; height: 1.5em; line-height: 1;
+  margin-left: 0.35em; padding: 0;
+  border: 1px solid var(--kei); border-radius: 50%;
+  background: var(--paper); color: var(--kei);
+  cursor: help; vertical-align: 0.15em;
+}
+.info-btn:hover, .info-btn:focus { color: var(--sumi); border-color: var(--sumi); }
+.info-popover {
+  position: fixed; z-index: 200;
+  background: var(--paper); border: 1px solid var(--kei);
+  box-shadow: 0 2px 10px rgba(43, 40, 37, 0.18);
+  padding: 0.6rem 0.8rem; font-size: 0.83rem; line-height: 1.55;
+}
+.info-popover h4 { margin: 0 0 0.25rem; font-size: 0.85rem; }
+.info-popover p { margin: 0 0 0.35rem; color: var(--sumi); }
+.info-popover a { color: var(--shu-dark); }
+
+/* ── 出力の設定（折りたたみ） ── */
+#output-settings summary {
+  cursor: pointer; display: flex; align-items: baseline; gap: 0.8rem;
+  list-style: none;
+}
+#output-settings summary::before {
+  content: "▸"; color: var(--usuzumi); font-size: 0.9rem;
+}
+#output-settings[open] summary::before { content: "▾"; }
+.inline-h2 {
+  display: inline; border: none; margin: 0; padding: 0;
+  font-family: var(--font-display); font-weight: 600; font-size: 1.02rem;
+  letter-spacing: 0.06em;
+}
+#output-settings[open] summary { margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--kei-line); padding-bottom: 0.35rem; }
+
+/* ── 地図 ── */
+.map-dialog { max-width: 46rem; }
+.map-body { overflow-y: auto; max-height: 72vh; font-size: 0.88rem; }
+.map-body code { background: var(--paper-dim); padding: 0 0.25em; }
+.map-table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 1rem; }
+.map-table th, .map-table td { border: 1px solid var(--kei-line);
+  padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
+.map-table th { background: var(--kei-usu); font-weight: normal; }
+.map-body h3 { font-size: 0.95rem; margin: 0.8rem 0 0.2rem; }
+.btn-small { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+.topbar .btn-small { margin-left: 0.8rem; }

@@ -56,6 +56,7 @@ nav:
     - マーク採点: usage/mark.md
     - 記述式採点: usage/descriptive.md
     - マーク＋記述: usage/combined.md
+    - フォルダとファイルの地図: files-map.md
   - サポート:
     - よくある質問: faq.md
     - 更新履歴: changelog.md

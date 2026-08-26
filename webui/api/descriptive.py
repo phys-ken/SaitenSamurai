@@ -84,8 +84,7 @@ class DescriptiveMixin:
         boxed = results / BOXED_FOLDER
         boxed.mkdir(parents=True, exist_ok=True)
         (results / RESULTS_DATA_FOLDER).mkdir(parents=True, exist_ok=True)
-        # 注: 結果フォルダの README 自動生成は feat/ux-polish 側の機能。
-        # ux-polish マージ後にここへも write_results_readme を足す
+        self._write_results_readme()
         files = sorted(p for p in src.iterdir()
                        if p.suffix.lower() in ('.jpg', '.jpeg', '.png'))
         for i, p in enumerate(files, 1):

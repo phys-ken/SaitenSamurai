@@ -35,6 +35,7 @@
 | [クイックスタート](https://phys-ken.github.io/SaitenSamurai/quickstart/) | 5 分で最初の採点を体験 |
 | [機能一覧](https://phys-ken.github.io/SaitenSamurai/features/) | すべての機能を一覧で確認 |
 | [使い方ガイド](https://phys-ken.github.io/SaitenSamurai/usage/mark/) | 各採点モードの詳細な操作方法 |
+| [フォルダとファイルの地図](https://phys-ken.github.io/SaitenSamurai/files-map/) | どこに何ができるか・消してよいか・中断と再開のしくみ |
 | [よくある質問](https://phys-ken.github.io/SaitenSamurai/faq/) | トラブルシューティング |
 | [免責事項](https://phys-ken.github.io/SaitenSamurai/disclaimer/) | 利用上の注意 |
 

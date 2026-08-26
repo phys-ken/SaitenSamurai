@@ -256,3 +256,34 @@ class TestParityAdditions:
         assert "不明" in b2.open_folder("nope")["error"]
         # 存在しないフォルダはエラー（開く処理自体はOS依存なので実行しない）
         assert "まだありません" in b2.open_folder("report")["error"]
+
+
+class TestResultsReadmeAndProgress:
+    def test_readme_written_after_recognition(self, tmp_path):
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b, _ = _bridge_through_recognition(scans, coord, key)
+        from constants import RESULTS_FOLDER
+        readme = scans / RESULTS_FOLDER / "README.txt"
+        assert readme.exists()
+        text = readme.read_text(encoding="utf-8")
+        assert "00_Processing" in text and "再開" in text
+
+    def test_progress_derivation(self, tmp_path):
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b, adapter = _bridge_through_recognition(scans, coord, key)
+        p = b.get_progress()["progress"]
+        assert p == {"prepared": True, "read": True,
+                     "scored": False, "summarized": False}
+        assert b.run_scoring()["ok"]
+        _wait_job_done(b)
+        p = b.get_progress()["progress"]
+        assert p["scored"] is True and p["summarized"] is False
+        assert b.run_summary()["ok"]
+        _wait_job_done(b)
+        assert b.get_progress()["progress"]["summarized"] is True
+
+    def test_progress_empty_bridge(self):
+        b = Bridge(window_adapter=RecordingAdapter())
+        p = b.get_progress()["progress"]
+        assert p == {"prepared": False, "read": False,
+                     "scored": False, "summarized": False}

@@ -4,6 +4,7 @@ import { pickRegion } from './region-picker.js';
 import { wireDescriptive } from './descriptive.js';
 import { withTransition } from './transitions.js';
 import { wireRenderSettings } from './render-settings.js';
+import { wireInfo } from './info.js';
 
 // ---------------------------------------------------------------
 // ログ
@@ -39,6 +40,26 @@ function setRow(rowId, summaryId, path, summaryHtmlBuilder) {
   } else {
     summary.hidden = true;
   }
+}
+
+async function updateStepper(state) {
+  const stepper = document.getElementById('stepper');
+  stepper.hidden = false;
+  document.getElementById('step-read-label').textContent =
+    state.app_mode === 'descriptive_only' ? '画像準備' : '読み取り';
+  try {
+    const res = await call('get_progress');
+    const p = res.progress;
+    const order = ['prepared', 'read', 'scored', 'summarized'];
+    let currentSet = false;
+    for (const li of stepper.querySelectorAll('li')) {
+      const done = p[li.dataset.step];
+      li.classList.toggle('done', Boolean(done));
+      const isCurrent = !done && !currentSet;
+      li.classList.toggle('current', isCurrent);
+      if (isCurrent) currentSet = true;
+    }
+  } catch { /* 進行度が取れなくてもUIは動かす */ }
 }
 
 export function render(state) {
@@ -91,7 +112,7 @@ export function render(state) {
   document.getElementById('row-omr-result').hidden = isDescOnly;
   document.getElementById('btn-open-checker').parentElement.hidden = isDescOnly;
   document.getElementById('btn-run-recognition').textContent =
-    isDescOnly ? '▶ 画像準備' : '▶ 認識実行';
+    isDescOnly ? '▶ 画像を準備する' : '▶ 答案を読み取る';
   if (state.descriptive) {
     const d = state.descriptive;
     const total = d.questions.reduce((n, q) => n + (d.scored_counts[q.id] ?? 0), 0);
@@ -143,6 +164,7 @@ export function render(state) {
     Boolean(running) || !scoringReady;
   document.getElementById('btn-cancel').hidden = !running;
   document.getElementById('job-progress').hidden = !running;
+  updateStepper(state);
 }
 
 // ---------------------------------------------------------------
@@ -196,7 +218,7 @@ window.saitenEvents = (ev) => {
 
 const JOB_START_LOG = {
   select_pdf: '▶ PDF展開を開始しました',
-  run_recognition: '▶ 認識を開始しました',
+  run_recognition: '▶ 答案の読み取りを開始しました',
   run_prepare_images: '▶ 画像準備を開始しました',
   run_scoring: '▶ 採点を開始しました',
   run_summary: '▶ 集計を開始しました',
@@ -332,6 +354,12 @@ function wireEvents() {
     const badge = document.getElementById('mode-badge');
     return badge ? currentModeName() : 'mark_only';
   });
+  document.querySelectorAll('#stepper li').forEach((li) => {
+    li.addEventListener('click', () => {
+      document.getElementById(li.dataset.target)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
   wireChecker(log);
   wireDescriptive(log, render);
   document.getElementById('btn-cancel')
@@ -384,6 +412,7 @@ const MODE_LABEL = {
 function showMain(state) {
   withTransition(() => {
     document.getElementById('mode-select').hidden = true;
+    document.getElementById('stepper').hidden = false;
     document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = false; });
     const label = MODE_LABEL[`${state.app_mode}/${state.mark_format}`] ?? '';
     let badge = document.getElementById('mode-badge');
@@ -438,6 +467,7 @@ async function init() {
     render(res.state);
     wireEvents();
     wireModeSelect();
+    wireInfo();
     // モード選択が出ている間はメインパネルを隠す
     document.querySelectorAll('main > .panel').forEach((p) => { p.hidden = true; });
   } catch (e) {

@@ -46,6 +46,7 @@ def test_total_hint_restored_from_state(open_app):
     """設定済みの合計点位置が、クリックしていなくてもヒントに出る（回帰）"""
     page = open_app(API)
     enter_mode(page)
+    page.click("#output-settings summary")   # 出力の設定を開く
     assert "設定済み (300, 700, 560, 800)" in \
         page.locator("#total-position-hint").inner_text()
 
@@ -53,6 +54,7 @@ def test_total_hint_restored_from_state(open_app):
 def test_dialog_sections_follow_mode_and_saves_change(open_app):
     page = open_app(API)
     enter_mode(page)   # mark_only
+    page.click("#output-settings summary")
     page.click("#btn-render-settings")
     page.wait_for_selector("#rs-overlay:not([hidden])")
     sections = page.locator(".rs-section h3")
@@ -71,6 +73,7 @@ def test_dialog_sections_follow_mode_and_saves_change(open_app):
 def test_offset_steppers_and_preview(open_app):
     page = open_app(API)
     enter_mode(page)
+    page.click("#output-settings summary")
     page.click("#btn-render-settings")
     page.wait_for_selector("#rs-overlay:not([hidden])")
     # プレビューが実描画APIから読み込まれる

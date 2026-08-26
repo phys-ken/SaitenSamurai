@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from scoring_engine import number_to_circled
-from constants import get_rendering_settings, DESCRIPTIVE_OVERLAY_OPACITY
+from constants import get_rendering_settings, DESCRIPTIVE_OVERLAY_OPACITY, find_japanese_font
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +43,23 @@ _font_cache: dict[int, ImageFont.FreeTypeFont] = {}
 
 
 def _get_font(size: int):
-    """MS Gothicフォントを取得（キャッシュ付き）。失敗時はデフォルトフォント。"""
+    """日本語フォントを取得（キャッシュ付き）。
+
+    フォントが見つからない場合は ImageFont.load_default() に落ちるが、
+    これはサイズ指定が効かない極小のビットマップフォントなので、
+    採点結果画像の得点が読めなくなる。例外は起きないため、
+    find_japanese_font() 側が1回だけ警告ログを出す。
+    """
     font = _font_cache.get(size)
     if font is None:
-        try:
-            font = ImageFont.truetype("C:/Windows/Fonts/msgothic.ttc", size)
-        except Exception:
+        font_path = find_japanese_font()
+        if font_path:
+            try:
+                font = ImageFont.truetype(font_path, size)
+            except Exception:
+                logger.warning("フォントの読み込みに失敗しました: %s", font_path)
+                font = ImageFont.load_default()
+        else:
             font = ImageFont.load_default()
         _font_cache[size] = font
     return font

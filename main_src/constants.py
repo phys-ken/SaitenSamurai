@@ -191,6 +191,58 @@ KMEANS_FEATURES = [                # 特徴量名リスト (v4.5.0: 7次元)
 
 
 # ========================================
+# 日本語フォントの解決
+# ========================================
+
+# 採点結果画像・CTTレポートの日本語描画に使うフォントの探索順。
+# Windows 標準フォントを先に置くため、Windows での見た目は従来と変わらない。
+# 末尾の Linux 向けパスは、開発機やCIで日本語が豆腐になるのを防ぐためのもの。
+JAPANESE_FONT_CANDIDATES = (
+    r"C:\Windows\Fonts\msgothic.ttc",      # MS ゴシック（従来のハードコード先）
+    r"C:\Windows\Fonts\meiryo.ttc",        # メイリオ
+    r"C:\Windows\Fonts\YuGothM.ttc",       # 游ゴシック Medium
+    r"C:\Windows\Fonts\msmincho.ttc",      # MS 明朝
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
+    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # 日本語は出ないが最後の砦
+)
+
+_japanese_font_path = None      # 解決結果のキャッシュ（未解決なら None）
+_japanese_font_resolved = False  # 解決を試みたか（None を毎回探索し直さないため）
+
+
+def find_japanese_font():
+    """日本語を描けるフォントファイルの絶対パスを返す。見つからなければ None。
+
+    見つからない場合、警告ログを1回だけ出す。フォントが無いと採点結果画像の
+    得点が極小のビットマップフォントになり、CTTレポートの日本語も出なくなるが、
+    どちらも例外は起きないため、警告を出さないと利用者が気づけない。
+    """
+    global _japanese_font_path, _japanese_font_resolved
+    if _japanese_font_resolved:
+        return _japanese_font_path
+    _japanese_font_resolved = True
+    for candidate in JAPANESE_FONT_CANDIDATES:
+        if os.path.exists(candidate):
+            _japanese_font_path = candidate
+            break
+    if _japanese_font_path is None:
+        logger.warning(
+            "日本語フォントが見つかりません。採点結果画像の得点が極端に小さく表示され、"
+            "CTTレポートの日本語が出力されない可能性があります。探索先: %s",
+            ", ".join(JAPANESE_FONT_CANDIDATES))
+    return _japanese_font_path
+
+
+def _reset_japanese_font_cache():
+    """テスト用: フォント解決のキャッシュを捨てる。"""
+    global _japanese_font_path, _japanese_font_resolved
+    _japanese_font_path = None
+    _japanese_font_resolved = False
+
+
+# ========================================
 # PyInstaller 対応ヘルパー
 # ========================================
 

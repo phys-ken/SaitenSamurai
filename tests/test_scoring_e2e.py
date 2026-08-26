@@ -293,3 +293,76 @@ def _format_wrong_answers(results: dict) -> str:
                 f"(配点: {r['max_points']}点)"
             )
     return '\n'.join(lines) if lines else '  (なし)'
+
+
+# ============================================================
+# 誤答系 E2E（同じ実画像・わざと違う answer_key で採点する）
+# ============================================================
+# 従来の実画像 e2e は満点ケースのみで、「間違いが間違いとして採点される」
+# ことは画像レベルで検証されていなかった（fable-review/test-plan.md 優先2）。
+# 認識結果は満点用と同一なので、answer_key 側を書き換えて誤答を作る。
+
+
+@pytest.fixture(scope="module")
+def student_answers(sample_files_exist, corrected_image, coordinates,
+                    auto_thresholds):
+    """実画像から認識した解答辞書（採点用番号ベース）"""
+    coords, _ = coordinates
+    color_th, area_th = auto_thresholds
+    raw_marks = recognize_marks(
+        corrected_image, coords,
+        color_threshold=color_th, area_threshold=area_th,
+    )
+    raw_choice_map = {}
+    for coord in coords:
+        raw_choice_map.setdefault(coord['question_no'], {})[coord['choice']] = coord['raw_choice']
+    answers = {}
+    for q_no, choices in raw_marks.items():
+        if q_no <= SKIP_QUESTIONS:
+            continue
+        vals = [str(raw_choice_map[q_no][c]) for c in sorted(choices)]
+        answers[q_no - SKIP_QUESTIONS] = ';'.join(vals) if vals else ''
+    return answers
+
+
+class TestEndToEndWrongAnswers:
+
+    def _score_with_modified_key(self, tmp_path, student_answers, mutate):
+        """answer_key をコピーして mutate(df) を適用し、採点結果を返す"""
+        import pandas as pd
+        df = pd.read_excel(ANSWER_KEY)
+        # int64 列に '5;6' 等の文字列を代入すると pandas 2.x は TypeError に
+        # なるため、書き換え前に object 型へ寄せる
+        df['正答'] = df['正答'].astype(object)
+        mutate(df)
+        key_path = tmp_path / "modified_key.xlsx"
+        df.to_excel(key_path, index=False)
+        return score_answers(student_answers, load_template(str(key_path)))
+
+    def test_wrong_keys_reduce_score(self, tmp_path, student_answers):
+        """正答を3問書き換えると、その配点ぶんだけ減点される（誤答が誤答になる）"""
+        def mutate(df):
+            # Q1(正答1)→2, Q2(正答2)→3, Q3(正答3)→4 （各2点）
+            for i, wrong in [(0, 2), (1, 3), (2, 4)]:
+                df.loc[i, '正答'] = wrong
+        result = self._score_with_modified_key(tmp_path, student_answers, mutate)
+        assert result['total_score'] == EXPECTED_SCORE - 6
+        for q in (1, 2, 3):
+            assert result['results'][q]['correct'] is False
+
+    def test_multiple_answer_requires_all_marks(self, tmp_path, student_answers):
+        """複数正答キー（;区切り）は集合一致。片方しか塗っていなければ誤答"""
+        def mutate(df):
+            df.loc[4, '正答'] = '5;6'   # Q5: 生徒は5のみマーク
+        result = self._score_with_modified_key(tmp_path, student_answers, mutate)
+        assert result['results'][5]['correct'] is False
+        assert result['total_score'] == EXPECTED_SCORE - 2
+
+    def test_zero_ten_equivalence_from_image(self, tmp_path, student_answers):
+        """キー表記を10→0に変えても実画像の解答は正解のまま（0⇔10等価）"""
+        def mutate(df):
+            assert str(df.loc[9, '正答']) in ('10', '0')  # Q10 は10番目の位置が正答
+            df.loc[9, '正答'] = '0'
+        result = self._score_with_modified_key(tmp_path, student_answers, mutate)
+        assert result['results'][10]['correct'] is True
+        assert result['total_score'] == EXPECTED_SCORE

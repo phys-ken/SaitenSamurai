@@ -42,9 +42,58 @@ from constants import (
     ERROR_TYPE_NO_MARK,
     ERROR_TYPE_DOUBLE_MARK,
     ERROR_TYPE_INVALID,
+    MARK_FORMAT_STANDARD,
+    MARK_FORMAT_MULTI_DIGIT,
+    MULTI_DIGIT_VALID_SYMBOLS,
+    MULTI_DIGIT_VALUE_TO_SYMBOL,
     escape_excel_formula,
 )
 from omr_engine import detect_corner_markers
+
+
+# 無効回答マーカー。紙面のマークではなく「この解答は採点しない」という運用上の印。
+# 複数桁モードでもマイナス記号は '-' で記録されるため、'-1' とは衝突しない。
+INVALID_ANSWER_MARKER = '-1'
+
+
+def normalize_mark_value(value_str, mark_format=MARK_FORMAT_STANDARD):
+    """読取結果セルの値を、紙面上の表記に正規化する。
+
+    標準モードは 1〜9,0 の1桁。複数桁モードは -,0〜9,a〜d の記号1文字。
+    Excelが数値として保持している場合（'3.0' など）も受理する。
+    紙面に存在しない値なら None を返す（＝不正な値）。
+
+    mark_format を渡さないと複数桁モードの '-' や 'a'〜'd' が
+    「不正な値」に分類され、正しくマークした答案がマークチェックの
+    エラー一覧を埋め尽くすので、呼び出し元は必ず渡すこと。
+    """
+    s = str(value_str).strip()
+    if not s:
+        return None
+
+    if mark_format == MARK_FORMAT_MULTI_DIGIT:
+        symbol = s.lower()
+        if symbol in MULTI_DIGIT_VALID_SYMBOLS:
+            return symbol
+        # 数値表記('3.0' 等)は記号へ寄せる。ただし -1 は無効回答マーカーなので
+        # マイナス記号('-', ヘッダ値 -1)には変換しない（呼び出し元が先に処理する）。
+        try:
+            f_val = float(s)
+        except (ValueError, TypeError):
+            return None
+        if f_val != int(f_val) or int(f_val) < 0:
+            return None
+        return MULTI_DIGIT_VALUE_TO_SYMBOL.get(int(f_val))
+
+    if '.' in s:
+        try:
+            f_val = float(s)
+        except (ValueError, TypeError):
+            return None
+        if f_val != int(f_val):
+            return None
+        s = str(int(f_val))
+    return s if re.match(r'^\d$', s) else None
 
 
 # ========================================
@@ -326,15 +375,19 @@ def apply_corrections_checker(xlsx_path, error_csv_path, backup_folder=DEFAULT_B
     return backup_path, update_count
 
 
-def detect_errors_checker(xlsx_path, output_csv_path, registered_questions=None):
+def detect_errors_checker(xlsx_path, output_csv_path, registered_questions=None,
+                          mark_format=MARK_FORMAT_STANDARD):
     """Excelファイルから問題の回答エラーを検出
-    
+
     Args:
         xlsx_path: Mark2結果Excelのパス
         output_csv_path: エラーCSV出力先
         registered_questions: 採点対象の問題番号セット。
             Noneの場合は全問題をチェック。
             指定された場合はその問題番号のみチェックする。
+        mark_format: MARK_FORMAT_STANDARD / MARK_FORMAT_MULTI_DIGIT。
+            複数桁モードで渡し忘れると、正しくマークされた '-' や 'a'〜'd' が
+            すべて「不正な値」として検出される。
     """
     xlsx_path = Path(xlsx_path)
     
@@ -414,26 +467,16 @@ def detect_errors_checker(xlsx_path, output_csv_path, registered_questions=None)
             else:
                 value_str = str(value).strip()
                 before_value = value_str
-                
-                if value_str == '-1' or value_str == '-1.0':
+
+                if value_str in (INVALID_ANSWER_MARKER, '-1.0'):
                     continue
-                
+
                 if ';' in value_str or '|' in value_str:
                     error_type = ERROR_TYPE_DOUBLE_MARK
+                elif normalize_mark_value(value_str, mark_format) is not None:
+                    continue
                 else:
-                    if '.' in value_str:
-                        try:
-                            num_value = float(value_str)
-                            if num_value == int(num_value):
-                                value_str = str(int(num_value))
-                        except ValueError:
-                            error_type = ERROR_TYPE_INVALID
-                    
-                    if error_type is None:
-                        if re.match(r'^\d$', value_str):
-                            continue
-                        else:
-                            error_type = ERROR_TYPE_INVALID
+                    error_type = ERROR_TYPE_INVALID
             
             if error_type:
                 errors.append({
@@ -461,7 +504,8 @@ def detect_errors_checker(xlsx_path, output_csv_path, registered_questions=None)
     return len(errors)
 
 
-def detect_all_entries_checker(xlsx_path, registered_questions=None):
+def detect_all_entries_checker(xlsx_path, registered_questions=None,
+                               mark_format=MARK_FORMAT_STANDARD):
     """Excelファイルから全エントリ（正常＋エラー）を読み込む。
 
     エラーだけでなく正常に認識されたマーク（選択肢1,2,3,...）も含めて
@@ -471,6 +515,9 @@ def detect_all_entries_checker(xlsx_path, registered_questions=None):
     Args:
         xlsx_path: Mark2結果Excelのパス
         registered_questions: 採点対象の問題番号セット（Noneなら全問）
+        mark_format: MARK_FORMAT_STANDARD / MARK_FORMAT_MULTI_DIGIT。
+            複数桁モードで渡し忘れると、正しくマークされた '-' や 'a'〜'd' が
+            すべて「不正な値」に分類される。
 
     Returns:
         pd.DataFrame: columns = [filename, question_no, before, after, error_type, category]
@@ -530,22 +577,14 @@ def detect_all_entries_checker(xlsx_path, registered_questions=None):
                 value_str = str(value).strip()
                 before_value = value_str
 
-                if value_str in ('-1', '-1.0'):
+                if value_str in (INVALID_ANSWER_MARKER, '-1.0'):
                     category = "無効回答(-1)"
                 elif ';' in value_str or '|' in value_str:
                     error_type = ERROR_TYPE_DOUBLE_MARK
                     category = "複数マーク"
                 else:
-                    # 正規化: "3.0" → "3"
-                    norm = value_str
-                    if '.' in norm:
-                        try:
-                            fv = float(norm)
-                            if fv == int(fv):
-                                norm = str(int(fv))
-                        except ValueError:
-                            pass
-                    if re.match(r'^\d+$', norm):
+                    norm = normalize_mark_value(value_str, mark_format)
+                    if norm is not None:
                         category = norm
                         before_value = norm
                     else:

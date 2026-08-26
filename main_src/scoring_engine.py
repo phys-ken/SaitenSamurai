@@ -204,7 +204,14 @@ def load_template(template_path, mark_format=MARK_FORMAT_STANDARD):
     Returns:
         問題番号をキーとした辞書（正答登録済みの問題のみ）
     """
-    df = pd.read_excel(template_path)
+    # 正答列は必ず文字列として読む。dtype を指定しないと pandas が列を型推論し、
+    # '024' → 24 のように先頭ゼロを落とす。複数桁モードでは正答の文字数が
+    # そのまま消費するマーク行数(span)になるため、これが起きると設問全体が
+    # 黙って誤採点になる。型推論は列単位なので、正答列に英字(a〜d)が1つでも
+    # 混ざっていれば object 型のまま保たれ、不具合は answer_key の他の行しだいで
+    # 出たり出なかったりする。標準モードでは normalize_value を通した結果が
+    # 従来と一致するため影響しない。
+    df = pd.read_excel(template_path, dtype={'正答': str})
 
     # 必要な列をチェック
     required_columns = ['問題番号', '正答', '配点', '観点']
@@ -337,8 +344,13 @@ def load_mark2_results(mark2_result_path, skip_questions=0):
     
     Args:
         mark2_result_path: Mark2結果Excelのパス
-        skip_questions: スキップする問題数（後方互換性のため残すが、ヘッダー行の値を優先する）
-    
+        skip_questions: 解答欄の前にある ID 欄（学年・クラス・出席番号等）の列数。
+            この引数は実際に使われる。用途は2つ:
+            (1) File 列の直後 skip_questions 列分を採点対象から除外する
+            (2) 設問名行(Row 1)の番号が「元の問題番号」か「採点用の1始まり」かを
+                判定し、前者ならオフセットを引いて1始まりに揃える
+            設問名行が無い場合は Row 0 の元番号から skip_questions を引いて復元する。
+
     Returns:
         学生データのリスト
     """

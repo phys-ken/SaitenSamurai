@@ -108,6 +108,67 @@ class TestCheckAnswerKey:
         assert res['ok'] is False
         assert any('超える' in e for e in res['errors'])
 
+    def test_trailing_unused_rows_warning(self, tmp_path):
+        """座標の末尾行を使い切っていないと警告する。
+
+        中抜け警告は「最初に使った行〜最後に使った行」の間しか見ないため、
+        最後の問の登録漏れは検出できない。座標ファイルがあるときはそこを埋める。
+        """
+        key_path = tmp_path / "key.xlsx"
+        _create_answer_key(key_path, [
+            {'問題番号': 1, '正答': '-24', '配点': 3, '観点': 1},  # 1〜3行のみ
+        ])
+        coord_path = tmp_path / "coord.xlsx"
+        _create_coord_xlsx(coord_path, MULTI_DIGIT_HEADERS, num_questions=6)
+        res = check_answer_key(key_path, mark_format=MARK_FORMAT_MULTI_DIGIT,
+                               coord_excel_path=coord_path, skip_questions=0)
+        assert res['ok'] is True
+        assert any('4〜6' in w and '未採点' in w for w in res['warnings'])
+
+    def test_no_trailing_warning_when_rows_fully_used(self, tmp_path):
+        """座標の行を使い切っていれば末尾警告は出ない"""
+        key_path = tmp_path / "key.xlsx"
+        _create_answer_key(key_path, [
+            {'問題番号': 1, '正答': '-24', '配点': 3, '観点': 1},
+            {'問題番号': '4-6', '正答': '123', '配点': 3, '観点': 1},
+        ])
+        coord_path = tmp_path / "coord.xlsx"
+        _create_coord_xlsx(coord_path, MULTI_DIGIT_HEADERS, num_questions=6)
+        res = check_answer_key(key_path, mark_format=MARK_FORMAT_MULTI_DIGIT,
+                               coord_excel_path=coord_path, skip_questions=0)
+        assert not any('未採点' in w for w in res['warnings'])
+
+    def test_all_correct_single_row_warning(self, tmp_path):
+        """全員正解＋正答空欄＋単独表記は1行扱いになるので警告する"""
+        path = tmp_path / "key.xlsx"
+        _create_answer_key(path, [
+            {'問題番号': 1, '正答': '', '配点': 3, '観点': 1, '特例': '全員正解'},
+        ])
+        res = check_answer_key(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert res['ok'] is True
+        assert any('全員正解' in w and '1行ぶん' in w for w in res['warnings'])
+
+    def test_all_correct_with_range_no_warning(self, tmp_path):
+        """全員正解でも範囲表記なら消費行数が確定するので警告しない"""
+        path = tmp_path / "key.xlsx"
+        _create_answer_key(path, [
+            {'問題番号': '1-3', '正答': '', '配点': 3, '観点': 1, '特例': '全員正解'},
+        ])
+        res = check_answer_key(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
+        assert not any('1行ぶん' in w for w in res['warnings'])
+
+    def test_gap_warning_does_not_dismiss_itself(self, tmp_path):
+        """中抜け警告は読み流しを促す文面にしない（原因を示す）"""
+        path = tmp_path / "key.xlsx"
+        _create_answer_key(path, [
+            {'問題番号': 1, '正答': '-24', '配点': 3, '観点': 1},
+            {'問題番号': 6, '正答': '5', '配点': 2, '観点': 1},
+        ])
+        res = check_answer_key(path, mark_format=MARK_FORMAT_MULTI_DIGIT)
+        gap_warning = next(w for w in res['warnings'] if '中抜け' in w or '未使用の解答番号' in w)
+        assert '問題ありません' not in gap_warning
+        assert '書き忘れ' in gap_warning or '入れ忘れ' in gap_warning
+
     def test_missing_file(self, tmp_path):
         res = check_answer_key(tmp_path / "nothing.xlsx")
         assert res['ok'] is False

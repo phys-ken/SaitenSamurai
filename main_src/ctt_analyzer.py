@@ -43,7 +43,6 @@ try:
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
-    plt.rcParams['font.family'] = 'MS Gothic'
     HAS_MATPLOTLIB = True
 except ImportError:
     matplotlib = None
@@ -70,9 +69,25 @@ except ImportError:
 from constants import (
     safe_print,
     escape_excel_formula,
+    find_japanese_font,
     MARK_FORMAT_STANDARD,
     MARK_FORMAT_MULTI_DIGIT,
 )
+
+# グラフの日本語フォント設定。constants の探索結果を使うため import の後に行う。
+# 設定できないとグラフの日本語が豆腐(□□□)になるが例外は起きないため、
+# 警告を出さないと利用者が気づけない。
+if HAS_MATPLOTLIB:
+    _plot_font_path = find_japanese_font()
+    if _plot_font_path:
+        try:
+            fm.fontManager.addfont(_plot_font_path)
+            plt.rcParams['font.family'] = fm.FontProperties(fname=_plot_font_path).get_name()
+        except Exception as _e:
+            logger.warning("グラフ用フォントの設定に失敗しました（グラフの日本語が文字化けします）: %s (%s)",
+                           _plot_font_path, _e)
+    else:
+        logger.warning("グラフ用の日本語フォントが見つかりません。グラフの日本語が文字化けします")
 from scoring_engine import (
     number_to_circled,
     normalize_value,
@@ -1435,15 +1450,20 @@ class CTTPDFReporter:
         self.output_path = output_path
         self.plot_gen = CTTPlotGenerator()
 
-        try:
-            pdfmetrics.registerFont(TTFont('Gothic', 'C:\\Windows\\Fonts\\msgothic.ttc'))
-            self.fn = 'Gothic'
-        except Exception:
+        # 日本語フォントが登録できないと Helvetica にフォールバックするが、
+        # Helvetica は日本語を描けないため PDF レポートの日本語が出なくなる。
+        # 例外は起きないので、警告を出さないと利用者が気づけない。
+        self.fn = 'Helvetica'
+        font_path = find_japanese_font()
+        if font_path:
             try:
-                pdfmetrics.registerFont(TTFont('Gothic', 'C:\\Windows\\Fonts\\msmincho.ttc'))
+                pdfmetrics.registerFont(TTFont('Gothic', font_path))
                 self.fn = 'Gothic'
-            except Exception:
-                self.fn = 'Helvetica'
+            except Exception as e:
+                logger.warning("PDFレポート用フォントの登録に失敗しました（日本語が出力されません）: %s (%s)",
+                               font_path, e)
+        else:
+            logger.warning("PDFレポート用の日本語フォントが見つかりません。日本語が出力されません")
 
         self.styles = getSampleStyleSheet()
         self._create_styles()

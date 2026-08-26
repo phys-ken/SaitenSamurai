@@ -122,3 +122,23 @@ def test_close_restores_panels(open_app):
     page.click("#btn-close-checker")
     page.wait_for_selector("#checker-view", state="hidden")
     assert page.locator("main > .panel").first.is_visible()
+
+
+def test_keyboard_correction_advances_cursor(open_app):
+    page = _open_checker(open_app)
+    # カーソルは先頭カード。記号キー1打で訂正が入り、次のカードへ進む
+    page.wait_for_selector(".entry-card.cursor[data-index='0']")
+    page.keyboard.press("a")
+    page.wait_for_selector(".entry-card.corrected")
+    page.wait_for_selector(".entry-card.cursor[data-index='1']")
+    assert "訂正 1 件" in page.locator("#checker-summary").inner_text()
+    # BackSpace で訂正取消（カーソルは動かない）
+    page.keyboard.press("ArrowLeft")
+    page.wait_for_selector(".entry-card.cursor[data-index='0']")
+    page.keyboard.press("Backspace")
+    page.wait_for_function(
+        "document.querySelector('#checker-summary').textContent.includes('訂正 0 件')")
+    # Enter で入力欄にフォーカス（-1 などの特殊値用）
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "document.activeElement.tagName === 'INPUT'")

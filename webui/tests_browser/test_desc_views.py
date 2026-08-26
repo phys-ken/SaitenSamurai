@@ -117,8 +117,9 @@ def test_single_sheet_view_overlays_and_navigation(open_app):
     page.wait_for_selector("#single-sheet-view", state="visible")
     assert "s1.png（1 / 2）" in page.locator("#single-sheet-name").inner_text()
     assert page.locator("#btn-sheet-prev").is_disabled()
-    # 領域オーバーレイが問題数ぶん載る
-    assert page.locator("#annotation-layer .region-box").count() == 2
+    # 領域オーバーレイは画像ロード後に敷かれるため待機型で確認
+    page.wait_for_function(
+        "document.querySelectorAll('#annotation-layer .region-box').length === 2")
     # サイドパネルで採点 → ラベルに点数が反映される
     side1 = page.locator("#sheet-side .side-q").nth(0)
     side1.locator(".score-btn", has_text="5").first.click()
@@ -130,7 +131,8 @@ def test_single_sheet_view_overlays_and_navigation(open_app):
     page.wait_for_function(
         "document.querySelector('#single-sheet-name').textContent.includes('s2.png')")
     assert page.locator("#btn-sheet-next").is_disabled()
-    assert "未" in page.locator("#annotation-layer .region-label").first.inner_text()
+    page.wait_for_function(
+        "document.querySelector('#annotation-layer .region-label')?.textContent.includes('未')")
     # 問題別に戻る
     page.click("#btn-single-close")
     page.wait_for_selector("#desc-scoring-view", state="visible")

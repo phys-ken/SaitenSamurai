@@ -107,6 +107,13 @@ def _setup_desc_demo(bridge, out_prefix):
     ImageGrab.grab(xdisplay="").save(f"{out_prefix}_grid.png")
     print(f"saved: {out_prefix}_grid.png")
     bridge.set_descriptive_score("s1.png", "D1", 5)
+    # ドキュメント用に手書きコメントも載せる
+    bridge.set_handwriting("s1.png", 595, 842, [
+        {"color": "#c73e2e", "width": 3,
+         "points": [[90, 300, 0.3], [170, 260, 0.7], [260, 310, 0.9], [340, 265, 0.6]]},
+        {"color": "#1d5fa8", "width": 2,
+         "points": [[110, 640, 0.5], [420, 640, 0.5]]},
+    ])
     bridge._win.eval_js("window.__refreshState()")
     time.sleep(0.5)
     bridge._win.eval_js("document.getElementById('btn-single-sheet').click()")
@@ -115,12 +122,57 @@ def _setup_desc_demo(bridge, out_prefix):
     print(f"saved: {out_prefix}_single.png")
 
 
+def _shoot_docs(bridge, out_dir):
+    """ドキュメントサイト用スクリーンショット一式（docs/images/webui/）"""
+    from PIL import ImageGrab
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    def snap(name, wait=0.8):
+        time.sleep(wait)
+        ImageGrab.grab(xdisplay="").save(str(out / name))
+        print("saved:", out / name)
+
+    def js(code, wait=0.6):
+        bridge._win.eval_js(code)
+        time.sleep(wait)
+
+    time.sleep(2.5)
+    snap("01_mode_select.png", wait=0.2)
+
+    # 数学マーク採点デモ一式（フォルダ・座標・正答・読み取り）
+    _setup_demo(bridge)
+    time.sleep(1.0)
+    js("window.scrollTo(0, 0)")
+    snap("02_main.png")
+
+    js("document.getElementById('output-settings').open = true")
+    js("document.getElementById('output-settings-panel').scrollIntoView()")
+    snap("03_output_settings.png")
+
+    js("document.getElementById('btn-render-settings').click()", wait=2.0)
+    snap("04_render_settings.png")
+    js("document.getElementById('btn-rs-close').click()")
+
+    js("document.getElementById('btn-open-map').click()")
+    snap("05_files_map.png")
+    js("document.getElementById('btn-map-close').click()")
+
+    js("document.getElementById('btn-open-checker').click()", wait=2.0)
+    snap("06_checker.png")
+    js("document.getElementById('btn-close-checker').click()", wait=1.0)
+
+
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "webui_preview.png")
     demo = "--demo" in sys.argv
     window, bridge = create_app()
 
     def shoot():
+        if "--docs" in sys.argv:
+            _shoot_docs(bridge, str(out))
+            window.destroy()
+            return
         if "--descdemo" in sys.argv:
             _setup_desc_demo(bridge, str(out.with_suffix("")))
             window.destroy()

@@ -57,8 +57,12 @@ def _mark_rect(q_no, position):
             MARK_SIZE, MARK_SIZE)
 
 
-def make_coord_xlsx(path, num_rows):
-    """複数桁テンプレート相当の座標Excelを生成（row0=値ヘッダ -1..13）"""
+def make_coord_xlsx(path, num_rows, id_rows=0):
+    """複数桁テンプレート相当の座標Excelを生成（row0=値ヘッダ -1..13）。
+
+    設問名(col1)は実テンプレート(M2-03系)に合わせ、ID行は文字列・解答行は
+    数値の連番にする（マークチェックの列検出は数値の設問名を前提とするため）。
+    """
     width = 4 + N_CHOICES * 4
     rows = []
     r0 = [''] * width
@@ -71,7 +75,7 @@ def make_coord_xlsx(path, num_rows):
     for q in range(1, num_rows + 1):
         r = [''] * width
         r[0] = q
-        r[1] = f'設問{q}'
+        r[1] = f'ID{q}' if q <= id_rows else q - id_rows
         for i in range(N_CHOICES):
             x, y, w, h = _mark_rect(q, i)
             base = 4 + i * 4

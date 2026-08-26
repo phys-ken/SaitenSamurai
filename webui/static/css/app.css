@@ -102,3 +102,37 @@ main#app { flex: 1; padding: 1rem; overflow: auto; }
 .job-status { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
 #step1-panel select, #threshold-inputs input { font: inherit; padding: 0.25rem; }
 #threshold-inputs input { width: 4.5em; }
+
+/* ── マークチェック ── */
+.checker-head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.6rem; }
+.checker-head h2 { margin: 0; font-size: 1.05rem; }
+.checker-summary { color: var(--muted); font-size: 0.85rem; margin-right: auto; }
+.checker-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.7rem; }
+.tab {
+  font: inherit; font-size: 0.85rem;
+  padding: 0.3rem 0.7rem; border: 1px solid #cfd8dc; border-radius: 999px;
+  background: #fff; cursor: pointer;
+}
+.tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab.error-cat { border-color: #ef9a9a; }
+.tab.error-cat.active { background: #c62828; border-color: #c62828; }
+.checker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.6rem;
+}
+.entry-card {
+  background: var(--panel); border: 1px solid #e0e5e9; border-radius: 6px;
+  padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;
+}
+.entry-card.error { border-color: #ef9a9a; background: #fff8f8; }
+.entry-card.corrected { border-color: #81c784; background: #f6fdf6; }
+.entry-card img { width: 100%; border: 1px solid #eceff1; border-radius: 3px;
+                  min-height: 40px; background: #fafafa; }
+.entry-meta { display: flex; justify-content: space-between; font-size: 0.78rem;
+              color: var(--muted); }
+.entry-fix { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.entry-fix input { width: 4em; font: inherit; text-align: center; padding: 0.2rem; }
+.entry-before { font-weight: bold; }
+.checker-pager { display: flex; align-items: center; gap: 0.8rem;
+                 justify-content: center; margin-top: 0.8rem; }

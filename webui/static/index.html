@@ -64,6 +64,10 @@
       <span id="job-status" class="job-status"></span>
     </div>
 
+    <div class="ds-row">
+      <button class="btn" id="btn-open-checker">🔍 マークチェック</button>
+    </div>
+
     <div class="ds-row" id="row-omr-result">
       <span class="ds-label">OMR結果</span>
       <span class="ds-value" data-empty="未生成（認識実行で自動設定）"></span>
@@ -74,6 +78,23 @@
   <section class="panel">
     <h2>処理ログ</h2>
     <div id="log" class="log" aria-live="polite"></div>
+  </section>
+
+  <!-- マークチェックビュー（開いている間は他パネルを隠す） -->
+  <section id="checker-view" hidden>
+    <div class="checker-head">
+      <h2>🔍 マークチェック</h2>
+      <span id="checker-summary" class="checker-summary"></span>
+      <button class="btn btn-primary" id="btn-apply-corrections">💾 xlsxに反映</button>
+      <button class="btn" id="btn-close-checker">閉じる</button>
+    </div>
+    <nav id="checker-tabs" class="checker-tabs"></nav>
+    <div id="checker-grid" class="checker-grid"></div>
+    <div class="checker-pager">
+      <button class="btn" id="pager-prev">◀ 前へ</button>
+      <span id="pager-info"></span>
+      <button class="btn" id="pager-next">次へ ▶</button>
+    </div>
   </section>
 </main>
 

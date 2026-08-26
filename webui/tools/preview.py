@@ -46,6 +46,9 @@ def _setup_demo(bridge):
     time.sleep(0.6)
     bridge._win.eval_js("document.getElementById('btn-run-recognition').click()")
     time.sleep(3)
+    if "--checker" in sys.argv:
+        bridge._win.eval_js("document.getElementById('btn-open-checker').click()")
+        time.sleep(2.5)
     bridge._win.open_folder_dialog = real_folder
     bridge._win.open_file_dialog = real_file
 

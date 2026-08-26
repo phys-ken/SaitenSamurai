@@ -1,4 +1,5 @@
 import { call } from './bridge.js';
+import { openChecker, wireChecker } from './checker.js';
 
 // ---------------------------------------------------------------
 // ログ
@@ -69,6 +70,8 @@ export function render(state) {
   const running = state.job?.running;
   document.getElementById('btn-run-recognition').disabled =
     Boolean(running) || !state.image_folder || !state.coord_file;
+  document.getElementById('btn-open-checker').disabled =
+    Boolean(running) || !state.omr_result;
   document.getElementById('btn-cancel').hidden = !running;
   document.getElementById('job-progress').hidden = !running;
 }
@@ -126,6 +129,15 @@ async function runRecognition() {
 function wireEvents() {
   document.getElementById('btn-run-recognition')
     .addEventListener('click', runRecognition);
+  document.getElementById('btn-open-checker').addEventListener('click', async () => {
+    try {
+      await openChecker(log);
+    } catch (e) {
+      log(`❌ ${e.message}`);
+      alert(e.message);
+    }
+  });
+  wireChecker(log);
   document.getElementById('btn-cancel')
     .addEventListener('click', async () => { await call('cancel_job'); log('⏹ 中断を要求しました'); });
   document.getElementById('omr-mode').addEventListener('change', async (ev) => {

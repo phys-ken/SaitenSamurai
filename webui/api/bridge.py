@@ -21,6 +21,7 @@ if str(_REPO_ROOT / "main_src") not in sys.path:
 from constants import APP_VERSION  # noqa: E402
 
 from api.jobs import JobsMixin  # noqa: E402
+from api.checker import CheckerMixin  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ class DataSourceMixin:
         }
 
 
-class Bridge(DataSourceMixin, JobsMixin):
+class Bridge(DataSourceMixin, JobsMixin, CheckerMixin):
     """pywebview の js_api として渡すクラス。
 
     window_adapter: ネイティブ機能の注入点。必要なメソッド:
@@ -225,6 +226,7 @@ class Bridge(DataSourceMixin, JobsMixin):
         self._win = window_adapter
         self._init_state()
         self._init_jobs()
+        self._init_checker()
 
     # --- 疎通・情報 -------------------------------------------------
 

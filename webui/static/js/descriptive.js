@@ -76,16 +76,10 @@ async function renderConfigTable() {
     const reBtn = document.createElement('button');
     reBtn.className = 'btn';
     reBtn.textContent = '領域再指定';
-    reBtn.addEventListener('click', async () => {
-      try {
-        const sheet = await call('get_sheet_image');
-        const region = await pickRegion(sheet.data_url,
-          { title: `${q.name} の領域を指定（${sheet.filename}）`, existing: q.region });
-        if (region === null) return;
-        await call('update_descriptive_region', q.id, region);
-        cropLoader.clear();   // 旧領域の切り出しを表示しない（S8）
-        await renderConfigTable();
-      } catch (e) { logFn(`❌ ${e.message}`); }
+    reBtn.addEventListener('click', () => {
+      configRearmQid = q.id;      // 次のドラッグがこの問題の領域になる
+      configHint();
+      layoutConfigStage();
     });
     const delBtn = document.createElement('button');
     delBtn.className = 'btn';
@@ -117,11 +111,143 @@ async function renderConfigTable() {
   }));
   el('desc-config-summary').textContent =
     `${desc.questions.length} 問 / 対象画像 ${desc.prepared_count} 枚`;
+  lastConfigQuestions = desc.questions;
+  layoutConfigStage();
   onStateUpdate(res.state);
+}
+
+// ── 設定ビューの答案画像（tk方式: ドラッグで即追加） ──────────
+let configZoom = null;          // null=幅フィット / 数値=倍率
+let configRearmQid = null;      // 「領域再指定」対象（次のドラッグで更新）
+
+function layoutConfigStage() {
+  const img = el('config-image');
+  if (!img.naturalWidth) return;
+  img.style.width = configZoom === null
+    ? '100%' : `${img.naturalWidth * configZoom}px`;
+  const overlay = el('config-overlay');
+  overlay.style.width = `${img.clientWidth}px`;
+  overlay.style.height = `${img.clientHeight}px`;
+  const k = img.clientWidth / img.naturalWidth;
+  const questions = lastConfigQuestions;
+  overlay.replaceChildren(...questions.map((q) => {
+    const [x1, y1, x2, y2] = q.region;
+    const box = document.createElement('div');
+    box.className = 'config-box' + (q.id === configRearmQid ? ' rearm' : '');
+    Object.assign(box.style, {
+      left: `${x1 * k}px`, top: `${y1 * k}px`,
+      width: `${(x2 - x1) * k}px`, height: `${(y2 - y1) * k}px`,
+    });
+    const label = document.createElement('span');
+    label.className = 'config-label';
+    label.textContent = `${q.id}: ${q.name}`;
+    box.appendChild(label);
+    return box;
+  }));
+}
+
+let lastConfigQuestions = [];
+
+function configHint() {
+  el('config-hint').innerHTML = configRearmQid
+    ? `<strong>${configRearmQid} の領域をドラッグで描き直してください</strong>（Esc で中止）`
+    : '答案の上を<strong>ドラッグすると記述問題が追加</strong>されます（名前・配点は右の表であとから変更可） ／ Ctrl＋ホイール＝拡大縮小';
+}
+
+function wireConfigStage() {
+  const stage = el('config-stage');
+  const img = el('config-image');
+  const rubber = el('config-rubber');
+  let drag = null;
+
+  const toNatural = (e) => {
+    const r = img.getBoundingClientRect();
+    const k = img.naturalWidth / r.width;
+    return [
+      Math.round(Math.min(Math.max(e.clientX - r.left, 0), r.width) * k),
+      Math.round(Math.min(Math.max(e.clientY - r.top, 0), r.height) * k),
+    ];
+  };
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !img.naturalWidth) return;
+    e.preventDefault();
+    stage.setPointerCapture(e.pointerId);
+    drag = { start: toNatural(e), end: toNatural(e) };
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    drag.end = toNatural(e);
+    const k = img.clientWidth / img.naturalWidth;
+    const x1 = Math.min(drag.start[0], drag.end[0]) * k;
+    const y1 = Math.min(drag.start[1], drag.end[1]) * k;
+    Object.assign(rubber.style, {
+      left: `${x1}px`, top: `${y1}px`,
+      width: `${Math.abs(drag.end[0] - drag.start[0]) * k}px`,
+      height: `${Math.abs(drag.end[1] - drag.start[1]) * k}px`,
+    });
+    rubber.hidden = false;
+  });
+  stage.addEventListener('pointerup', async () => {
+    if (!drag) return;
+    rubber.hidden = true;
+    const region = [
+      Math.min(drag.start[0], drag.end[0]), Math.min(drag.start[1], drag.end[1]),
+      Math.max(drag.start[0], drag.end[0]), Math.max(drag.start[1], drag.end[1]),
+    ];
+    drag = null;
+    if (region[2] - region[0] < 8 || region[3] - region[1] < 8) return;  // 誤クリック
+    try {
+      if (configRearmQid) {
+        await call('update_descriptive_region', configRearmQid, region);
+        cropLoader.clear();
+        logFn(`✓ ${configRearmQid} の領域を更新しました`);
+        configRearmQid = null;
+      } else {
+        const nextNo = lastConfigQuestions.length + 1;
+        const res = await call('add_descriptive_question',
+          `記述${nextNo}`, el('new-q-max').value, el('new-q-aspect').value, region);
+        logFn(`＋ ${res.question_id}（記述${nextNo}）を追加しました — 名前・配点は右の表で変更できます`);
+      }
+      configHint();
+      await renderConfigTable();
+    } catch (e2) { logFn(`❌ ${e2.message}`); }
+  });
+  stage.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const cur = img.clientWidth / img.naturalWidth;
+    configZoom = Math.min(4, Math.max(0.3, cur * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    layoutConfigStage();
+  }, { passive: false });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && configRearmQid && !el('desc-config-view').hidden) {
+      configRearmQid = null;
+      configHint();
+      layoutConfigStage();
+    }
+  });
+  new ResizeObserver(() => {
+    if (!el('desc-config-view').hidden) layoutConfigStage();
+  }).observe(stage);
 }
 
 export async function openDescConfig() {
   await showView('desc-config-view');
+  configRearmQid = null;
+  configZoom = null;
+  configHint();
+  try {
+    const sheet = await call('get_sheet_image');
+    const img = el('config-image');
+    await new Promise((resolve) => {
+      img.onload = resolve;
+      img.onerror = resolve;
+      img.src = sheet.data_url;
+    });
+  } catch (e) {
+    logFn(`❌ ${e.message}`);
+  }
   await renderConfigTable();
 }
 
@@ -794,20 +920,7 @@ export function wireDescriptive(log, stateUpdate) {
     openDescConfig().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
   el('btn-desc-config-close').addEventListener('click', () => showView(null));
 
-  el('btn-add-question').addEventListener('click', async () => {
-    try {
-      const sheet = await call('get_sheet_image');
-      const name = el('new-q-name').value || `問${Date.now() % 1000}`;
-      const region = await pickRegion(sheet.data_url,
-        { title: `${name} の採点領域をドラッグで指定（${sheet.filename}）` });
-      if (region === null) return;
-      const res = await call('add_descriptive_question',
-        name, el('new-q-max').value, el('new-q-aspect').value, region);
-      log(`＋ ${res.question_id}（${name}）を追加しました`);
-      el('new-q-name').value = '';
-      await renderConfigTable();
-    } catch (e) { log(`❌ ${e.message}`); alert(e.message); }
-  });
+  wireConfigStage();
 
   el('btn-desc-scoring').addEventListener('click', () =>
     openDescScoring().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));

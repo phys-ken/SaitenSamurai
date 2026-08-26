@@ -199,17 +199,27 @@
     <div class="checker-head">
       <h2>記述問題の設定</h2>
       <span class="checker-summary" id="desc-config-summary"></span>
+      <label class="hint">追加時の配点
+        <input id="new-q-max" type="number" min="1" value="5" class="config-default-input"> 点</label>
+      <label class="hint">観点
+        <input id="new-q-aspect" type="number" min="1" value="1" class="config-default-input"></label>
       <button class="btn" id="btn-desc-config-close">閉じる</button>
     </div>
-    <table class="desc-table" id="desc-table">
-      <thead><tr><th>ID</th><th>名前</th><th>配点</th><th>観点</th><th>領域</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="ds-row desc-add-row">
-      <input id="new-q-name" placeholder="問題名（例: 問3）">
-      配点 <input id="new-q-max" type="number" min="1" value="5">
-      観点 <input id="new-q-aspect" type="number" min="1" value="1">
-      <button class="btn btn-primary" id="btn-add-question">＋ 領域を指定して追加</button>
+    <div class="grid-toolbar">
+      <span class="hint" id="config-hint">答案の上を<strong>ドラッグすると記述問題が追加</strong>されます（名前・配点は右の表であとから変更可） ／ Ctrl＋ホイール＝拡大縮小</span>
+    </div>
+    <div class="config-layout">
+      <div class="config-stage" id="config-stage">
+        <img id="config-image" alt="答案">
+        <div class="config-overlay" id="config-overlay"></div>
+        <div class="config-rubber" id="config-rubber" hidden></div>
+      </div>
+      <div class="config-side">
+        <table class="desc-table" id="desc-table">
+          <thead><tr><th>ID</th><th>名前</th><th>配点</th><th>観点</th><th>領域</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </section>
 

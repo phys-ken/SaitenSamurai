@@ -40,3 +40,9 @@ def enter_mode(page, selector=".mode-card"):
         "document.querySelector('#bridge-status').dataset.state === 'ok'")
     page.click(selector)
     page.wait_for_selector("#mode-select", state="hidden")
+
+
+def wait_transition(page):
+    """View Transition のフェード完了を待つ（アニメ中はポインタが効かない）"""
+    page.wait_for_function(
+        "!document.documentElement.dataset.vtBusy")

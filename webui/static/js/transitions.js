@@ -10,7 +10,14 @@
 export function withTransition(update) {
   if (document.startViewTransition &&
       !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    return document.startViewTransition(update).updateCallbackDone;
+    const t = document.startViewTransition(update);
+    // アニメーション中は ::view-transition がポインタを奪うため、
+    // 終了が分かる印を付けておく（テスト・連打対策）
+    document.documentElement.dataset.vtBusy = '1';
+    t.finished.finally(() => {
+      delete document.documentElement.dataset.vtBusy;
+    });
+    return t.updateCallbackDone;
   }
   update();
   return Promise.resolve();

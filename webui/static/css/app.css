@@ -533,3 +533,27 @@ input, select {
 /* ペン/タッチで書くときブラウザのスクロールに食われない（A1） */
 .sheet-stage.commenting, .hw-canvas { touch-action: none; }
 .sheet-stage { touch-action: pan-x pan-y; }
+
+/* ── 記述問題の設定（tk方式: 画像常設＋ドラッグ即追加） ── */
+.config-layout { display: flex; gap: 0.7rem; align-items: flex-start; }
+.config-stage { position: relative; flex: 1; min-width: 0; overflow: auto;
+                max-height: calc(100vh - 12rem);
+                border: 1px solid var(--kei); background: var(--paper-dim);
+                cursor: crosshair; }
+.config-stage img { display: block; width: 100%;
+                    user-select: none; -webkit-user-drag: none; }
+.config-overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+.config-box { position: absolute; border: 2px solid var(--shu);
+              background: rgba(199, 62, 46, 0.06); }
+.config-box.rearm { border-color: var(--warn); border-style: dashed; }
+.config-box .config-label {
+  position: absolute; top: -1.5em; left: -2px; font-size: 0.75rem;
+  background: var(--shu); color: #fff; padding: 0 0.45em; white-space: nowrap;
+}
+.config-rubber { position: absolute; border: 2px dashed var(--shu);
+                 background: rgba(199, 62, 46, 0.08); pointer-events: none; }
+.config-side { flex: 0 0 26rem; max-height: calc(100vh - 12rem); overflow-y: auto; }
+.config-default-input { width: 3.5em; text-align: center; font: inherit; }
+#config-hint strong { color: var(--shu-dark); }
+.desc-table .btn { padding: 0.12rem 0.4rem; font-size: 0.78rem; margin: 1px 0; }
+.desc-table td:nth-child(5) { font-size: 0.72rem; color: var(--usuzumi); }

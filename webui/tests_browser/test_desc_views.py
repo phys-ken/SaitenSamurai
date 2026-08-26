@@ -60,7 +60,7 @@ API = """(() => {
   };
 })()""" % {"png": TINY_PNG}
 
-from conftest import enter_mode
+from conftest import enter_mode, wait_transition
 
 DESC_CARD = ".mode-card[data-mode=descriptive_only]"
 
@@ -137,3 +137,68 @@ def test_single_sheet_view_overlays_and_navigation(open_app):
     # 問題別に戻る
     page.click("#btn-single-close")
     page.wait_for_selector("#desc-scoring-view", state="visible")
+
+
+def _inject_big_sheet(page):
+    page.evaluate("""() => {
+      const c = document.createElement('canvas');
+      c.width = 595; c.height = 842;
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, 595, 842);
+      const url = c.toDataURL('image/png');
+      window.__mockApi.get_sheet_image =
+        async (f) => ({ok: true, filename: f ?? 's1.png', data_url: url});
+      window.__calls = [];
+      const origAdd = window.__mockApi.add_descriptive_question;
+      window.__mockApi.add_descriptive_question = async (...a) => {
+        window.__calls.push(['add', ...a]);
+        return {ok: true, question_id: 'D9'};
+      };
+      window.__mockApi.update_descriptive_region = async (...a) => {
+        window.__calls.push(['update', ...a]);
+        return {ok: true};
+      };
+    }""")
+
+
+def _drag_on_config(page, x0, y0, x1, y1):
+    box = page.locator("#config-image").bounding_box()
+    page.mouse.move(box["x"] + x0, box["y"] + y0)
+    page.mouse.down()
+    page.mouse.move(box["x"] + x1, box["y"] + y1, steps=5)
+    page.mouse.up()
+
+
+def test_config_drag_adds_question_and_rearm_updates(open_app):
+    """tk方式: ドラッグで即追加（自動命名・既定配点）、領域再指定は次のドラッグ"""
+    page = open_app(API)
+    enter_mode(page, DESC_CARD)
+    _inject_big_sheet(page)
+    page.click("#btn-desc-config")
+    page.wait_for_selector("#desc-config-view", state="visible")
+    page.fill("#new-q-max", "7")
+    page.wait_for_function(
+        "document.getElementById('config-image').naturalWidth === 595")
+    wait_transition(page)
+    # 既存2問の領域枠がオーバーレイに出る
+    page.wait_for_function(
+        "document.querySelectorAll('#config-overlay .config-box').length === 2")
+
+    _drag_on_config(page, 100, 300, 300, 380)
+    page.wait_for_function("(window.__calls ?? []).length === 1")
+    call0 = page.evaluate("window.__calls[0]")
+    assert call0[0] == "add"
+    assert call0[1] == "記述3"        # 既存2問 → 自動で3番
+    assert call0[2] == "7"            # 既定配点欄の値
+    region = call0[4]
+    assert region[2] > region[0] and region[3] > region[1]
+
+    # 領域再指定: ボタン → 次のドラッグが update になる
+    page.locator("#desc-table tbody tr").first \
+        .locator("button", has_text="領域再指定").click()
+    page.wait_for_function(
+        "document.getElementById('config-hint').textContent.includes('D1')")
+    _drag_on_config(page, 60, 100, 260, 160)
+    page.wait_for_function("(window.__calls ?? []).length === 2")
+    call1 = page.evaluate("window.__calls[1]")
+    assert call1[0] == "update" and call1[1] == "D1"

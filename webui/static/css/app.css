@@ -403,3 +403,7 @@ input, select {
 .rs-offset-value { min-width: 2.6em; text-align: center; font-size: 1.05rem; }
 .rs-preview-img { max-width: 100%; border: 1px solid var(--kei-line);
                   background: var(--paper); display: block; }
+.desc-edit { border: none; border-bottom: 1px solid transparent; background: transparent;
+             font: inherit; padding: 0.1rem 0.2rem; width: 100%; }
+.desc-edit:hover { border-bottom-color: var(--kei-line); }
+.desc-edit:focus { border-bottom-color: var(--shu); outline: none; }

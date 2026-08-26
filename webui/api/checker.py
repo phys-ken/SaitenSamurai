@@ -74,9 +74,24 @@ class CheckerMixin:
             return _err(f"読取結果を読み込めませんでした: {e}")
 
         entries = df.to_dict("records")
+        # 白さキャッシュ（Step1 保存）を各エントリへ付与 — tk の「白さ順」と同じ根拠
+        from constants import WHITENESS_CACHE_FILE
+        whiteness_map = {}
+        wpath = coords_csv.parent / WHITENESS_CACHE_FILE
+        if wpath.exists():
+            try:
+                import json
+                whiteness_map = json.loads(wpath.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning("白さキャッシュ読込エラー: %s", e)
+        skip = self.state["skip_questions"]
         for i, e in enumerate(entries):
             e["id"] = i
             e["after"] = "" if not isinstance(e.get("after"), str) else e["after"]
+            by_file = whiteness_map.get(e["filename"], {}) or {}
+            q = int(e["question_no"])
+            # 互換: skip 込み/抜きの両キーを参照（tk と同じ）
+            e["whiteness"] = float(by_file.get(str(q + skip), by_file.get(str(q), 0.0)))
 
         # 保存済み訂正のマージ（tk 版 _merge_corrections と同じキー）
         csv_path = Path(self.state["omr_result"]).parent / "tmp_checking_dm_nm.csv"
@@ -135,6 +150,22 @@ class CheckerMixin:
                                if e["category"] in _ERROR_CATEGORIES),
             "categories": categories,
         }
+
+    def batch_correct_no_mark(self):
+        """未訂正のノーマーク全件を無効回答(-1)に設定する（tk の一括ボタン相当）。
+
+        1件ずつ set_correction を呼ぶと数百回のCSV保存になるため、
+        まとめて書き換えて保存は1回にする。
+        """
+        if not self._checker:
+            return _err("マークチェックが開かれていません")
+        targets = [e for e in self._checker["entries"]
+                   if e["category"] == "ノーマーク" and not e["after"]]
+        for e in targets:
+            e["after"] = "-1"
+        self._save_corrections_csv()
+        self.state["checker"] = self._checker_summary()
+        return _ok(state=self.state, applied=len(targets))
 
     # ----------------------------------------------------------------
     def get_checker_entries(self, category=None, page=0, page_size=24):

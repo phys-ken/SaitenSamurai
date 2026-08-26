@@ -201,3 +201,41 @@ def test_jump_to_unfinished_sheet(open_app):
     page.click("#btn-sheet-unfinished")
     page.wait_for_function(
         "document.querySelector('#single-sheet-name').textContent.includes('s002.png')")
+
+
+def test_filter_and_sort_controls(open_app):
+    page = open_app(API)
+    _open_grid(page)
+    # 2人採点してから「未採点」フィルタ → 表示件数が減る
+    page.keyboard.press("5")
+    page.wait_for_function("window.__desc.scores['s001.png'].D1 === 5")
+    page.keyboard.press("0")
+    page.wait_for_function("window.__desc.scores['s002.png'].D1 === 0")
+    page.select_option("#desc-filter", "unscored")
+    page.wait_for_function(
+        "document.querySelector('#desc-grid .entry-card') &&"
+        "document.querySelector('#desc-grid .entry-card').textContent.includes('s003.png')")
+    # 「満点」フィルタは s001 だけ
+    page.select_option("#desc-filter", "full")
+    page.wait_for_function(
+        "document.querySelectorAll('#desc-grid .entry-card').length === 1")
+    assert "s001.png" in page.locator("#desc-grid .entry-card").inner_text()
+    # 得点降順ソート（全て表示に戻して）
+    page.select_option("#desc-filter", "all")
+    page.select_option("#desc-sort", "score_desc")
+    page.wait_for_function(
+        "document.querySelector('#desc-grid .entry-card[data-index=\\'0\\']')"
+        "?.textContent.includes('s001.png')")
+
+
+def test_m_key_gives_full_score_and_space_skips(open_app):
+    page = open_app(API)
+    _open_grid(page)
+    page.keyboard.press("m")
+    page.wait_for_function("window.__desc.scores['s001.png'].D1 === 5")
+    # Space は採点せずに次へ
+    cur = page.locator("#desc-grid .entry-card.cursor")
+    idx_before = cur.get_attribute("data-index")
+    page.keyboard.press(" ")
+    page.wait_for_function(
+        f"document.querySelector('#desc-grid .entry-card.cursor').dataset.index !== '{idx_before}'")

@@ -76,6 +76,8 @@ class SessionMixin:
                 "omr_mode": self.state["omr_mode"],
                 "name_trim_enabled": self.state["name_trim_enabled"],
                 "name_trim_region": self.state["name_trim_region"],
+                "include_descriptive_in_analysis":
+                    self.state["include_descriptive_in_analysis"],
             },
         }
         try:
@@ -147,6 +149,9 @@ class SessionMixin:
             self.state["omr_mode"] = omr_mode
         if isinstance(webui_ext.get("name_trim_enabled"), bool):
             self.state["name_trim_enabled"] = webui_ext["name_trim_enabled"]
+        if isinstance(webui_ext.get("include_descriptive_in_analysis"), bool):
+            self.state["include_descriptive_in_analysis"] = \
+                webui_ext["include_descriptive_in_analysis"]
         region = webui_ext.get("name_trim_region")
         if (isinstance(region, list) and len(region) == 4 and
                 all(isinstance(v, int) for v in region)):

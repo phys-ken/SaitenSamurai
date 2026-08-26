@@ -171,3 +171,88 @@ class TestNameTrimSummary:
         assert res["ok"], res
         assert b2.state["name_trim_region"] == [20, 10, 300, 80]
         assert b2.state["name_trim_enabled"] is False
+
+
+class TestParityAdditions:
+    def test_auto_detect_answer_key_and_session_flag(self, tmp_path):
+        """フォルダ選択で正答データ自動検出＋既存セッション検出（tk 相当）"""
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b1, _ = _bridge_through_recognition(scans, coord, key)
+        # answer_key.xlsx を結果フォルダに配置（tk の標準運用と同じ場所）
+        from constants import (RESULTS_FOLDER, RESULTS_DATA_FOLDER,
+                               ANSWER_KEY_FILE)
+        data_dir = scans / RESULTS_FOLDER / RESULTS_DATA_FOLDER
+        import shutil
+        shutil.copy(key, data_dir / ANSWER_KEY_FILE)
+
+        b2 = Bridge(window_adapter=RecordingAdapter())
+        b2.set_mode("mark_only", "multi_digit")
+        b2._win.folder_returns = [str(scans)]
+        res = b2.select_image_folder()
+        assert res["ok"]
+        assert res["auto_detected_answer_key"] and \
+            res["auto_detected_answer_key"].endswith(ANSWER_KEY_FILE)
+        assert b2.state["answer_key"].endswith(ANSWER_KEY_FILE)
+        assert b2.state["key_summary"] is not None
+        assert res["session_found"] and res["session_found"].endswith(
+            "session_state.json")
+
+    def test_recheck_answer_key(self, tmp_path):
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b, _ = _bridge_through_recognition(scans, coord, key)
+        assert b.recheck_answer_key()["ok"]
+        b2 = Bridge(window_adapter=RecordingAdapter())
+        assert "正答データ" in b2.recheck_answer_key()["error"]
+
+    def test_include_descriptive_setting_and_session(self, tmp_path):
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b, _ = _bridge_through_recognition(scans, coord, key)
+        assert b.state["include_descriptive_in_analysis"] is True
+        assert b.set_include_descriptive_in_analysis(False)["ok"]
+        assert b.save_session()["ok"]
+        from constants import (RESULTS_FOLDER, RESULTS_DATA_FOLDER,
+                               SESSION_STATE_FILE)
+        p = scans / RESULTS_FOLDER / RESULTS_DATA_FOLDER / SESSION_STATE_FILE
+        b2 = Bridge(window_adapter=RecordingAdapter())
+        assert b2.restore_session(str(p))["ok"]
+        assert b2.state["include_descriptive_in_analysis"] is False
+
+    def test_checker_whiteness_and_batch_minus1(self, tmp_path):
+        """白さがエントリに付き、ノーマーク一括-1がCSV保存1回で効く"""
+        import cv2
+        import numpy as np
+        coord = make_coord_xlsx(tmp_path / "coord.xlsx", 3)
+        key = tmp_path / "key.xlsx"
+        _create_answer_key(key, [
+            {'問題番号': 1, '正答': '-24', '配点': 3, '観点': 1},
+        ])
+        scans = tmp_path / "scans"
+        scans.mkdir()
+        # s1: 完答 / s2: 全行ノーマーク
+        filled = {q: p for q, p in zip([1, 2, 3], sym_positions('-24'))}
+        cv2.imwrite(str(scans / "s1.png"), make_sheet(filled, with_markers=True))
+        cv2.imwrite(str(scans / "s2.png"), make_sheet({}, with_markers=True))
+        b, _ = _bridge_through_recognition(scans, coord, key)
+        assert b.open_mark_checker()["ok"]
+        entries = b._checker["entries"]
+        assert all("whiteness" in e for e in entries)
+        # 完答者と白紙で白さが分かれている（白紙のほうが白い）
+        w_marked = [e["whiteness"] for e in entries if e["filename"] == "s1.png"]
+        w_blank = [e["whiteness"] for e in entries if e["filename"] == "s2.png"]
+        assert max(w_blank) >= max(w_marked)
+
+        no_marks = [e for e in entries if e["category"] == "ノーマーク"]
+        assert no_marks, "ノーマークのエントリが無いとこのテストは成立しない"
+        res = b.batch_correct_no_mark()
+        assert res["ok"] and res["applied"] == len(no_marks)
+        assert all(e["after"] == "-1" for e in no_marks)
+        assert res["state"]["checker"]["corrected"] >= len(no_marks)
+
+    def test_open_folder_validation(self, tmp_path):
+        b = Bridge(window_adapter=RecordingAdapter())
+        assert "画像フォルダ" in b.open_folder("boxed")["error"]
+        scans, coord, key = _build_marked_inputs(tmp_path)
+        b2, _ = _bridge_through_recognition(scans, coord, key)
+        assert "不明" in b2.open_folder("nope")["error"]
+        # 存在しないフォルダはエラー（開く処理自体はOS依存なので実行しない）
+        assert "まだありません" in b2.open_folder("report")["error"]

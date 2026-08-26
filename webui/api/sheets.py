@@ -235,3 +235,56 @@ class SheetsMixin:
         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
         return _ok(data_url=f"data:image/png;base64,{b64}",
                    sample_note="上から: 正解例 / 不正解例 / 全員正解（★）の例")
+
+    def set_include_descriptive_in_analysis(self, enabled):
+        self.state["include_descriptive_in_analysis"] = bool(enabled)
+        return _ok(state=self.state)
+
+    # --- フォルダを開く（tk 版の 📁 ボタン群相当） -------------------
+
+    def open_folder(self, kind):
+        """結果フォルダ等を OS のファイルマネージャで開く。
+
+        kind: "boxed"(補正済み画像) / "scored"(採点済み答案) /
+              "report"(集計レポート) / "results_data"(正答データ等)
+        """
+        import os
+        import subprocess
+        from constants import (RESULTS_FOLDER, BOXED_FOLDER, SCORED_FOLDER,
+                               FINAL_REPORT_FOLDER, RESULTS_DATA_FOLDER)
+        if not self.state["image_folder"]:
+            return _err("画像フォルダを選択してください")
+        sub = {"boxed": BOXED_FOLDER, "scored": SCORED_FOLDER,
+               "report": FINAL_REPORT_FOLDER,
+               "results_data": RESULTS_DATA_FOLDER}.get(kind)
+        if sub is None:
+            return _err(f"不明なフォルダ種別です: {kind}")
+        target = Path(self.state["image_folder"]) / RESULTS_FOLDER / sub
+        if not target.exists():
+            return _err(f"フォルダがまだありません: {target}")
+        try:
+            if os.name == "nt":
+                os.startfile(str(target))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+        except Exception as e:
+            return _err(f"フォルダを開けませんでした: {e}")
+        return _ok(path=str(target))
+
+    def open_original_image(self, filename):
+        """答案の元画像を OS の既定ビューアで開く（tk 📷 相当）"""
+        import os
+        import subprocess
+        if not self.state["image_folder"]:
+            return _err("画像フォルダを選択してください")
+        target = Path(self.state["image_folder"]) / filename
+        if not target.exists():
+            return _err(f"元画像が見つかりません: {target}")
+        try:
+            if os.name == "nt":
+                os.startfile(str(target))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+        except Exception as e:
+            return _err(f"画像を開けませんでした: {e}")
+        return _ok(path=str(target))

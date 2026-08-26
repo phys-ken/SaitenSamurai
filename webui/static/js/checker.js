@@ -10,11 +10,13 @@
 import { call } from './bridge.js';
 import { withTransition } from './transitions.js';
 import { createVirtualGrid, createImageLoader } from './vlist.js';
+import { openLightbox } from './lightbox.js';
 
-let view = { category: '__errors__' };
+let view = { category: '__errors__', sort: 'whiteness' };
 let entries = [];          // 現在のタブの全件（メタデータのみ）
 let grid = null;
 let cursor = 0;
+let cardWidth = 230;
 let logFn = () => {};
 
 const CARD_IMG_H = 72;
@@ -46,6 +48,14 @@ export async function openChecker(log) {
 }
 
 export async function closeChecker() {
+  const st = (await call('get_state')).state;
+  const pending = st.checker?.corrected ?? 0;
+  if (pending > 0 &&
+      !confirm(`「訂正をxlsxに反映」していない訂正が ${pending} 件あります。\n` +
+               '訂正は保存済みなので、次回開いたときに続きから反映できます。\n' +
+               'このまま閉じますか？')) {
+    return;
+  }
   await call('close_mark_checker');
   grid?.destroy();
   grid = null;
@@ -122,6 +132,14 @@ function entryCard(i) {
   entryImageLoader.load(`e${item.id}`, item.id)
     .then((url) => { img.src = url; })
     .catch(() => { img.alt = '画像なし'; });
+  img.addEventListener('click', async () => {
+    cursor = i;
+    updateCursorClasses();
+    try {
+      const url = await entryImageLoader.load(`e${item.id}`, item.id);
+      openLightbox(url, `${item.filename} 問${item.question_no}`);
+    } catch { /* 画像なしはカード表示のまま */ }
+  });
 
   const meta = document.createElement('div');
   meta.className = 'entry-meta';
@@ -156,11 +174,19 @@ async function renderGrid() {
   // メタデータは全件を一度に取得し（数千件でも軽い）、以後の描画は仮想化に任せる
   const res = await call('get_checker_entries', view.category, 0, 1000000);
   entries = res.items;
+  if (view.sort === 'whiteness') {
+    // 白い（=マークが薄い）順。tk 版の既定と同じで、怪しいものが先頭に来る
+    entries.sort((a, b) => (b.whiteness ?? 0) - (a.whiteness ?? 0));
+  } else {
+    entries.sort((a, b) => a.filename.localeCompare(b.filename) ||
+                           a.question_no - b.question_no);
+  }
+  el('btn-batch-minus1').hidden = view.category !== 'ノーマーク';
   cursor = Math.min(cursor, Math.max(0, entries.length - 1));
   grid?.destroy();
   grid = createVirtualGrid(el('checker-grid'), {
     count: entries.length,
-    itemMinWidth: 230,
+    itemMinWidth: cardWidth,
     itemHeight: CARD_H,
     gap: 10,
     renderItem: entryCard,
@@ -212,6 +238,24 @@ function checkerKeyHandler(e) {
 export function wireChecker(log) {
   logFn = log;
   el('btn-close-checker').addEventListener('click', closeChecker);
+  el('checker-sort').addEventListener('change', async (ev) => {
+    view.sort = ev.target.value;
+    cursor = 0;
+    await renderGrid();
+  });
+  el('checker-size').addEventListener('change', async (ev) => {
+    cardWidth = parseInt(ev.target.value, 10);
+    await renderGrid();
+  });
+  el('btn-batch-minus1').addEventListener('click', async () => {
+    if (!confirm('未訂正のノーマーク全件を「無効回答(-1)」に設定します。よろしいですか？')) return;
+    try {
+      const res = await call('batch_correct_no_mark');
+      log(`✓ ノーマーク ${res.applied} 件を -1 に設定しました`);
+      renderHead(res.state.checker);
+      await renderGrid();
+    } catch (e) { log(`❌ ${e.message}`); }
+  });
   document.addEventListener('keydown', checkerKeyHandler);
   el('btn-apply-corrections').addEventListener('click', async () => {
     try {

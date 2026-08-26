@@ -61,6 +61,8 @@
       <span class="ds-label">正答データ</span>
       <span class="ds-value" data-empty="未選択"></span>
       <button class="btn" data-action="select_answer_key">ファイル選択</button>
+      <button class="btn" id="btn-recheck-key"
+              title="Excel を編集した後にもう一度チェックする">再チェック</button>
     </div>
     <p class="ds-summary" id="summary-answer-key" hidden></p>
 
@@ -96,6 +98,7 @@
 
     <div class="ds-row">
       <button class="btn" id="btn-open-checker">マークチェック</button>
+      <button class="btn btn-folder" data-open-folder="boxed">補正画像フォルダを開く</button>
     </div>
 
     <div class="ds-row" id="row-omr-result">
@@ -115,6 +118,7 @@
     <div class="ds-row">
       <button class="btn btn-primary" id="btn-run-scoring">▶ 採点済み答案を生成</button>
       <span class="hint">○×・得点を描き込んだ答案画像を出力します</span>
+      <button class="btn btn-folder" data-open-folder="scored">出力フォルダを開く</button>
     </div>
     <div class="ds-row">
       <button class="btn" id="btn-total-position">合計点の位置指定</button>
@@ -131,9 +135,14 @@
       <button class="btn" id="btn-name-position">氏名欄の位置指定</button>
       <span class="hint" id="name-position-hint">未指定（指定すると集計に氏名画像が入ります）</span>
     </div>
+    <div class="ds-row" id="row-include-desc" hidden>
+      <label><input type="checkbox" id="include-desc-check" checked>
+        記述採点の結果を分析ファイルに含める</label>
+    </div>
     <div class="ds-row">
       <button class="btn btn-primary" id="btn-run-summary">▶ 集計実行</button>
       <span class="hint">成績一覧 Excel と CTT 分析レポートを出力します</span>
+      <button class="btn btn-folder" data-open-folder="report">レポートフォルダを開く</button>
     </div>
   </section>
 
@@ -172,7 +181,27 @@
     <nav id="desc-q-tabs" class="checker-tabs"></nav>
     <div class="grid-toolbar">
       <button class="btn" id="btn-jump-unscored">次の未採点へ</button>
-      <span class="hint">数字キー＝得点を書いて次へ ／ ←→↑↓＝移動 ／ BackSpace＝未採点に戻す ／ クリック＝画像を拡大</span>
+      <label>表示
+        <select id="desc-filter">
+          <option value="all">全て</option>
+          <option value="unscored">未採点</option>
+          <option value="full">満点</option>
+          <option value="zero">0点</option>
+          <option value="partial">中間点</option>
+        </select></label>
+      <label>並び順
+        <select id="desc-sort">
+          <option value="name">ファイル名順</option>
+          <option value="score_asc">得点 昇順</option>
+          <option value="score_desc">得点 降順</option>
+        </select></label>
+      <label>カード
+        <select id="desc-size">
+          <option value="200">小</option>
+          <option value="240" selected>中</option>
+          <option value="320">大</option>
+        </select></label>
+      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 ／ 0＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ クリック＝拡大</span>
     </div>
     <div id="desc-grid" class="vgrid-viewport"></div>
   </section>
@@ -185,6 +214,7 @@
       <button class="btn" id="btn-sheet-prev">◀ 前の答案</button>
       <button class="btn" id="btn-sheet-next">次の答案 ▶</button>
       <button class="btn" id="btn-sheet-unfinished">未採点の答案へ</button>
+      <button class="btn" id="btn-open-original">元画像を開く</button>
       <button class="btn" id="btn-single-close">問題別に戻る</button>
     </div>
     <div class="grid-toolbar">
@@ -212,7 +242,19 @@
     </div>
     <nav id="checker-tabs" class="checker-tabs"></nav>
     <div class="grid-toolbar">
-      <span class="hint">記号キー1打（0〜9・a〜d・-）＝訂正して次へ ／ ←→↑↓＝移動 ／ BackSpace＝訂正取消 ／ Enter＝入力欄（-1 など）</span>
+      <label>並び順
+        <select id="checker-sort">
+          <option value="whiteness">白さ順（白い順）</option>
+          <option value="name">画像名順</option>
+        </select></label>
+      <label>カード
+        <select id="checker-size">
+          <option value="180">小</option>
+          <option value="230" selected>中</option>
+          <option value="300">大</option>
+        </select></label>
+      <button class="btn" id="btn-batch-minus1" hidden>ノーマーク全件を無効回答(-1)にする</button>
+      <span class="hint">記号キー1打（0〜9・a〜d・-）＝訂正して次へ ／ ←→↑↓＝移動 ／ BackSpace＝訂正取消 ／ Enter＝入力欄（-1 など） ／ 画像クリック＝拡大</span>
     </div>
     <div id="checker-grid" class="vgrid-viewport"></div>
   </section>
@@ -224,6 +266,7 @@
     <div class="picker-head">
       <h2 class="rs-title">表示項目の設定</h2>
       <span class="hint">変更はすぐに保存され、次の「採点済み答案を生成」から反映されます</span>
+      <button class="btn" id="btn-rs-reset">既定に戻す</button>
       <button class="btn" id="btn-rs-close">閉じる</button>
     </div>
     <div id="rs-body" class="rs-body"></div>

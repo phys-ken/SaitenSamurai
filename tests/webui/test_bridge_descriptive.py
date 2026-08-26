@@ -130,3 +130,42 @@ class TestScoringFlow:
         ws = openpyxl.load_workbook(summary, data_only=True).active
         values = [c.value for row in ws.iter_rows() for c in row]
         assert 5 in values and 2 in values
+
+
+class TestQuestionEditing:
+    def test_update_question_caps_scores(self, desc_bridge):
+        b, _, _ = desc_bridge
+        b.add_descriptive_question("問1", 10, 1, [50, 50, 250, 150])
+        b.start_descriptive_scoring()
+        b.set_descriptive_score("s1.png", "D1", 9)
+        b.set_descriptive_score("s2.png", "D1", 3)
+        res = b.update_descriptive_question("D1", "記述A", 5, 2)
+        assert res["ok"] and res["capped"] == 1     # 9点だけ丸められる
+        from descriptive_scorer import (load_descriptive_config,
+                                        load_descriptive_scores)
+        cfg = load_descriptive_config(str(b._desc_config_path()))
+        assert cfg["questions"][0]["name"] == "記述A"
+        assert cfg["questions"][0]["max_score"] == 5
+        assert cfg["questions"][0]["aspect"] == 2
+        data = load_descriptive_scores(str(b._desc_scores_path()))
+        assert data["scores"]["s1.png"]["D1"] == 5
+        assert data["scores"]["s2.png"]["D1"] == 3
+
+    def test_update_validation(self, desc_bridge):
+        b, _, _ = desc_bridge
+        b.add_descriptive_question("問1", 5, 1, [50, 50, 250, 150])
+        assert not b.update_descriptive_question("D1", "", 5, 1)["ok"]
+        assert not b.update_descriptive_question("D1", "x", 0, 1)["ok"]
+        assert not b.update_descriptive_question("D9", "x", 5, 1)["ok"]
+
+    def test_reset_scores(self, desc_bridge):
+        b, _, _ = desc_bridge
+        b.add_descriptive_question("問1", 5, 1, [50, 50, 250, 150])
+        b.start_descriptive_scoring()
+        b.set_descriptive_score("s1.png", "D1", 4)
+        b.set_descriptive_score("s2.png", "D1", 2)
+        res = b.reset_descriptive_scores("D1")
+        assert res["ok"] and res["removed"] == 2
+        from descriptive_scorer import load_descriptive_scores
+        data = load_descriptive_scores(str(b._desc_scores_path()))
+        assert all(q == {} for q in data["scores"].values())

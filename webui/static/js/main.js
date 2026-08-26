@@ -76,7 +76,9 @@ export function render(state) {
                      state.app_mode === 'descriptive_only';
   const isDescOnly = state.app_mode === 'descriptive_only';
   currentMode.descOnly = isDescOnly;
+  currentMode.descMode = isDescMode;
   currentMode.appMode = state.app_mode;
+  lastState = state;
   document.querySelectorAll('.desc-only-ui').forEach((n) => { n.hidden = !isDescMode; });
   document.getElementById('row-coord-file').hidden = isDescOnly;
   document.getElementById('summary-coord-file').hidden =
@@ -102,6 +104,11 @@ export function render(state) {
     state.total_display_region
       ? `設定済み (${state.total_display_region.join(', ')})`
       : '未設定（自動配置）';
+
+  document.getElementById('row-include-desc').hidden =
+    state.app_mode !== 'mark_and_descriptive';
+  document.getElementById('include-desc-check').checked =
+    Boolean(state.include_descriptive_in_analysis);
 
   document.getElementById('name-trim-check').checked =
     Boolean(state.name_trim_enabled);
@@ -154,6 +161,16 @@ async function runAction(name) {
     if (res.cancelled) return;
     render(res.state);
     log(`✓ ${ACTION_LOG_LABEL[name]}を選択しました`);
+    if (res.auto_detected_answer_key) {
+      log(`✓ 正答データを自動検出しました: ${res.auto_detected_answer_key}`);
+    }
+    if (res.session_found &&
+        confirm('このフォルダには前回のセッション情報が見つかりました。\n前回の設定を復元しますか？')) {
+      const restored = await call('restore_session', res.session_found);
+      showMain(restored.state);
+      log('✓ 前回のセッションを復元しました');
+      for (const w of restored.warnings ?? []) log(`⚠ ${w}`);
+    }
   } catch (e) {
     log(`❌ ${e.message}`);
     alert(e.message);
@@ -195,16 +212,49 @@ async function runJob(name) {
     alert(e.message);
   }
 }
-let currentMode = { descOnly: false, appMode: 'mark_only' };
+let currentMode = { descOnly: false, descMode: false, appMode: 'mark_only' };
+let lastState = null;
 const currentModeName = () => currentMode.appMode;
 const runRecognition = () => runJob(
   currentMode.descOnly ? 'run_prepare_images' : 'run_recognition');
 
+/** 記述採点が未完了なら続行確認する（tk 版と同じ「未採点は0点」警告） */
+function confirmDescriptiveComplete() {
+  const d = lastState?.descriptive;
+  if (!currentMode.descMode || !d || !d.questions.length) return true;
+  const total = d.questions.length * d.prepared_count;
+  const done = d.questions.reduce((n, q) => n + (d.scored_counts[q.id] ?? 0), 0);
+  if (done >= total) return true;
+  return confirm(`記述採点が完了していません（採点済み ${done} / ${total}）。\n` +
+                 '未採点の問題は 0点 として扱われます。このまま続行しますか？');
+}
+
 function wireEvents() {
+  document.getElementById('btn-recheck-key').addEventListener('click', async () => {
+    try {
+      const res = await call('recheck_answer_key');
+      render(res.state);
+      log('✓ 正答データを再チェックしました');
+    } catch (e) { log(`❌ ${e.message}`); }
+  });
+  document.querySelectorAll('[data-open-folder]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await call('open_folder', btn.dataset.openFolder);
+      } catch (e) { log(`❌ ${e.message}`); }
+    });
+  });
+  document.getElementById('include-desc-check').addEventListener('change', async (ev) => {
+    const res = await call('set_include_descriptive_in_analysis', ev.target.checked);
+    render(res.state);
+  });
   document.getElementById('btn-run-recognition')
     .addEventListener('click', runRecognition);
   document.getElementById('btn-run-scoring')
-    .addEventListener('click', () => runJob('run_scoring'));
+    .addEventListener('click', () => {
+      if (!confirmDescriptiveComplete()) return;
+      runJob('run_scoring');
+    });
   document.getElementById('btn-total-position').addEventListener('click', async () => {
     try {
       const sheet = await call('get_sheet_image');
@@ -223,7 +273,10 @@ function wireEvents() {
     }
   });
   document.getElementById('btn-run-summary')
-    .addEventListener('click', () => runJob('run_summary'));
+    .addEventListener('click', () => {
+      if (!confirmDescriptiveComplete()) return;
+      runJob('run_summary');
+    });
   document.getElementById('btn-open-checker').addEventListener('click', async () => {
     try {
       await openChecker(log);

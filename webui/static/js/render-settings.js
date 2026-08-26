@@ -142,6 +142,7 @@ function buildOffsetRow(item, settings) {
 }
 
 export async function openRenderSettings(appMode) {
+  lastMode = appMode;
   const res = await call('get_rendering_settings');
   const body = el('rs-body');
   body.replaceChildren(...SECTIONS
@@ -169,8 +170,19 @@ export async function openRenderSettings(appMode) {
   refreshPreview();
 }
 
+let lastMode = 'mark_only';
+
 export function wireRenderSettings(log, getMode) {
   logFn = log;
+  el('btn-rs-reset').addEventListener('click', async () => {
+    if (!confirm('表示項目の設定をすべて既定に戻しますか？')) return;
+    try {
+      const res = await call('get_rendering_settings');
+      await call('set_rendering_settings', res.defaults);
+      logFn('✓ 表示項目の設定を既定に戻しました');
+      await openRenderSettings(lastMode);   // 再描画（プレビューも更新）
+    } catch (e) { logFn(`❌ ${e.message}`); }
+  });
   el('btn-render-settings').addEventListener('click', () =>
     openRenderSettings(getMode()).catch((e) => { log(`❌ ${e.message}`); }));
   el('btn-rs-close').addEventListener('click', () => { el('rs-overlay').hidden = true; });

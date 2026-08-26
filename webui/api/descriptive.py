@@ -139,6 +139,56 @@ class DescriptiveMixin:
         self._refresh_desc_summary()
         return _ok(state=self.state)
 
+    def update_descriptive_question(self, qid, name, max_score, aspect):
+        """問題名・配点・観点を後から変更する（tk の設定変更ダイアログ相当）。
+
+        配点を下げて既存の得点が超過する場合は新配点にキャップし、
+        件数を capped で返す（tk は確認ダイアログ、webui は実施後に通知）。
+        """
+        from descriptive_scorer import (save_descriptive_config,
+                                        save_descriptive_scores)
+        q = self._find_question(qid)
+        if q is None:
+            return _err(f"問題が見つかりません: {qid}")
+        try:
+            max_score = int(max_score)
+            aspect = int(aspect)
+            assert max_score > 0
+            name = str(name).strip()
+            assert name
+        except (TypeError, ValueError, AssertionError):
+            return _err("問題名は必須、配点は正の整数で指定してください")
+        q["name"] = name
+        q["aspect"] = aspect
+        capped = 0
+        if max_score < q["max_score"]:
+            for scores in self._desc_scores["scores"].values():
+                if scores.get(qid) is not None and scores[qid] > max_score:
+                    scores[qid] = max_score
+                    capped += 1
+            if capped:
+                save_descriptive_scores(str(self._desc_scores_path()),
+                                        self._desc_scores)
+        q["max_score"] = max_score
+        save_descriptive_config(str(self._desc_config_path()), self._desc_config)
+        self._refresh_desc_summary()
+        return _ok(state=self.state, capped=capped)
+
+    def reset_descriptive_scores(self, qid):
+        """1問ぶんの採点データをすべて消す（tk 採点リセット相当）"""
+        from descriptive_scorer import save_descriptive_scores
+        q = self._find_question(qid)
+        if q is None:
+            return _err(f"問題が見つかりません: {qid}")
+        removed = 0
+        for scores in self._desc_scores["scores"].values():
+            if qid in scores:
+                del scores[qid]
+                removed += 1
+        save_descriptive_scores(str(self._desc_scores_path()), self._desc_scores)
+        self._refresh_desc_summary()
+        return _ok(state=self.state, removed=removed)
+
     def delete_descriptive_question(self, qid):
         from descriptive_scorer import (save_descriptive_config,
                                         save_descriptive_scores)

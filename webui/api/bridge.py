@@ -67,6 +67,7 @@ class DataSourceMixin:
             "name_trim_region": None,        # [x1,y1,x2,y2] 00_Processing 座標系
             "rendering_settings": None,      # 描画詳細設定の差分（None=既定のまま）
             "total_display_region": None,    # 合計点表示位置 [x1,y1,x2,y2]
+            "include_descriptive_in_analysis": True,  # 記述を分析ファイルに含める（tk 既定 ON）
         }
 
     def get_state(self):
@@ -119,8 +120,24 @@ class DataSourceMixin:
         self.state["image_count"] = count
         self._load_descriptive_state()
         self._load_total_display_state()
+        # 正答データの自動検出（tk auto_detect_template 相当）
+        auto_key = None
+        if not self.state["answer_key"]:
+            from constants import (RESULTS_FOLDER, RESULTS_DATA_FOLDER,
+                                   ANSWER_KEY_FILE)
+            candidate = (folder_path / RESULTS_FOLDER / RESULTS_DATA_FOLDER /
+                         ANSWER_KEY_FILE)
+            if candidate.exists():
+                self.state["answer_key"] = str(candidate)
+                self._refresh_key_summary()
+                auto_key = str(candidate)
+        # 前回セッションがあれば UI に復元を提案させる（tk _try_auto_restore 相当）
+        session_path = self._session_path()
+        session_found = (str(session_path)
+                         if session_path and session_path.exists() else None)
         self._save_session_quietly()
-        return _ok(state=self.state)
+        return _ok(state=self.state, auto_detected_answer_key=auto_key,
+                   session_found=session_found)
 
     def select_coord_file(self):
         path = self._win.open_file_dialog(file_types=_XLSX_FILE_TYPES)
@@ -189,6 +206,13 @@ class DataSourceMixin:
         self.state["answer_key"] = str(path)
         self._refresh_key_summary()
         self._save_session_quietly()
+        return _ok(state=self.state)
+
+    def recheck_answer_key(self):
+        """正答データを再チェックする（Excel を編集した後の再検証用）"""
+        if not self.state["answer_key"]:
+            return _err("正答データを選択してください")
+        self._refresh_key_summary()
         return _ok(state=self.state)
 
     def _refresh_key_summary(self):

@@ -8,6 +8,7 @@ import { call } from './bridge.js';
 import { pickRegion } from './region-picker.js';
 import { withTransition } from './transitions.js';
 import { createVirtualGrid, createImageLoader } from './vlist.js';
+import { openLightbox } from './lightbox.js';
 
 let logFn = () => {};
 let onStateUpdate = () => {};
@@ -35,8 +36,38 @@ async function renderConfigTable() {
   const tbody = el('desc-table').querySelector('tbody');
   tbody.replaceChildren(...desc.questions.map((q) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${q.id}</td><td>${q.name}</td><td>${q.max_score}点</td>` +
-      `<td>${q.aspect}</td><td>(${q.region.join(', ')})</td>`;
+    tr.innerHTML = `<td>${q.id}</td>`;
+    // 問題名・配点・観点はその場で編集できる（tk の設定変更に相当）
+    const edits = [['name', q.name, 10], ['max_score', q.max_score, 3],
+                   ['aspect', q.aspect, 3]];
+    const inputs = {};
+    for (const [key, val, size] of edits) {
+      const td = document.createElement('td');
+      const input = document.createElement('input');
+      input.value = val;
+      input.size = size;
+      input.className = 'desc-edit';
+      inputs[key] = input;
+      input.addEventListener('change', async () => {
+        try {
+          const res = await call('update_descriptive_question', q.id,
+            inputs.name.value, inputs.max_score.value, inputs.aspect.value);
+          if (res.capped) {
+            logFn(`⚠ 配点を下げたため ${res.capped} 件の得点を新配点に丸めました`);
+          }
+          logFn(`✓ ${q.id} の設定を更新しました`);
+          await renderConfigTable();
+        } catch (e) {
+          logFn(`❌ ${e.message}`);
+          await renderConfigTable();
+        }
+      });
+      td.appendChild(input);
+      tr.appendChild(td);
+    }
+    const tdRegion = document.createElement('td');
+    tdRegion.textContent = `(${q.region.join(', ')})`;
+    tr.appendChild(tdRegion);
     const td = document.createElement('td');
     const reBtn = document.createElement('button');
     reBtn.className = 'btn';
@@ -58,7 +89,16 @@ async function renderConfigTable() {
       logFn(`🗑 ${q.id} を削除しました`);
       await renderConfigTable();
     });
-    td.append(reBtn, ' ', delBtn);
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn';
+    resetBtn.textContent = '採点リセット';
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm(`${q.name}（${q.id}）の採点データをすべて消しますか？\nこの操作は取り消せません`)) return;
+      const res = await call('reset_descriptive_scores', q.id);
+      logFn(`✓ ${q.id} の採点 ${res.removed} 件をリセットしました`);
+      await renderConfigTable();
+    });
+    td.append(reBtn, ' ', resetBtn, ' ', delBtn);
     tr.appendChild(td);
     return tr;
   }));
@@ -77,12 +117,36 @@ export async function openDescConfig() {
 // ================================================================
 
 let currentQid = null;
-let gridTargets = [];        // [{filename, score}] 現在の問題の全生徒
+let gridRawTargets = [];     // 現在の問題の全生徒（順序はブリッジ返却のまま）
+let gridTargets = [];        // フィルタ・並び替え適用後の表示リスト
 let grid = null;             // createVirtualGrid のハンドル
 let gridCursor = 0;          // 採点カーソル（署名要素: 朱の採点枠）
 let gridMax = 0;             // 現在の問題の満点
+let gridFilter = 'all';
+let gridSort = 'name';
+let gridCardWidth = 240;
 let digitBuf = '';
 let digitTimer = null;
+
+function applyGridView() {
+  let items = gridRawTargets.filter((t) => {
+    if (gridFilter === 'unscored') return t.score === null;
+    if (gridFilter === 'full') return t.score === gridMax;
+    if (gridFilter === 'zero') return t.score === 0;
+    if (gridFilter === 'partial')
+      return t.score !== null && t.score > 0 && t.score < gridMax;
+    return true;
+  });
+  if (gridSort === 'score_asc' || gridSort === 'score_desc') {
+    const dir = gridSort === 'score_asc' ? 1 : -1;
+    items = items.slice().sort((a, b) => {
+      const sa = a.score === null ? -1 : a.score;
+      const sb = b.score === null ? -1 : b.score;
+      return (sa - sb) * dir || a.filename.localeCompare(b.filename);
+    });
+  }
+  gridTargets = items;
+}
 
 const cropLoader = createImageLoader(
   (qid, filename) => call('get_descriptive_crop', qid, filename)
@@ -108,20 +172,6 @@ function scoreButtons(maxScore, current, onSet) {
   return wrap;
 }
 
-function openLightbox(src, alt) {
-  const box = document.createElement('div');
-  box.className = 'lightbox';
-  const img = document.createElement('img');
-  img.src = src;
-  img.alt = alt ?? '';
-  box.appendChild(img);
-  const close = () => { box.remove(); document.removeEventListener('keydown', onKey); };
-  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
-  box.addEventListener('click', close);
-  document.addEventListener('keydown', onKey);
-  document.body.appendChild(box);
-}
-
 async function renderQTabs() {
   const res = await call('get_state');
   const desc = res.state.descriptive;
@@ -139,8 +189,13 @@ async function renderQTabs() {
   }));
   const total = desc.questions.reduce(
     (n, q) => n + (desc.scored_counts[q.id] ?? 0), 0);
+  const scored = gridRawTargets.filter((t) => t.score !== null);
+  const avg = scored.length
+    ? (scored.reduce((n, t) => n + t.score, 0) / scored.length).toFixed(2)
+    : null;
   el('desc-scoring-summary').textContent =
-    `採点済み ${total} / ${desc.questions.length * desc.prepared_count}`;
+    `採点済み ${total} / ${desc.questions.length * desc.prepared_count}` +
+    (avg !== null ? ` ／ この問題の平均 ${avg} / ${gridMax}` : '');
   onStateUpdate(res.state);
 }
 
@@ -148,7 +203,7 @@ async function renderQTabs() {
 function cardMetrics(q) {
   const [x1, y1, x2, y2] = q.region;
   const aspect = (y2 - y1) / Math.max(1, x2 - x1);
-  const itemMinWidth = 240;
+  const itemMinWidth = gridCardWidth;
   const imgH = Math.min(260, Math.max(70, Math.round(itemMinWidth * aspect)));
   const perRow = 6;                                   // 240px に収まる点数ボタン数
   const btnRows = Math.ceil((q.max_score + 2) / perRow);
@@ -207,16 +262,24 @@ function updateCursorClasses() {
 
 async function setGridScore(i, v) {
   const t = gridTargets[i];
+  if (!t) return;
   try {
     await call('set_descriptive_score', t.filename, currentQid, v);
   } catch (e) {
     logFn(`❌ ${e.message}`);
     return;
   }
-  t.score = v;
+  t.score = v;   // gridRawTargets と同一オブジェクト
+  const wasFiltered = gridFilter !== 'all';
+  applyGridView();
+  if (wasFiltered) grid.setCount(gridTargets.length);
   grid.refresh();
   await renderQTabs();
-  if (v !== null) advanceToUnscored(i + 1);
+  if (v !== null) {
+    // フィルタで行が消えた場合は同じ位置が「次」になる
+    const next = gridFilter === 'unscored' ? i : i + 1;
+    advanceToUnscored(Math.min(next, Math.max(0, gridTargets.length - 1)));
+  }
 }
 
 /** from 以降（末尾で先頭に折返し）の最初の未採点へカーソルを送る */
@@ -240,7 +303,8 @@ async function renderDescGrid() {
   if (!q) return;
   gridMax = q.max_score;
   const targets = await call('list_descriptive_targets', currentQid);
-  gridTargets = targets.items;
+  gridRawTargets = targets.items;
+  applyGridView();
   gridCursor = Math.min(gridCursor, Math.max(0, gridTargets.length - 1));
   const metrics = cardMetrics(q);
   grid?.destroy();
@@ -287,6 +351,23 @@ function gridKeyHandler(e) {
     return;
   }
   if (e.key === 'Enter') { e.preventDefault(); commitDigits(); return; }
+  if (e.key === 'm' || e.key === 'M') {     // tk の m=満点 と同じ
+    e.preventDefault();
+    setGridScore(gridCursor, gridMax);
+    return;
+  }
+  if (e.key === 'b' || e.key === 'B') {     // tk の b=0点 と同じ
+    e.preventDefault();
+    setGridScore(gridCursor, 0);
+    return;
+  }
+  if (e.key === ' ') {                       // Space=採点せず次へ
+    e.preventDefault();
+    gridCursor = Math.min(gridTargets.length - 1, gridCursor + 1);
+    grid.scrollToIndex(gridCursor);
+    updateCursorClasses();
+    return;
+  }
   if (e.key === 'Backspace' || e.key === 'Delete') {
     e.preventDefault();
     digitBuf = '';
@@ -580,6 +661,17 @@ function sheetKeyHandler(e) {
     return;
   }
   if (e.key === 'Enter') { e.preventDefault(); commitSheetDigits(); return; }
+  if (e.key === 'm' || e.key === 'M') {
+    e.preventDefault();
+    const q = sheetQuestions.find((x) => x.id === focusedQid);
+    if (q) setSheetScore(q.id, q.max_score);
+    return;
+  }
+  if (e.key === 'b' || e.key === 'B') {
+    e.preventDefault();
+    if (focusedQid) setSheetScore(focusedQid, 0);
+    return;
+  }
   if (e.key === 'Backspace' || e.key === 'Delete') {
     e.preventDefault();
     sheetDigitBuf = '';
@@ -653,6 +745,25 @@ export function wireDescriptive(log, stateUpdate) {
   document.addEventListener('keydown', gridKeyHandler);
   el('btn-jump-unscored').addEventListener('click', () => {
     if (grid && gridTargets.length) advanceToUnscored(gridCursor);
+  });
+  el('desc-filter').addEventListener('change', async (ev) => {
+    gridFilter = ev.target.value;
+    gridCursor = 0;
+    await renderDescGrid();
+  });
+  el('desc-sort').addEventListener('change', async (ev) => {
+    gridSort = ev.target.value;
+    gridCursor = 0;
+    await renderDescGrid();
+  });
+  el('desc-size').addEventListener('change', async (ev) => {
+    gridCardWidth = parseInt(ev.target.value, 10);
+    await renderDescGrid();
+  });
+  el('btn-open-original').addEventListener('click', async () => {
+    try {
+      await call('open_original_image', sheetFiles[sheetIndex]);
+    } catch (e) { logFn(`❌ ${e.message}`); }
   });
   el('btn-desc-scoring-close').addEventListener('click', () => showView(null));
 

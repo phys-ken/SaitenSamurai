@@ -72,7 +72,8 @@ def test_config_view_lists_questions_and_deletes(open_app):
     page.wait_for_selector("#desc-config-view", state="visible")
     rows = page.locator("#desc-table tbody tr")
     assert rows.count() == 2
-    assert "問1" in rows.nth(0).inner_text()
+    # 名前・配点・観点はその場編集の input になっている
+    assert rows.nth(0).locator("input.desc-edit").nth(0).input_value() == "問1"
     assert "2 問 / 対象画像 2 枚" in page.locator("#desc-config-summary").inner_text()
     # 削除（confirm は Playwright 既定で dismiss → accept を設定）
     page.on("dialog", lambda d: d.accept())

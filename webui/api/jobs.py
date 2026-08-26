@@ -372,6 +372,8 @@ class JobsMixin:
             desc = self.state.get("descriptive")
             has_desc = (mode == "mark_and_descriptive" and desc and
                         desc["questions"])
+            include_desc = (bool(has_desc) and
+                            self.state["include_descriptive_in_analysis"])
             process_summary_generation(
                 self.state["image_folder"],
                 self.state["coord_file"],
@@ -382,7 +384,7 @@ class JobsMixin:
                 descriptive_config=self._desc_config if has_desc else None,
                 descriptive_scores=(self._desc_scores["scores"]
                                     if has_desc else None),
-                include_descriptive_in_analysis=bool(has_desc),
+                include_descriptive_in_analysis=include_desc,
                 progress_callback=self._progress_cb("summary"),
                 cancel_event=self._cancel_event,
                 mark_format=self.state["mark_format"],

@@ -69,7 +69,7 @@ def _setup_demo(bridge):
 
 
 def _setup_desc_demo(bridge, out_prefix):
-    """記述のみモード: 画像準備→問題設定→採点グリッド→一枚採点をキャプチャ"""
+    """記述のみモード: 画像準備→問題設定→採点グリッド→1枚ずつ→答案一覧→答案ごとの確認をキャプチャ"""
     import tempfile
     import cv2
     import numpy as np
@@ -116,7 +116,20 @@ def _setup_desc_demo(bridge, out_prefix):
     ])
     bridge._win.eval_js("window.__refreshState()")
     time.sleep(0.5)
-    bridge._win.eval_js("document.getElementById('btn-single-sheet').click()")
+    # 1枚ずつ（問題固定・旧UI互換）
+    bridge._win.eval_js("document.getElementById('btn-view-one').click()")
+    time.sleep(1.5)
+    ImageGrab.grab(xdisplay="").save(f"{out_prefix}_one.png")
+    print(f"saved: {out_prefix}_one.png")
+    # 答案一覧 → 答案ごとの確認・修正
+    bridge._win.eval_js("document.getElementById('btn-desc-scoring-close').click()")
+    time.sleep(0.8)
+    bridge._win.eval_js("document.getElementById('btn-sheet-review').click()")
+    time.sleep(1.5)
+    ImageGrab.grab(xdisplay="").save(f"{out_prefix}_sheetlist.png")
+    print(f"saved: {out_prefix}_sheetlist.png")
+    bridge._win.eval_js(
+        "document.querySelector('#sheet-list .sheet-row').click()")
     time.sleep(2.5)
     ImageGrab.grab(xdisplay="").save(f"{out_prefix}_single.png")
     print(f"saved: {out_prefix}_single.png")

@@ -158,9 +158,9 @@
       <span class="hint" id="desc-progress-hint"></span>
       <button class="info-btn" data-info="desc-config">ℹ</button>
     </div>
-    <div class="ds-row mark-only-ui">
-      <button class="btn" id="btn-annotate">答案に書き込む</button>
-      <span class="hint">マウスやペンタブレットで答案に手書きコメントを書けます（採点済み答案に反映）</span>
+    <div class="ds-row">
+      <button class="btn" id="btn-sheet-review">答案ごとの確認・修正</button>
+      <span class="hint">答案を1人選んで、全設問の得点確認と手書きコメントができます</span>
     </div>
     <div class="ds-row">
       <button class="btn" id="btn-run-scoring">▶ 採点済み答案を生成</button>
@@ -228,11 +228,14 @@
     <div class="checker-head">
       <h2>記述採点</h2>
       <span class="checker-summary" id="desc-scoring-summary"></span>
-      <button class="btn" id="btn-single-sheet">一枚採点へ</button>
       <button class="btn" id="btn-desc-scoring-close">閉じる</button>
     </div>
     <nav id="desc-q-tabs" class="checker-tabs"></nav>
     <div class="grid-toolbar">
+      <span class="view-toggle" role="group" aria-label="表示の切替">
+        <button class="btn" id="btn-view-grid">一覧</button>
+        <button class="btn" id="btn-view-one">1枚ずつ</button>
+      </span>
       <span class="hint">クリックで付ける得点:</span>
       <span id="score-palette" class="score-palette"></span>
     </div>
@@ -258,21 +261,54 @@
           <option value="240" selected>中</option>
           <option value="320">大</option>
         </select></label>
-      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 b＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ カードクリック＝上の得点を付与（未選択なら拡大）</span>
+      <span class="hint">数字キー＝得点を書いて次へ ／ m＝満点 b＝0点 ／ Space＝次へ ／ BackSpace＝未採点に戻す ／ カードクリック＝上の得点を付与 ／ ダブルクリック＝1枚ずつ表示</span>
     </div>
     <div id="desc-grid" class="vgrid-viewport"></div>
+
+    <!-- 1枚ずつ採点（旧UIと同じ: 問題固定・答案1枚を大きく表示してキーで送る） -->
+    <div id="one-panel" class="one-panel" hidden>
+      <div class="one-head">
+        <button class="btn" id="btn-one-prev">◀ 前へ</button>
+        <span id="one-name" class="one-name"></span>
+        <span id="one-score" class="score-badge"></span>
+        <button class="btn" id="btn-one-next">次へ ▶</button>
+        <span class="one-ctl">
+          <button class="btn" id="btn-one-full">満点</button>
+          <button class="btn" id="btn-one-zero">0点</button>
+          <input id="one-score-input" class="side-score-input" type="number" min="0" placeholder="点">
+          <button class="btn" id="btn-one-clear">未</button>
+        </span>
+        <span class="hint">数字キー＝採点して次へ ／ m＝満点 b＝0点 ／ Space＝スキップ ／ Ctrl＋ホイール＝拡大</span>
+      </div>
+      <div class="one-stage" id="one-stage">
+        <img id="one-image" alt="解答欄">
+      </div>
+    </div>
   </section>
 
-  <!-- 一枚採点ビュー（画像レイヤ＋注釈レイヤ。コメントモードの差し込み口） -->
+  <!-- 答案一覧（生徒名選択）ビュー -->
+  <section id="sheet-list-view" hidden>
+    <div class="checker-head">
+      <h2>答案ごとの確認・修正</h2>
+      <span class="checker-summary" id="sheet-list-summary"></span>
+      <button class="btn" id="btn-sheet-list-close">閉じる</button>
+    </div>
+    <div class="grid-toolbar">
+      <span class="hint">答案を選ぶと、全設問の得点確認と手書きコメントができます</span>
+    </div>
+    <div id="sheet-list" class="vgrid-viewport"></div>
+  </section>
+
+  <!-- 答案ごとの確認ビュー（画像レイヤ＋注釈レイヤ。手書きコメントの本体） -->
   <section id="single-sheet-view" hidden>
     <div class="checker-head">
-      <h2>一枚採点</h2>
+      <h2>答案ごとの確認・修正</h2>
       <span class="checker-summary" id="single-sheet-name"></span>
       <button class="btn" id="btn-sheet-prev">◀ 前の答案</button>
       <button class="btn" id="btn-sheet-next">次の答案 ▶</button>
       <button class="btn" id="btn-sheet-unfinished">未採点の答案へ</button>
       <button class="btn" id="btn-open-original">元画像を開く</button>
-      <button class="btn" id="btn-single-close">問題別に戻る</button>
+      <button class="btn" id="btn-single-close">答案一覧に戻る</button>
     </div>
     <div class="grid-toolbar">
       <button class="btn" id="btn-zoom-fit">幅に合わせる</button>
@@ -343,7 +379,7 @@
         <thead><tr><th>フォルダ / ファイル</th><th>役割</th><th>消してよい？</th></tr></thead>
         <tbody>
           <tr><td><code>00_Processing/</code></td>
-            <td>傾き補正とマーク枠の描画を済ませた作業用画像。読み取り・記述採点・一枚採点はこれを使います</td>
+            <td>傾き補正とマーク枠の描画を済ませた作業用画像。読み取り・記述採点・答案ごとの確認はこれを使います</td>
             <td>△ 消すと読み取りからやり直し</td></tr>
           <tr><td><code>01_Results/</code></td>
             <td>読み取り結果（Mark2-Result-～.xlsx）、正答・配点（answer_key.xlsx）、

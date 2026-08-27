@@ -293,6 +293,31 @@ class DescriptiveMixin:
         self._refresh_desc_summary()
         return _ok(state=self.state)
 
+    def list_sheet_overview(self):
+        """答案ごとの確認用: 全答案の採点状況と手書き有無の一覧。
+
+        [{filename, done, total, handwriting}] を返す（メモリ上の値のみで軽量）
+        """
+        listing = self.list_sheet_files()
+        if not listing["ok"]:
+            return listing
+        questions = (self._desc_config or {}).get("questions", [])
+        scores = self._desc_scores["scores"]
+        hw_sheets = set()
+        try:
+            hw_sheets = set(self._hw_load().get("sheets", {}).keys())
+        except Exception:
+            pass
+        items = []
+        for f in listing["files"]:
+            f_scores = scores.get(f, {})
+            done = sum(1 for q in questions
+                       if f_scores.get(q["id"]) is not None)
+            items.append({"filename": f, "done": done,
+                          "total": len(questions),
+                          "handwriting": f in hw_sheets})
+        return _ok(items=items)
+
     def list_descriptive_targets(self, qid):
         """指定問題の採点対象一覧（ファイル名と現在の得点）。
 

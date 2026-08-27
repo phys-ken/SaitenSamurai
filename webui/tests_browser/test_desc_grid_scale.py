@@ -138,15 +138,21 @@ SHEET_API = API.replace(
     "select_image_folder: async () => ({ok: true, cancelled: true}),",
     """select_image_folder: async () => ({ok: true, cancelled: true}),
     list_sheet_files: async () => ({ok: true, files: files}),
+    list_sheet_overview: async () => ({ok: true, items: files.map(f => {
+      const sc = window.__desc.scores[f] ?? {};
+      const done = window.__desc.questions.filter(q => sc[q.id] !== undefined).length;
+      return {filename: f, done, total: window.__desc.questions.length,
+              handwriting: false};
+    })}),
     get_sheet_image: async (f) => ({ok: true, filename: f ?? files[0],
                                     data_url: '%(png)s'}),""" % {"png": TINY_PNG})
 
 
 def _open_single(page):
     enter_mode(page, DESC_CARD)
-    page.click("#btn-desc-scoring")
-    page.wait_for_selector("#desc-scoring-view", state="visible")
-    page.click("#btn-single-sheet")
+    page.click("#btn-sheet-review")
+    page.wait_for_selector("#sheet-list-view", state="visible")
+    page.locator("#sheet-list .sheet-row").first.click()
     page.wait_for_selector("#single-sheet-view", state="visible")
     page.wait_for_selector("#annotation-layer .region-box")
 
@@ -257,3 +263,56 @@ def test_digit_buffer_discarded_on_tab_switch(open_app):
     assert page.evaluate(
         "Object.values(window.__desc.scores).every(s => Object.keys(s).length === 0)"), \
         "打ちかけの得点がタブ切替後に確定された（S7）"
+
+
+def test_one_by_one_mode_scores_and_advances(open_app):
+    """旧UI互換の「1枚ずつ」: 問題固定・大きく表示・数字キーで次へ"""
+    page = open_app(API)
+    _open_grid(page)
+    page.click("#btn-view-one")
+    page.wait_for_selector("#one-panel:not([hidden])")
+    assert page.locator("#desc-grid").is_hidden()
+    assert "s001.png（1 / 400）" in page.locator("#one-name").inner_text()
+    # 数字キーで採点 → 自動で次の未採点（表示も送られる）
+    page.keyboard.press("4")
+    page.wait_for_function("window.__desc.scores['s001.png'].D1 === 4")
+    page.wait_for_function(
+        "document.getElementById('one-name').textContent.includes('s002.png')")
+    # 満点ボタンと4色ヘッダ
+    page.click("#btn-one-full")
+    page.wait_for_function("window.__desc.scores['s002.png'].D1 === 5")
+    # 満点付与でも自動送り → s003 表示。前へで s002 に戻れる
+    page.wait_for_function(
+        "document.getElementById('one-name').textContent.includes('s003.png')")
+    page.click("#btn-one-prev")
+    page.wait_for_function(
+        "document.getElementById('one-name').textContent.includes('s002.png')")
+    # 一覧に戻れる（カーソル共有）
+    page.click("#btn-view-grid")
+    page.wait_for_selector("#one-panel[hidden]", state="attached")
+    assert page.locator("#desc-grid").is_visible()
+
+
+def test_grid_dblclick_enters_one_by_one(open_app):
+    page = open_app(API)
+    _open_grid(page)
+    page.locator("#desc-grid .entry-card[data-index='2']").dblclick()
+    page.wait_for_selector("#one-panel:not([hidden])")
+    assert "s003.png" in page.locator("#one-name").inner_text()
+
+
+def test_sheet_list_shows_status(open_app):
+    """答案一覧: 採点状況バッジと選択遷移"""
+    page = open_app(SHEET_API)
+    _open_grid(page)
+    page.keyboard.press("3")   # s001 D1 に3点
+    page.wait_for_function("window.__desc.scores['s001.png'].D1 === 3")
+    page.click("#btn-desc-scoring-close")
+    page.click("#btn-sheet-review")
+    page.wait_for_selector("#sheet-list-view", state="visible")
+    assert "全 400 枚" in page.locator("#sheet-list-summary").inner_text()
+    first = page.locator("#sheet-list .sheet-row").first
+    assert "採点 1 / 2 問" in first.inner_text()
+    first.click()
+    page.wait_for_selector("#single-sheet-view", state="visible")
+    assert "s001.png" in page.locator("#single-sheet-name").inner_text()

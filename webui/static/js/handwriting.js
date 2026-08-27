@@ -1,5 +1,5 @@
 /**
- * handwriting.js — 一枚採点ビューの手書きコメント（webui/docs/handwriting-plan.md）。
+ * handwriting.js — 答案ごとの確認・修正ビューの手書きコメント（webui/docs/handwriting-plan.md）。
  *
  * - ペン入力（pointerType=pen）は常時描画、マウスは「✎コメント」トグル（C）
  * - 筆跡は 00_Processing 実ピクセル座標のベクターで保持し、確定のたびに

@@ -22,6 +22,12 @@ API = """(() => {
     get_progress: async () => ({ok: true, progress:
       {prepared: true, read: true, scored: false, summarized: false}}),
     list_sheet_files: async () => ({ok: true, files: ['s1.png', 's2.png']}),
+    list_sheet_overview: async () => ({ok: true, items: [
+      {filename: 's1.png', done: 0, total: 0,
+       handwriting: (window.__hw['s1.png'] ?? []).length > 0},
+      {filename: 's2.png', done: 0, total: 0,
+       handwriting: (window.__hw['s2.png'] ?? []).length > 0},
+    ]}),
     get_sheet_image: async (f) => ({ok: true, filename: f ?? 's1.png',
                                     data_url: '%(png)s'}),
     get_handwriting: async (f) => ({ok: true,
@@ -40,7 +46,9 @@ from conftest import enter_mode
 
 def _open_annotate(page):
     enter_mode(page)
-    page.click("#btn-annotate")
+    page.click("#btn-sheet-review")
+    page.wait_for_selector("#sheet-list-view", state="visible")
+    page.locator("#sheet-list .sheet-row").first.click()
     page.wait_for_selector("#single-sheet-view", state="visible")
     page.wait_for_selector("#hw-canvas")
 
@@ -105,7 +113,9 @@ def test_c_key_toggles_and_close_returns_main(open_app):
     page.keyboard.press("c")
     page.wait_for_selector("#btn-hw-toggle:not(.active)")
     page.click("#btn-single-close")
-    page.wait_for_selector("#single-sheet-view", state="hidden")
+    page.wait_for_selector("#sheet-list-view", state="visible")
+    page.click("#btn-sheet-list-close")
+    page.wait_for_selector("#sheet-list-view", state="hidden")
     assert page.locator("#datasource-panel").is_visible()
 
 

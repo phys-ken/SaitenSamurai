@@ -167,7 +167,6 @@ export function render(state) {
   document.getElementById('omr-mode').parentElement.hidden = isDescOnly;
   document.getElementById('row-omr-result').hidden = isDescOnly;
   document.getElementById('btn-open-checker').parentElement.hidden = isDescOnly;
-  document.querySelectorAll('.mark-only-ui').forEach((n) => { n.hidden = isDescMode; });
   document.getElementById('btn-run-recognition').textContent =
     isDescOnly ? '▶ 画像を準備する' : '▶ 答案を読み取る';
   if (state.descriptive) {
@@ -213,7 +212,7 @@ export function render(state) {
   document.getElementById('btn-open-checker').disabled =
     Boolean(running) || !state.omr_result;
   document.getElementById('btn-total-position').disabled = Boolean(running) || !state.image_folder;
-  document.getElementById('btn-annotate').disabled =
+  document.getElementById('btn-sheet-review').disabled =
     Boolean(running) || !state.image_folder ||
     !(isDescOnly ? (state.descriptive?.prepared_count ?? 0) > 0
                  : Boolean(state.omr_result));

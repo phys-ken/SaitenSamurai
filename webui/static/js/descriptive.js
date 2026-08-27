@@ -1,14 +1,14 @@
 /**
- * descriptive.js — 記述採点の3ビュー（設定 / 問題別グリッド / 一枚採点）。
+ * descriptive.js — 記述採点のビュー群（設定 / 問題別グリッド＋1枚ずつ / 答案一覧 / 答案ごとの確認・修正）。
  *
- * 一枚採点は「画像レイヤ + annotation-layer」の重ね構造。将来のコメント
+ * 答案ごとの確認・修正は「画像レイヤ + annotation-layer」の重ね構造。将来のコメント
  * モード（手書き描画）は annotation-layer に canvas を足すだけで載る設計。
  */
 import { call } from './bridge.js';
 import { pickRegion } from './region-picker.js';
 import { withTransition } from './transitions.js';
 import { createVirtualGrid, createImageLoader } from './vlist.js';
-import { openLightbox, isModalOpen } from './lightbox.js';
+import { isModalOpen } from './lightbox.js';
 import {
   wireHandwriting, loadHandwriting, layoutHandwriting,
   setCommentMode, isCommentMode, undoHandwriting, redoHandwriting,
@@ -21,7 +21,7 @@ const el = (id) => document.getElementById(id);
 function showView(id) {
   return withTransition(() => {
     document.getElementById('main-cols').hidden = true;
-    for (const v of ['desc-config-view', 'desc-scoring-view', 'single-sheet-view']) {
+    for (const v of ['desc-config-view', 'desc-scoring-view', 'single-sheet-view', 'sheet-list-view']) {
       el(v).hidden = v !== id;
     }
     if (id === null) {
@@ -267,6 +267,8 @@ let gridCardWidth = 240;
 let digitBuf = '';
 let digitTimer = null;
 let activeScore = undefined;   // クリック付与モードの得点（undefined=未選択）
+let gridViewMode = 'grid';     // 'grid'（一覧） / 'one'（1枚ずつ = 旧UIの主モード）
+let oneZoom = null;            // 1枚ずつのズーム（null=幅フィット）
 
 function applyGridView() {
   let items = gridRawTargets.filter((t) => {
@@ -418,19 +420,16 @@ function buildCard(i, q, metrics) {
   meta.append(nameEl, badge);
 
   card.append(img, meta);
-  // クリック: 得点パレット選択中は付与、未選択なら拡大表示
-  card.addEventListener('click', async () => {
+  card.addEventListener('dblclick', () => {
+    gridCursor = i;
+    setGridViewMode('one');
+  });
+  // クリック: 得点パレット選択中は付与、未選択ならカーソル移動のみ
+  // （拡大して見たいときはダブルクリックで「1枚ずつ」へ）
+  card.addEventListener('click', () => {
     gridCursor = i;
     updateCursorClasses();
-    if (activeScore !== undefined) {
-      setGridScore(i, activeScore);
-      return;
-    }
-    try {
-      const url = await cropLoader.load(
-        `${currentQid}/${t.filename}`, currentQid, t.filename);
-      openLightbox(url, t.filename);
-    } catch { /* 画像なしはカード表示のまま */ }
+    if (activeScore !== undefined) setGridScore(i, activeScore);
   });
   return card;
 }
@@ -440,6 +439,49 @@ function updateCursorClasses() {
   document.querySelectorAll('#desc-grid .entry-card.cursor')
     .forEach((c) => c.classList.remove('cursor'));
   grid.itemAt(gridCursor)?.classList.add('cursor');
+  if (gridViewMode === 'one') renderOnePanel();
+}
+
+/** 1枚ずつパネル: カーソル位置の答案を大きく表示（旧UIの1枚ずつ再現） */
+async function renderOnePanel() {
+  const t = gridTargets[gridCursor];
+  const panel = el('one-panel');
+  panel.classList.remove('sc-full', 'sc-zero', 'sc-partial', 'sc-none');
+  if (!t) {
+    el('one-name').textContent = '該当する答案がありません（表示フィルタを確認してください）';
+    el('one-score').textContent = '';
+    el('one-image').removeAttribute('src');
+    return;
+  }
+  panel.classList.add(scoreClass(t.score, gridMax));
+  el('one-name').textContent = `${t.filename}（${gridCursor + 1} / ${gridTargets.length}）`;
+  el('one-score').textContent = t.score === null ? '未' : `${t.score}点`;
+  el('btn-one-prev').disabled = gridCursor === 0;
+  el('btn-one-next').disabled = gridCursor >= gridTargets.length - 1;
+  el('btn-one-full').textContent = `満点(${gridMax})`;
+  const img = el('one-image');
+  img.style.width = oneZoom === null ? '100%' : `${img.naturalWidth * oneZoom}px`;
+  const expect = t.filename;
+  try {
+    const url = await cropLoader.load(`${currentQid}/${expect}`, currentQid, expect);
+    if (gridTargets[gridCursor]?.filename === expect) {
+      img.src = url;
+      img.style.width = oneZoom === null ? '100%' : '';
+      if (oneZoom !== null) {
+        img.onload = () => { img.style.width = `${img.naturalWidth * oneZoom}px`; };
+      }
+    }
+  } catch { img.alt = '画像を読み込めません'; }
+}
+
+function setGridViewMode(mode) {
+  gridViewMode = mode;
+  el('desc-grid').hidden = mode !== 'grid';
+  el('one-panel').hidden = mode !== 'one';
+  el('btn-view-grid').classList.toggle('active', mode === 'grid');
+  el('btn-view-one').classList.toggle('active', mode === 'one');
+  if (mode === 'one') renderOnePanel();
+  else grid?.refresh();
 }
 
 async function setGridScore(i, v) {
@@ -457,6 +499,7 @@ async function setGridScore(i, v) {
   applyGridView();
   if (wasFiltered) grid.setCount(gridTargets.length);
   else grid.refresh();
+  if (gridViewMode === 'one') renderOnePanel();
   await renderQTabs(saved.state);
   if (v !== null) {
     // 並べ替え・フィルタ適用後の位置を基準に次を探す（B: ソート中の飛び防止）
@@ -598,11 +641,12 @@ export async function openDescScoring() {
   await showView('desc-scoring-view');
   await renderDescGrid();
   await renderQTabs();
+  setGridViewMode(gridViewMode);   // 前回の表示（一覧/1枚ずつ）を復元
   logFn('記述採点を開きました（数字キーで得点、自動で次の未採点へ進みます）');
 }
 
 // ================================================================
-// 一枚採点ビュー（ズーム/パン＋キーボード動線）
+// 答案ごとの確認・修正ビュー（ズーム/パン＋キーボード動線）
 // ================================================================
 
 let sheetFiles = [];
@@ -954,7 +998,56 @@ function sheetKeyHandler(e) {
   }
 }
 
-export async function openSingleSheet(commentOnly = false) {
+// ── 答案一覧（生徒名選択）: ここから答案ごとの確認へ入る ──────
+let sheetListGrid = null;
+let sheetCommentOnly = false;
+
+export async function openSheetList(commentOnly = false) {
+  sheetCommentOnly = commentOnly;
+  const res = await call('list_sheet_overview');
+  const items = res.items;
+  await showView('sheet-list-view');
+  const hasQ = items.some((it) => it.total > 0);
+  el('sheet-list-summary').textContent = `全 ${items.length} 枚`;
+  sheetListGrid?.destroy();
+  sheetListGrid = createVirtualGrid(el('sheet-list'), {
+    count: items.length,
+    itemMinWidth: 420,
+    itemHeight: 40,
+    gap: 6,
+    renderItem: (i) => {
+      const it = items[i];
+      const row = document.createElement('div');
+      row.className = 'sheet-row';
+      const name = document.createElement('span');
+      name.className = 'sheet-name';
+      name.textContent = it.filename;
+      row.appendChild(name);
+      if (hasQ && !sheetCommentOnly) {
+        const st = document.createElement('span');
+        const cls = it.total === 0 ? 'sc-none'
+          : it.done >= it.total ? 'sc-full'
+          : it.done === 0 ? 'sc-none' : 'sc-partial';
+        st.className = `sheet-status score-badge ${cls}`;
+        st.textContent = `採点 ${it.done} / ${it.total} 問`;
+        row.appendChild(st);
+      }
+      if (it.handwriting) {
+        const hw = document.createElement('span');
+        hw.className = 'hw-mark';
+        hw.textContent = '✎ 手書きあり';
+        row.appendChild(hw);
+      }
+      row.addEventListener('click', () => {
+        openSingleSheet(sheetCommentOnly, i)
+          .catch((e) => logFn(`❌ ${e.message}`));
+      });
+      return row;
+    },
+  });
+}
+
+export async function openSingleSheet(commentOnly = false, startIndex = 0) {
   const listing = await call('list_sheet_files');
   sheetFiles = listing.files;
   const state = (await call('get_state')).state;
@@ -973,7 +1066,7 @@ export async function openSingleSheet(commentOnly = false) {
   }
   sheetZoom = null;
   await showView('single-sheet-view');
-  await gotoSheet(sheetIndex);
+  await gotoSheet(startIndex);
   logFn('一枚採点を開きました（←→で答案を移動、数字キーで採点）');
 }
 
@@ -997,6 +1090,37 @@ export function wireDescriptive(log, stateUpdate) {
   el('btn-jump-unscored').addEventListener('click', () => {
     if (grid && gridTargets.length) advanceToUnscored(gridCursor);
   });
+  el('btn-view-grid').addEventListener('click', () => setGridViewMode('grid'));
+  el('btn-view-one').addEventListener('click', () => setGridViewMode('one'));
+  el('btn-one-prev').addEventListener('click', () => {
+    gridCursor = Math.max(0, gridCursor - 1);
+    updateCursorClasses();
+  });
+  el('btn-one-next').addEventListener('click', () => {
+    gridCursor = Math.min(gridTargets.length - 1, gridCursor + 1);
+    updateCursorClasses();
+  });
+  el('btn-one-full').addEventListener('click', () => setGridScore(gridCursor, gridMax));
+  el('btn-one-zero').addEventListener('click', () => setGridScore(gridCursor, 0));
+  el('btn-one-clear').addEventListener('click', () => setGridScore(gridCursor, null));
+  el('one-score-input').addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key !== 'Enter') return;
+    const v = parseInt(el('one-score-input').value, 10);
+    if (Number.isInteger(v) && v >= 0 && v <= gridMax) {
+      setGridScore(gridCursor, v);
+      el('one-score-input').value = '';
+    }
+  });
+  el('one-stage').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const img = el('one-image');
+    if (!img.naturalWidth) return;
+    const cur = img.clientWidth / img.naturalWidth;
+    oneZoom = Math.min(6, Math.max(0.3, cur * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    img.style.width = `${img.naturalWidth * oneZoom}px`;
+  }, { passive: false });
   el('desc-filter').addEventListener('change', async (ev) => {
     gridFilter = ev.target.value;
     gridCursor = 0;
@@ -1012,8 +1136,13 @@ export function wireDescriptive(log, stateUpdate) {
     await renderDescGrid();
   });
   wireHandwriting(log);
-  el('btn-annotate').addEventListener('click', () =>
-    openSingleSheet(true).catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
+  el('btn-sheet-review').addEventListener('click', async () => {
+    try {
+      // マークのみモードでは手書きコメント専用として開く（A9）
+      const st = (await call('get_state')).state;
+      await openSheetList(st.app_mode === 'mark_only');
+    } catch (e) { log(`❌ ${e.message}`); alert(e.message); }
+  });
   el('btn-open-original').addEventListener('click', async () => {
     try {
       await call('open_original_image', sheetFiles[sheetIndex]);
@@ -1021,13 +1150,11 @@ export function wireDescriptive(log, stateUpdate) {
   });
   el('btn-desc-scoring-close').addEventListener('click', () => showView(null));
 
-  el('btn-single-sheet').addEventListener('click', () =>
-    openSingleSheet().catch((e) => { log(`❌ ${e.message}`); alert(e.message); }));
+
   el('btn-single-close').addEventListener('click', () => {
-    // コメント専用（記述問題なし）で開いた場合はメイン画面へ戻る
-    if (!sheetQuestions.length) { showView(null); return; }
-    openDescScoring().catch((e) => { log(`❌ ${e.message}`); });
+    openSheetList(sheetCommentOnly).catch((e) => { log(`❌ ${e.message}`); });
   });
+  el('btn-sheet-list-close').addEventListener('click', () => showView(null));
   new ResizeObserver(() => {
     // ウィンドウ幅の変化で領域枠・筆跡キャンバスを敷き直す（S12）
     if (!el('single-sheet-view').hidden) layoutSheet();

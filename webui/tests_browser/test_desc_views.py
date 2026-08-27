@@ -37,6 +37,10 @@ API = """(() => {
     get_state: async () => ({ok: true, state: state()}),
     get_sheet_image: async (f) => ({ok: true, filename: f ?? 's1.png', data_url: '%(png)s'}),
     list_sheet_files: async () => ({ok: true, files: ['s1.png', 's2.png']}),
+    list_sheet_overview: async () => ({ok: true, items:
+      ['s1.png', 's2.png'].map(f => ({filename: f,
+        done: Object.keys(window.__desc.scores[f] ?? {}).length,
+        total: window.__desc.questions.length, handwriting: false}))}),
     start_descriptive_scoring: async () => ({ok: true, crops: {}}),
     list_descriptive_targets: async (qid) => ({ok: true, items:
       ['s1.png', 's2.png'].map(f => ({filename: f,
@@ -118,9 +122,9 @@ def test_grid_view_scores_and_updates_tabs(open_app):
 def test_single_sheet_view_overlays_and_navigation(open_app):
     page = open_app(API)
     enter_mode(page, DESC_CARD)
-    page.click("#btn-desc-scoring")
-    page.wait_for_selector("#desc-scoring-view", state="visible")
-    page.click("#btn-single-sheet")
+    page.click("#btn-sheet-review")
+    page.wait_for_selector("#sheet-list-view", state="visible")
+    page.locator("#sheet-list .sheet-row").first.click()
     page.wait_for_selector("#single-sheet-view", state="visible")
     assert "s1.png（1 / 2）" in page.locator("#single-sheet-name").inner_text()
     assert page.locator("#btn-sheet-prev").is_disabled()
@@ -142,9 +146,9 @@ def test_single_sheet_view_overlays_and_navigation(open_app):
     assert page.locator("#btn-sheet-next").is_disabled()
     page.wait_for_function(
         "document.querySelector('#annotation-layer .region-label')?.textContent.includes('未')")
-    # 問題別に戻る
+    # 答案一覧に戻る
     page.click("#btn-single-close")
-    page.wait_for_selector("#desc-scoring-view", state="visible")
+    page.wait_for_selector("#sheet-list-view", state="visible")
 
 
 def _inject_big_sheet(page):

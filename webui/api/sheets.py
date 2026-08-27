@@ -43,6 +43,25 @@ class SheetsMixin:
             return _err("補正済み画像がありません。先に「答案を読み取る」（または「画像を準備する」）を実行してください")
         return _ok(files=files)
 
+    def get_sheet_size(self, filename):
+        """補正済み画像（00_Processing）のピクセル寸法を返す。
+
+        1枚ずつビューの手書きが、筆跡を答案全体座標で保存するための基準寸法。
+        """
+        from PIL import Image
+        folder = self._boxed_folder()
+        if not folder:
+            return _err("答案画像フォルダを選択してください")
+        path = folder / Path(str(filename)).name
+        if not path.exists():
+            return _err(f"画像が見つかりません: {filename}")
+        try:
+            with Image.open(path) as img:
+                w, h = img.size
+        except Exception as e:
+            return _err(f"画像を読み込めません: {e}")
+        return _ok(w=w, h=h)
+
     def get_sheet_image(self, filename=None):
         """答案全体画像を data URL で返す（filename 省略時は先頭の1枚）"""
         listing = self.list_sheet_files()

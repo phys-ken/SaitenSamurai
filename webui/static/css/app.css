@@ -519,7 +519,7 @@ input, select {
 
 /* ── 手書きコメント ── */
 .hw-canvas { position: absolute; inset: 0; pointer-events: none; }
-.sheet-stage.commenting { cursor: crosshair; }
+.sheet-stage.commenting, .one-stage.commenting { cursor: crosshair; }
 .hw-toolbar { display: inline-flex; align-items: center; gap: 0.25rem; margin-left: auto; }
 .hw-toolbar .btn { padding: 0.25rem 0.55rem; font-size: 0.85rem; }
 .hw-toolbar .btn.active { background: var(--sumi); border-color: var(--sumi); color: var(--paper); }
@@ -531,7 +531,9 @@ input, select {
 .hw-color.active { border-color: var(--sumi); border-width: 2px; }
 #hw-colors, #hw-widths { display: inline-flex; gap: 0.25rem; }
 /* ペン/タッチで書くときブラウザのスクロールに食われない（A1） */
-.sheet-stage.commenting, .hw-canvas { touch-action: none; }
+.sheet-stage.commenting, .one-stage.commenting, .hw-canvas { touch-action: none; }
+#hw-stamps { display: inline-flex; gap: 0.25rem; }
+.hw-stamp { width: 1.9em; padding: 0.25rem 0; }
 .sheet-stage { touch-action: pan-x pan-y; }
 
 /* ── 記述問題の設定（tk方式: 画像常設＋ドラッグ即追加） ── */
@@ -594,9 +596,12 @@ input, select {
             border-bottom: 1px solid var(--kei-line); flex-wrap: wrap; }
 .one-name { font-weight: 700; }
 .one-ctl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: 0.6rem; }
-.one-stage { overflow: auto; height: calc(100vh - 210px); min-height: 14rem;
+.one-tools { display: flex; padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--rule); background: var(--paper); }
+.one-stage { overflow: auto; height: calc(100vh - 250px); min-height: 14rem;
              background: repeating-conic-gradient(var(--paper-dim) 0% 25%, var(--paper) 0% 50%) 0 0/24px 24px; }
-.one-stage img { display: block; margin: 0 auto; width: 100%;
+.one-wrap { position: relative; margin: 0 auto; }
+.one-stage img { display: block; width: 100%;
                  user-select: none; -webkit-user-drag: none; }
 .one-panel.sc-full .one-head { background: #e9f2fc; }
 .one-panel.sc-zero .one-head { background: #fdecec; }

@@ -13,7 +13,7 @@
 画面を全面刷新した**新UI 版のベータ**を公開しています。ベータ版は
 「最新の安定版」ボタンには含まれないため、こちらから入手してください。
 
-<a href="https://github.com/phys-ken/SaitenSamurai/releases/tag/v5.0.0-beta.3" class="btn-download">
+<a href="https://github.com/phys-ken/SaitenSamurai/releases/tag/v5.0.0-beta.4" class="btn-download">
 :material-flask-outline: 新UI ベータ版をダウンロード
 </a>
 

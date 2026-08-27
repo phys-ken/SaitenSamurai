@@ -55,3 +55,18 @@ def test_total_region_roundtrip(bridge_with_boxed):
 
 def test_invalid_region_rejected(bridge_with_boxed):
     assert not bridge_with_boxed.set_total_display_region([1, 2, 3])["ok"]
+
+
+def test_get_sheet_size_returns_dimensions(bridge_with_boxed):
+    res = bridge_with_boxed.get_sheet_size("a.png")
+    assert res["ok"] and (res["w"], res["h"]) == (200, 100)
+
+
+def test_get_sheet_size_missing_file(bridge_with_boxed):
+    assert not bridge_with_boxed.get_sheet_size("nope.png")["ok"]
+
+
+def test_get_sheet_size_rejects_path_traversal(bridge_with_boxed):
+    # パス区切りはファイル名だけに丸められ、フォルダ外は読めない
+    res = bridge_with_boxed.get_sheet_size("../../orig.png")
+    assert not res["ok"]

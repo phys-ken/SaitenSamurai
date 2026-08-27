@@ -11,6 +11,7 @@ import { createVirtualGrid, createImageLoader } from './vlist.js';
 import { isModalOpen } from './lightbox.js';
 import {
   wireHandwriting, loadHandwriting, layoutHandwriting,
+  attachHandwritingSurface,
   setCommentMode, isCommentMode, undoHandwriting, redoHandwriting,
 } from './handwriting.js';
 
@@ -269,6 +270,10 @@ let digitTimer = null;
 let activeScore = undefined;   // クリック付与モードの得点（undefined=未選択）
 let gridViewMode = 'grid';     // 'grid'（一覧） / 'one'（1枚ずつ = 旧UIの主モード）
 let oneZoom = null;            // 1枚ずつのズーム（null=幅フィット）
+let gridRegion = null;         // 現在の問題の領域 [x1,y1,x2,y2]（答案全体座標）
+let oneHwFile = null;          // 1枚ずつで筆跡を読み込み済みの答案
+const sheetSizeCache = new Map();  // filename → {w,h}（筆跡保存の基準寸法）
+let hwToolbarHome = null;      // 手書きツールバーの定位置（答案ごとの確認側）
 
 function applyGridView() {
   let items = gridRawTargets.filter((t) => {
@@ -460,18 +465,55 @@ async function renderOnePanel() {
   el('btn-one-next').disabled = gridCursor >= gridTargets.length - 1;
   el('btn-one-full').textContent = `満点(${gridMax})`;
   const img = el('one-image');
-  img.style.width = oneZoom === null ? '100%' : `${img.naturalWidth * oneZoom}px`;
+  const wrap = el('one-wrap');
+  wrap.style.width = oneZoom === null ? '100%' : `${img.naturalWidth * oneZoom}px`;
   const expect = t.filename;
   try {
     const url = await cropLoader.load(`${currentQid}/${expect}`, currentQid, expect);
     if (gridTargets[gridCursor]?.filename === expect) {
       img.src = url;
-      img.style.width = oneZoom === null ? '100%' : '';
+      wrap.style.width = oneZoom === null ? '100%' : '';
       if (oneZoom !== null) {
-        img.onload = () => { img.style.width = `${img.naturalWidth * oneZoom}px`; };
+        img.onload = () => { wrap.style.width = `${img.naturalWidth * oneZoom}px`; };
       }
     }
   } catch { img.alt = '画像を読み込めません'; }
+  syncOneHandwriting();
+}
+
+/** 1枚ずつの手書き: 表示中の答案の筆跡を読み込み、クロップにキャンバスを重ねる。
+ * 筆跡は答案全体座標のまま扱い、表示中の設問領域を viewport として渡す。 */
+async function syncOneHandwriting() {
+  if (gridViewMode !== 'one' || !gridRegion) return;
+  const t = gridTargets[gridCursor];
+  if (!t) return;
+  if (!sheetSizeCache.has(t.filename)) {
+    try {
+      const r = await call('get_sheet_size', t.filename);
+      sheetSizeCache.set(t.filename, { w: r.w, h: r.h });
+    } catch (e) { logFn(`❌ ${e.message}`); return; }
+  }
+  if (gridTargets[gridCursor]?.filename !== t.filename) return;  // 送り中の答案切替
+  if (oneHwFile !== t.filename) {
+    oneHwFile = t.filename;
+    await loadHandwriting(t.filename);
+  }
+  layoutOneHwCanvas();
+}
+
+function layoutOneHwCanvas() {
+  if (gridViewMode !== 'one' || !gridRegion || !oneHwFile) return;
+  const img = el('one-image');
+  const size = sheetSizeCache.get(oneHwFile);
+  if (!size || !img.clientWidth) return;
+  const [x1, y1, x2, y2] = gridRegion;
+  layoutHandwriting(img.clientWidth, img.clientHeight, size.w, size.h,
+                    { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+}
+
+function placeHwToolbar(target) {
+  const bar = el('hw-toolbar');
+  if (bar.parentElement !== target) target.appendChild(bar);
 }
 
 function setGridViewMode(mode) {
@@ -480,8 +522,15 @@ function setGridViewMode(mode) {
   el('one-panel').hidden = mode !== 'one';
   el('btn-view-grid').classList.toggle('active', mode === 'grid');
   el('btn-view-one').classList.toggle('active', mode === 'one');
-  if (mode === 'one') renderOnePanel();
-  else grid?.refresh();
+  if (mode === 'one') {
+    attachHandwritingSurface(el('one-stage'), el('one-hw-canvas'),
+                             { hideClear: true });
+    placeHwToolbar(el('one-tools'));
+    oneHwFile = null;   // 他ビューで別答案を読んだ可能性があるため読み直す
+    renderOnePanel();
+  } else {
+    grid?.refresh();
+  }
 }
 
 async function setGridScore(i, v) {
@@ -530,6 +579,7 @@ async function renderDescGrid() {
   const q = state.descriptive.questions.find((x) => x.id === currentQid);
   if (!q) return;
   gridMax = q.max_score;
+  gridRegion = q.region;
   if (typeof activeScore === 'number' && activeScore > gridMax) {
     activeScore = undefined;   // 満点を超える付与得点は問題切替で解除
   }
@@ -594,6 +644,11 @@ function gridKeyHandler(e) {
     return;
   }
   if (e.key === 'Enter') { e.preventDefault(); commitDigits(); return; }
+  if ((e.key === 'c' || e.key === 'C') && gridViewMode === 'one') {
+    e.preventDefault();                      // 答案ごとの確認と同じ C=コメント
+    setCommentMode(!isCommentMode());
+    return;
+  }
   if (e.key === 'm' || e.key === 'M') {     // tk の m=満点 と同じ
     e.preventDefault();
     setGridScore(gridCursor, gridMax);
@@ -816,6 +871,8 @@ let sheetToken = 0;
 
 async function gotoSheet(index) {
   discardDigits();
+  attachHandwritingSurface(el('sheet-stage'), el('hw-canvas'));
+  if (hwToolbarHome) placeHwToolbar(hwToolbarHome);
   const token = ++sheetToken;   // 連打時は最後の呼び出しだけを画面に反映（S5）
   sheetIndex = Math.min(sheetFiles.length - 1, Math.max(0, index));
   const filename = sheetFiles[sheetIndex];
@@ -1119,8 +1176,12 @@ export function wireDescriptive(log, stateUpdate) {
     if (!img.naturalWidth) return;
     const cur = img.clientWidth / img.naturalWidth;
     oneZoom = Math.min(6, Math.max(0.3, cur * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
-    img.style.width = `${img.naturalWidth * oneZoom}px`;
+    el('one-wrap').style.width = `${img.naturalWidth * oneZoom}px`;
   }, { passive: false });
+  // クロップ画像の表示サイズが変わったら（読み込み・ズーム・リサイズ）
+  // 手書きキャンバスを敷き直す
+  el('one-image').addEventListener('load', layoutOneHwCanvas);
+  new ResizeObserver(() => layoutOneHwCanvas()).observe(el('one-image'));
   el('desc-filter').addEventListener('change', async (ev) => {
     gridFilter = ev.target.value;
     gridCursor = 0;
@@ -1136,6 +1197,7 @@ export function wireDescriptive(log, stateUpdate) {
     await renderDescGrid();
   });
   wireHandwriting(log);
+  hwToolbarHome = el('hw-toolbar').parentElement;
   el('btn-sheet-review').addEventListener('click', async () => {
     try {
       // マークのみモードでは手書きコメント専用として開く（A9）

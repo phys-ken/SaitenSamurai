@@ -113,12 +113,26 @@ def _setup_desc_demo(bridge, out_prefix):
          "points": [[90, 300, 0.3], [170, 260, 0.7], [260, 310, 0.9], [340, 265, 0.6]]},
         {"color": "#1d5fa8", "width": 2,
          "points": [[110, 640, 0.5], [420, 640, 0.5]]},
+        {"color": "#c73e2e", "width": 3,   # 問1領域内（1枚ずつでの重なり確認用）
+         "points": [[120, 160, 0.5], [220, 200, 0.8], [330, 150, 0.6]]},
     ])
     bridge._win.eval_js("window.__refreshState()")
     time.sleep(0.5)
     # 1枚ずつ（問題固定・旧UI互換）
     bridge._win.eval_js("document.getElementById('btn-view-one').click()")
     time.sleep(1.5)
+    # コメントモード＋スタンプをJSで押して、1枚ずつの手書きを可視化
+    bridge._win.eval_js("""
+      document.getElementById('btn-hw-toggle').click();
+      document.querySelector('.hw-stamp[data-stamp=circle2]').click();
+      const cv = document.getElementById('one-hw-canvas');
+      const r = cv.getBoundingClientRect();
+      document.getElementById('one-stage').dispatchEvent(new PointerEvent(
+        'pointerdown', {clientX: r.left + r.width * 0.82,
+                        clientY: r.top + r.height * 0.3,
+                        button: 0, bubbles: true}));
+    """)
+    time.sleep(1.0)
     ImageGrab.grab(xdisplay="").save(f"{out_prefix}_one.png")
     print(f"saved: {out_prefix}_one.png")
     # 答案一覧 → 答案ごとの確認・修正

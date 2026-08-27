@@ -18,6 +18,7 @@ API = """(() => {
     's' + String(i + 1).padStart(3, '0') + '.png');
   files.forEach(f => { window.__desc.scores[f] = {}; });
   window.__cropCalls = 0;
+  window.__hw = {};
   const scoredCounts = () => {
     const c = {};
     for (const q of window.__desc.questions) {
@@ -54,6 +55,13 @@ API = """(() => {
       return {ok: true, state: state()};
     },
     select_image_folder: async () => ({ok: true, cancelled: true}),
+    get_sheet_size: async () => ({ok: true, w: 595, h: 842}),
+    get_handwriting: async (f) =>
+      ({ok: true, strokes: (window.__hw[f] ?? {strokes: []}).strokes}),
+    set_handwriting: async (f, w, h, strokes) => {
+      window.__hw[f] = {w, h, strokes};
+      return {ok: true, stroke_count: strokes.length};
+    },
   };
 })()""" % {"n": N, "png": TINY_PNG}
 
@@ -316,3 +324,49 @@ def test_sheet_list_shows_status(open_app):
     first.click()
     page.wait_for_selector("#single-sheet-view", state="visible")
     assert "s001.png" in page.locator("#single-sheet-name").inner_text()
+
+
+def _open_one_mode(page):
+    _open_grid(page)
+    page.click("#btn-view-one")
+    page.wait_for_selector("#one-panel:not([hidden])")
+    page.wait_for_selector("#one-image[src]")
+
+
+def test_one_by_one_handwriting_saves_sheet_coords(open_app):
+    """1枚ずつでの手書き: 領域オフセット付きの答案全体座標で保存される"""
+    page = open_app(API)
+    _open_one_mode(page)
+    # ツールバーは1枚ずつ側に移動し、全消去は出さない
+    assert page.evaluate(
+        "document.getElementById('hw-toolbar').parentElement.id") == "one-tools"
+    assert page.locator("#btn-hw-clear").is_hidden()
+    page.keyboard.press("c")   # コメントモード（マウス描画）オン
+    box = page.locator("#one-hw-canvas").bounding_box()
+    assert box and box["width"] > 50
+    x0, y0 = box["x"] + box["width"] * 0.2, box["y"] + box["height"] * 0.3
+    page.mouse.move(x0, y0)
+    page.mouse.down()
+    page.mouse.move(x0 + box["width"] * 0.4, y0 + box["height"] * 0.2, steps=5)
+    page.mouse.up()
+    page.wait_for_function("(window.__hw['s001.png'] ?? {strokes: []}).strokes.length === 1")
+    saved = page.evaluate("window.__hw['s001.png']")
+    # 保存基準は答案全体寸法、座標は問1の領域 [10,10,200,80] の内側
+    assert (saved["w"], saved["h"]) == (595, 842)
+    for x, y, _p in saved["strokes"][0]["points"]:
+        assert 10 <= x <= 200 and 10 <= y <= 80
+
+
+def test_one_by_one_stamp_and_undo(open_app):
+    """スタンプ: ワンクリックで筆跡として押され、戻すで丸ごと消える"""
+    page = open_app(API)
+    _open_one_mode(page)
+    page.keyboard.press("c")
+    page.click(".hw-stamp[data-stamp=circle2]")
+    box = page.locator("#one-hw-canvas").bounding_box()
+    # 1×1 png が正方形に引き伸ばされ中央はビューポート外に出るため上端寄りを押す
+    page.mouse.click(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.1)
+    # ◎ は外円＋内円の2ストローク
+    page.wait_for_function("(window.__hw['s001.png'] ?? {strokes: []}).strokes.length === 2")
+    page.click("#btn-hw-undo")
+    page.wait_for_function("!window.__hw['s001.png'] || window.__hw['s001.png'].strokes.length === 0")

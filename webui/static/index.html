@@ -278,10 +278,14 @@
           <input id="one-score-input" class="side-score-input" type="number" min="0" placeholder="点">
           <button class="btn" id="btn-one-clear">未</button>
         </span>
-        <span class="hint">数字キー＝採点して次へ ／ m＝満点 b＝0点 ／ Space＝スキップ ／ Ctrl＋ホイール＝拡大</span>
+        <span class="hint">数字キー＝採点して次へ ／ m＝満点 b＝0点 ／ Space＝スキップ ／ Ctrl＋ホイール＝拡大 ／ C＝コメント（マウスで手書き）</span>
       </div>
+      <div class="one-tools" id="one-tools"></div>
       <div class="one-stage" id="one-stage">
-        <img id="one-image" alt="解答欄">
+        <div class="one-wrap" id="one-wrap">
+          <img id="one-image" alt="解答欄">
+          <canvas id="one-hw-canvas" class="hw-canvas"></canvas>
+        </div>
       </div>
     </div>
   </section>
@@ -319,6 +323,7 @@
         <button class="btn" id="btn-hw-toggle" title="マウスで書き込む（C）。ペンはいつでも書けます">✎ コメント</button>
         <span id="hw-colors"></span>
         <span id="hw-widths"></span>
+        <span id="hw-stamps" title="ワンクリックで押せるスタンプ"></span>
         <button class="btn" id="btn-hw-eraser" title="ストローク単位で消します">消しゴム</button>
         <button class="btn" id="btn-hw-undo">戻す</button>
         <button class="btn" id="btn-hw-redo">やり直す</button>

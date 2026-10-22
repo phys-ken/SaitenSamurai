@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(/projects/*/scans/**)",
+      "Edit(/projects/*/scans/**)",
+      "Read(/projects/*/除外/**)",
+      "Edit(/projects/*/除外/**)",
+      "Read(/projects/*/*.pdf)",
+      "Read(/projects/*/*.PDF)",
+      "WebFetch(domain:127.0.0.1)",
+      "WebFetch(domain:localhost)",
+      "Bash(curl *127.0.0.1*)",
+      "Bash(curl *localhost*)",
+      "Bash(wget *127.0.0.1*)",
+      "Bash(wget *localhost*)"
+    ]
+  }
+}

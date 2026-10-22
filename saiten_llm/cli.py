@@ -12,7 +12,8 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from saiten_llm import REPO_ROOT, cmd_desc, cmd_finalize, cmd_mark, cmd_points
+from saiten_llm import (REPO_ROOT, cmd_desc, cmd_finalize, cmd_mark, cmd_points,
+                        workspace_cmds)
 from saiten_llm.workspace import Project, now_iso
 
 EXIT_OK, EXIT_ERROR, EXIT_NEEDS_TEACHER = 0, 1, 2
@@ -36,6 +37,10 @@ def cmd_status(project, args):
          f"向き: {'確認済み（' + orient['checked_at'] + '）' if orient.get('checked_at') else '未確認'}",
          f"黒塗り: {_MASK_LABEL[mask_status(project)]}",
          f"LLM用の写し: {str(view.get('pages')) + ' 枚（' + view['built_at'] + '）' if view else 'まだ作っていません'}")
+    from saiten_llm import progress
+    _say("", *progress.checklist(project))
+    if args.write:
+        _say("", f"書き出しました: {progress.write(project)}")
     return EXIT_OK
 
 
@@ -214,6 +219,10 @@ def cmd_open_ui(project, args):
     return EXIT_OK
 
 
+def _args_status(p):
+    p.add_argument("--write", action="store_true", help="進捗.md を書き直す（メモ欄は残す）")
+
+
 def _args_pdf(p):
     p.add_argument("--force", action="store_true", help="scans/ を作り直す")
     p.add_argument("--dpi", type=int, default=200)
@@ -301,7 +310,7 @@ def _args_set_points(p):
 
 
 COMMANDS = {
-    "status": (cmd_status, "試験フォルダの進み具合を表示する", None),
+    "status": (cmd_status, "試験フォルダの進み具合を表示する", _args_status),
     "pdf": (cmd_pdf, "試験フォルダの PDF を scans/ に画像として書き出す", _args_pdf),
     "orient": (cmd_orient, "答案の向きを確かめる（--apply で回す）", _args_orient),
     "mask-server": (cmd_mask_server, "黒塗りの範囲を先生に決めてもらう画面を開き、承認まで待つ",
@@ -328,6 +337,24 @@ COMMANDS = {
 }
 
 
+def _args_setup_workspace(p):
+    p.add_argument("--skip-check", action="store_true", help="合成の答案での動作確認を省く")
+
+
+def _args_audit(p):
+    p.add_argument("--transcripts", help="会話記録のフォルダ（既定: ~/.claude/projects）")
+
+
+# 試験フォルダではなく、作業フォルダ全体に対するコマンド
+WORKSPACE_COMMANDS = {
+    "setup-workspace": (workspace_cmds.cmd_setup_workspace,
+                        "作業フォルダ（projects/・templates/・設定）を用意して動作を確かめる",
+                        _args_setup_workspace),
+    "audit": (workspace_cmds.cmd_audit,
+              "会話記録を調べ、元の答案を開こうとした形跡がないか報告する", _args_audit),
+}
+
+
 def build_parser():
     ap = argparse.ArgumentParser(prog="saiten_llm",
                                  description="LLM と協働で採点するための採点侍コマンド")
@@ -337,6 +364,10 @@ def build_parser():
         p.add_argument("project", help="試験フォルダ")
         if add_args:
             add_args(p)
+    for name, (_fn, help_text, add_args) in WORKSPACE_COMMANDS.items():
+        p = sub.add_parser(name, help=help_text, description=help_text)
+        p.add_argument("workspace", help="作業フォルダ（AGENTS.md を置いたフォルダ）")
+        add_args(p)
     return ap
 
 
@@ -345,6 +376,8 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")   # Windows の端末でも日本語を崩さない
     args = build_parser().parse_args(argv)
+    if args.command in WORKSPACE_COMMANDS:
+        return WORKSPACE_COMMANDS[args.command][0](args)
     try:
         project = Project(args.project)
     except FileNotFoundError as e:

@@ -10,6 +10,7 @@
 - [リポジトリ構成](#リポジトリ構成)
 - [モジュール依存関係](#モジュール依存関係)
 - [採点モードのアーキテクチャ](#採点モードのアーキテクチャ)
+- [LLM 協働採点（saiten_llm）](#llm-協働採点saiten_llm)
 - [テスト](#テスト)
 - [Git 運用ガイド（初心者向け）](#git-運用ガイド初心者向け)
 - [コーディング規約](#コーディング規約)
@@ -328,6 +329,32 @@ main() → StartupModeDialog(root) → mode, mark_format, session_path を取得
 前回選択したモードは `descriptive_config.json` に保存され、次回起動時に自動復元されます。
 採点中はモード切替を表示せず、選択したモードで固定されます。
 モードを変更したい場合は、採点を中断（自動保存）して問題一覧に戻り、再度選択してください。
+
+---
+
+## LLM 協働採点（saiten_llm）
+
+ブランチ `feat/llm-workflow` で開発中。AI エージェント（Claude Code など）が
+`python -m saiten_llm <コマンド> <試験フォルダ>` で採点侍を動かす。
+利用者・エージェント向けの手順は `saiten_llm/GUIDE.md`。
+
+設計の要点:
+
+- **採点の処理は webui の Bridge をそのまま使う**（`saiten_llm/engine.py` が偽の画面
+  `CliAdapter` を渡して画面なしで動かす）。設定は採点侍の `session_state.json` に残るので、
+  先生は `webui/app.py --folder <答案画像フォルダ>` で同じ状態を開ける
+- **LLM は元の答案を見ない**。元画像を読むのは CLI の中だけで、LLM に渡すのは
+  先生が承認した黒塗り済みの写し（`<試験>/_llm_view/`）だけ。黒塗りは写しにだけ掛け、
+  読み取りに使う画像には掛けない（マーカー検出・マーク判定と干渉させない）
+- **交代制**: `app.py --folder` で開いている間は `_saiten_grading_results/ui_open.lock` を置き
+  （`webui/api/uilock.py`）、CLI は書き込みを断る。画面は記述の得点ファイル全体を上書き保存するため
+- **記述は仮の2点満点**（正2・部分1・誤0・保留=未採点）で判定し、配点が決まってから換算する。
+  判定と理由・先生の確定は `<試験>/judgments.json`、点数の正本は `descriptive_scores.json`
+- **承認の記録**: 先生の承認が要る操作は `--teacher-approved` か `confirm` を通し、
+  `project.json` / `judgments.json` に日時と内容の指紋（sha256）を残す。
+  `finalize` は指紋を照合し、確定の後で書き換わったものがあれば個票を作らない
+- テストは合成の答案（`saiten_llm/tools/make_sample_exam.py`、実在の生徒なし）で通しを回す
+  （`tests/llm_workflow/`）
 
 ---
 

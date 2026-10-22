@@ -212,6 +212,14 @@ def cmd_llm_view(project, args):
 
 def cmd_open_ui(project, args):
     """採点侍の画面を、この試験の状態で開く（先生の番の始まり）"""
+    from api import uilock
+    from saiten_llm.engine import session_path
+    if uilock.holder(project.scans):
+        _say("採点侍の画面はすでにこの試験を開いています。")
+        return EXIT_NEEDS_TEACHER
+    if not session_path(project).exists():
+        _say("まだ採点侍の設定がありません。先に mode でモードを決めてください。")
+        return EXIT_ERROR
     cmd = [sys.executable, str(REPO_ROOT / "webui" / "app.py"), "--folder", str(project.scans)]
     proc = subprocess.Popen(cmd, cwd=str(REPO_ROOT))
     _say(f"採点侍を開きました（プロセス {proc.pid}）。",

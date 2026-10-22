@@ -248,6 +248,69 @@ def cmd_review(project, args):
     return 0
 
 
+# --- accuracy -----------------------------------------------------------
+
+def agrees(verdict, score, max_score):
+    """LLM の判定と、先生が確定した得点が一致しているか（保留・未採点は None）"""
+    if verdict == "保留" or score is None:
+        return None
+    if verdict == "正":
+        return score == max_score
+    if verdict == "誤":
+        return score == 0
+    return 0 < score < max_score      # 部分
+
+
+def cmd_accuracy(project, args):
+    """LLM の判定が、先生の確定とどれだけ一致したかを数える"""
+    bridge, _ = open_bridge(project, write=False)
+    data = jmod.load(project)
+    files = _files(bridge)
+    scores = bridge._desc_scores["scores"]
+    report = {"made_at": now_iso(), "questions": []}
+    total_agree = total_n = total_hold = 0
+    for q in _questions(bridge):
+        record = data["questions"].get(q["id"]) or {}
+        items = record.get("items") or {}
+        agree, n, holds, wrong = 0, 0, 0, []
+        for f in files:
+            item = items.get(f)
+            if item is None:
+                continue
+            score = (scores.get(f) or {}).get(q["id"])
+            if item["verdict"] == "保留":
+                holds += 1
+                continue
+            ok = agrees(item["verdict"], score, q["max_score"])
+            if ok is None:
+                continue
+            n += 1
+            agree += ok
+            if not ok:
+                wrong.append({"file": f, "llm": item["verdict"], "reason": item.get("reason", ""),
+                              "teacher": score})
+        total_agree, total_n, total_hold = total_agree + agree, total_n + n, total_hold + holds
+        report["questions"].append({"id": q["id"], "name": q["name"], "max_score": q["max_score"],
+                                    "confirmed": bool(record.get("confirmed")), "judged": n,
+                                    "agree": agree, "holds": holds, "disagreements": wrong})
+        rate = f"{agree / n:.0%}" if n else "—"
+        state = "確定済み" if record.get("confirmed") else "未確定（数字は途中経過）"
+        _say(f"{q['id']}（{q['name']}）: 一致 {agree}/{n}（{rate}）・保留 {holds} ・{state}")
+        for w in wrong:
+            t = "未採点" if w["teacher"] is None else f"{w['teacher']}点"
+            _say(f"  食い違い: {w['file']}  LLM {w['llm']}" + (f"（{w['reason']}）" if w["reason"] else "")
+                 + f" → 先生 {t}")
+    if total_n == 0:
+        _say("比べられる判定がありません（判定前か、すべて保留）。")
+        return 2
+    _say(f"全体: 一致 {total_agree}/{total_n}（{total_agree / total_n:.0%}）・保留 {total_hold}",
+         "（先生は LLM の判定を見てから確認しているので、一致率は高めに出ます）")
+    out = project.root / "精度.json"
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    _say(f"詳しい内容: {out}")
+    return 0
+
+
 # --- confirm ------------------------------------------------------------
 
 def cmd_confirm(project, args):

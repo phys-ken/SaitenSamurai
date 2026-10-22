@@ -77,6 +77,104 @@ def cmd_setup_workspace(args):
     return 0
 
 
+# --- doctor -------------------------------------------------------------
+
+EXPECTED_BRANCH = "feat/llm-workflow"
+_CLOUD_WORDS = ("onedrive", "dropbox", "google drive", "googledrive", "icloud", "box sync")
+
+
+def _version(cmd):
+    import subprocess
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (out.stdout or out.stderr).strip().splitlines()[0] if out.returncode == 0 else None
+
+
+def doctor_checks(ws):
+    """環境の点検。Returns: [(重さ, 項目, 結果, 直し方)]  重さは ok / ng（必須）/ warn"""
+    import importlib
+    import sys
+    from saiten_llm import REPO_ROOT
+    checks = []
+
+    def add(ok, item, result, fix="", required=True):
+        checks.append(("ok" if ok else ("ng" if required else "warn"), item, result, fix))
+
+    v = sys.version_info
+    add(v >= (3, 10), "Python", f"{v.major}.{v.minor}.{v.micro}", "uv venv --python 3.12 で作り直す")
+    git = _version(["git", "--version"])
+    add(bool(git), "Git", git or "見つかりません", "winget install --id Git.Git -e")
+    uv = _version(["uv", "--version"])
+    add(bool(uv), "uv", uv or "見つかりません",
+        'powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"')
+    branch = _version(["git", "-C", str(REPO_ROOT), "rev-parse", "--abbrev-ref", "HEAD"])
+    add(branch == EXPECTED_BRANCH, "採点侍のブランチ", branch or "Git の管理下にありません",
+        f"app で git checkout {EXPECTED_BRANCH}")
+    for module, label, required in (
+            ("cv2", "画像処理（OpenCV）", True), ("numpy", "numpy", True),
+            ("pandas", "pandas", True), ("openpyxl", "Excel（openpyxl）", True),
+            ("sklearn", "読み取り（scikit-learn）", True), ("PIL", "画像（Pillow）", True),
+            ("fitz", "PDF（PyMuPDF）", True), ("webview", "採点侍の画面（pywebview）", True),
+            ("matplotlib", "分析の図（matplotlib）", False), ("reportlab", "PDF レポート（reportlab）", False)):
+        try:
+            importlib.import_module(module)
+            add(True, label, "入っています")
+        except Exception as e:  # noqa: BLE001  入っていない・壊れている
+            add(False, label, f"読み込めません（{type(e).__name__}）",
+                "app で uv pip install -r requirements.txt -r webui/requirements.txt", required)
+    from constants import find_japanese_font
+    font = find_japanese_font()
+    add(bool(font), "日本語フォント", font or "見つかりません",
+        "採点済み答案の文字が小さくなります。Windows なら通常は入っています", required=False)
+
+    settings = ws / ".claude" / "settings.json"
+    wanted = json.loads((TEMPLATE / "settings.json").read_text(encoding="utf-8"))["permissions"]["deny"]
+    try:
+        have = json.loads(settings.read_text(encoding="utf-8")).get("permissions", {}).get("deny", [])
+        missing = [r for r in wanted if r not in have]
+    except (OSError, ValueError):
+        missing = wanted
+    add(not missing, "元の答案を読めなくする設定", "そろっています" if not missing else
+        f"{len(missing)} 件足りません", "app で uv run python -m saiten_llm setup-workspace ..")
+    add((ws / "AGENTS.md").exists(), "入口の AGENTS.md", "あります" if (ws / "AGENTS.md").exists()
+        else "ありません", "先生に AGENTS.md を置いてもらう")
+    for name in ("projects", "templates"):
+        d = ws / name
+        try:
+            probe = d / ".saiten_write_test"
+            probe.write_text("x", encoding="utf-8")
+            probe.unlink()
+            add(True, f"{name}/ に書き込み", "できます")
+        except OSError:
+            add(False, f"{name}/ に書き込み", "できません", "setup-workspace を実行する")
+    cloud = [w for w in _CLOUD_WORDS if w in str(ws).lower()]
+    add(not cloud, "クラウド同期の外にあるか",
+        "外にあります" if not cloud else f"{cloud[0]} の下にあります（答案がクラウドへ送られます）",
+        "同期していないフォルダ（例: ドキュメント直下で同期を切ったもの）へ移す")
+    add(REPO_ROOT.parent == ws, "採点侍の場所", str(REPO_ROOT),
+        "作業フォルダの app/ に置く（AGENTS.md の手順）", required=False)
+    return checks
+
+
+def cmd_doctor(args):
+    ws = Path(args.workspace).resolve()
+    if not ws.is_dir():
+        _say(f"作業フォルダがありません: {ws}")
+        return 1
+    checks = doctor_checks(ws)
+    mark = {"ok": "✓", "ng": "✗", "warn": "△"}
+    for level, item, result, fix in checks:
+        _say(f"{mark[level]} {item}: {result}" + (f"\n    → {fix}" if level != "ok" and fix else ""))
+    ng = [c for c in checks if c[0] == "ng"]
+    if ng:
+        _say("", f"✗ が {len(ng)} 件あります。直すまで採点を始めないでください（先生に伝えて許可を得てから直す）。")
+        return 1
+    _say("", "環境は整っています。")
+    return 0
+
+
 # --- audit --------------------------------------------------------------
 
 def encode_cwd(path):

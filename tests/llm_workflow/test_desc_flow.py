@@ -142,6 +142,30 @@ def test_review_lists_holds_and_changes(desc_project, sample_pdf, tmp_path, caps
     assert "先生の修正: 小テスト_p001.png  LLM 正 → 誤" in out
 
 
+def test_accuracy_counts_teacher_corrections(desc_project, sample_pdf, tmp_path, capsys):
+    project = Project(desc_project)
+    verdicts = _write(tmp_path, "v.json", _truth_verdicts(sample_pdf, _index(project)))
+    assert main(["judge", str(desc_project), "--question", "D1", "--input", verdicts]) == 0
+    bridge, _ = open_bridge(project)
+    assert bridge.set_descriptive_score("小テスト_p005.png", "D1", 1)["ok"]   # 誤 → 部分
+    assert bridge.set_descriptive_score("小テスト_p003.png", "D1", 2)["ok"]   # 保留に点（数えない）
+    capsys.readouterr()
+    assert main(["accuracy", str(desc_project)]) == 0
+    out = capsys.readouterr().out
+    assert "一致 4/5（80%）・保留 1" in out
+    assert "食い違い: 小テスト_p005.png  LLM 誤 → 先生 1点" in out
+    report = json.loads((project.root / "精度.json").read_text(encoding="utf-8"))
+    assert report["questions"][0]["disagreements"][0]["file"] == "小テスト_p005.png"
+
+
+def test_agrees_rules():
+    from saiten_llm.cmd_desc import agrees
+    assert agrees("正", 10, 10) and not agrees("正", 6, 10)
+    assert agrees("誤", 0, 10) and not agrees("誤", 3, 10)
+    assert agrees("部分", 6, 10) and not agrees("部分", 10, 10) and not agrees("部分", 0, 10)
+    assert agrees("部分", 1, 2) and agrees("保留", 2, 2) is None and agrees("正", None, 2) is None
+
+
 def test_desc_set_refuses_to_replace_scored_questions(desc_project, sample_pdf, tmp_path):
     project = Project(desc_project)
     verdicts = _write(tmp_path, "v.json", _truth_verdicts(sample_pdf, _index(project)))

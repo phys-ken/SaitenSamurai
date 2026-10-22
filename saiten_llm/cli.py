@@ -337,6 +337,7 @@ COMMANDS = {
     "judge": (cmd_desc.cmd_judge, "LLM の判定（正/部分/誤/保留）を書き込む", _args_judge),
     "review": (cmd_desc.cmd_review, "判定の状況・保留・先生の修正を一覧にする", _args_review),
     "confirm": (cmd_desc.cmd_confirm, "先生がチャットで伝えた確認を記録する", _args_confirm),
+    "accuracy": (cmd_desc.cmd_accuracy, "LLM の判定と先生の確定の一致を数える", None),
     "stats": (cmd_points.cmd_stats, "正答率・識別力と配点案を出す（配点は先生が決める）", _args_stats),
     "set-points": (cmd_points.cmd_set_points, "先生が承認した配点を書き込み、点数に換算する",
                    _args_set_points),
@@ -358,6 +359,8 @@ WORKSPACE_COMMANDS = {
     "setup-workspace": (workspace_cmds.cmd_setup_workspace,
                         "作業フォルダ（projects/・templates/・設定）を用意して動作を確かめる",
                         _args_setup_workspace),
+    "doctor": (workspace_cmds.cmd_doctor,
+               "環境を点検する（採点を始める前に必ず実行する）", lambda p: None),
     "audit": (workspace_cmds.cmd_audit,
               "会話記録を調べ、元の答案を開こうとした形跡がないか報告する", _args_audit),
 }

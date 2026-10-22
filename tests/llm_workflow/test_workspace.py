@@ -31,6 +31,33 @@ def test_setup_workspace_creates_and_merges(tmp_path):
     assert again["permissions"]["deny"] == deny
 
 
+def _doctor(ws):
+    from saiten_llm.workspace_cmds import doctor_checks
+    return {item: level for level, item, _r, _f in doctor_checks(ws)}
+
+
+def test_doctor_requires_settings_and_folders(tmp_path):
+    ws = tmp_path / "採点"
+    ws.mkdir()
+    before = _doctor(ws)
+    assert before["元の答案を読めなくする設定"] == "ng"
+    assert before["projects/ に書き込み"] == "ng"
+    assert main(["doctor", str(ws)]) == 1
+    (ws / "AGENTS.md").write_text("入口", encoding="utf-8")
+    assert main(["setup-workspace", str(ws), "--skip-check"]) == 0
+    after = _doctor(ws)
+    for item in ("元の答案を読めなくする設定", "入口の AGENTS.md", "projects/ に書き込み",
+                 "templates/ に書き込み", "Python", "PDF（PyMuPDF）", "クラウド同期の外にあるか"):
+        assert after[item] == "ok", item
+
+
+def test_doctor_refuses_cloud_synced_folder(tmp_path):
+    ws = tmp_path / "OneDrive" / "ドキュメント" / "採点"
+    ws.mkdir(parents=True)
+    assert main(["setup-workspace", str(ws), "--skip-check"]) == 0
+    assert _doctor(ws)["クラウド同期の外にあるか"] == "ng"
+
+
 def test_setup_workspace_self_check(tmp_path):
     assert main(["setup-workspace", str(tmp_path)]) == 0
 

@@ -21,7 +21,8 @@ from saiten_llm.tools.make_sample_exam import make_exam  # noqa: E402
 def sample_pdf(tmp_path_factory):
     """合成答案 6 人分（3人目は上下逆・6人目は横向き）"""
     out = tmp_path_factory.mktemp("sample") / "小テスト.pdf"
-    pdf, truth = make_exam(out, students=6, seed=3)
+    # 雑音なし: 画像が小さくなり、テストごとの写しで /tmp を食い潰さない
+    pdf, truth = make_exam(out, students=6, seed=3, noise=False)
     return pdf, json.loads(truth.read_text(encoding="utf-8"))
 
 
@@ -51,4 +52,43 @@ def oriented_project(tmp_path, _oriented_template):
     """PDF を画像にし、向きを揃えた試験フォルダ（テストごとの写し）"""
     root = tmp_path / "期末テスト"
     shutil.copytree(_oriented_template, root)
+    return root
+
+
+NAME_REGION = [0.24, 0.2, 0.57, 0.255]   # 合成答案の氏名欄（補正後の用紙に対する割合）
+COORD = REPO / "sample_basefile" / "M2-03-002_座標ファイル.xlsx"
+
+
+@pytest.fixture(scope="session")
+def _recognized_template(tmp_path_factory, _oriented_template):
+    """黒塗り承認・LLM用の写し・モード・座標・読み取りまで済ませた原本"""
+    from saiten_llm import mask as maskmod
+    from saiten_llm.cli import main
+    from saiten_llm.workspace import Project
+    root = tmp_path_factory.mktemp("recognized") / "期末テスト"
+    shutil.copytree(_oriented_template, root)
+    project = Project(root)
+    maskmod.save_spec(project, {"regions": [NAME_REGION], "extra": {}}, approved=True)
+    maskmod.build_llm_view(project)
+    assert main(["mode", str(root), "--set", "mark_and_descriptive", "--skip", "4",
+                 "--teacher-approved"]) == 0
+    assert main(["coord", str(root), str(COORD)]) == 0
+    assert main(["recognize", str(root)]) == 0
+    return root
+
+
+@pytest.fixture
+def recognized_project(tmp_path, _recognized_template):
+    """読み取りまで済んだ試験フォルダ（テストごとの写し）。
+
+    採点侍の設定（session_state.json）は絶対パスを持つので、写した先に合わせて直す
+    """
+    from saiten_llm.engine import session_path
+    from saiten_llm.workspace import Project
+    root = tmp_path / "期末テスト"
+    shutil.copytree(_recognized_template, root)
+    path = session_path(Project(root))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["image_folder"] = str(root / "scans")
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return root

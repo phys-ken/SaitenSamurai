@@ -25,7 +25,7 @@ from saiten_llm.workspace import Project  # noqa: E402
 def exam_template(tmp_path_factory):
     root = tmp_path_factory.mktemp("mask") / "小テスト"
     root.mkdir()
-    make_exam(root / "小テスト.pdf", students=3, seed=5)
+    make_exam(root / "小テスト.pdf", students=3, seed=5, noise=False)
     (root / "小テスト_truth.json").unlink()
     assert main(["pdf", str(root)]) == 0
     assert main(["orient", str(root), "--apply"]) == 0

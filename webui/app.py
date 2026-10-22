@@ -126,6 +126,15 @@ def main():
         if not res["ok"]:
             print(res["error"], file=sys.stderr)
             sys.exit(2)
+        # 開いている間は先生の番。LLM 用の CLI はこの印を見て書き込みを控える
+        from api import uilock
+        folder = bridge.state["image_folder"]
+        uilock.acquire(folder)
+        try:
+            webview.start(debug=args.debug)
+        finally:
+            uilock.release(folder)
+        return
     webview.start(debug=args.debug)
 
 

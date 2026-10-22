@@ -12,7 +12,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from saiten_llm import REPO_ROOT
+from saiten_llm import REPO_ROOT, cmd_mark
 from saiten_llm.workspace import Project, now_iso
 
 EXIT_OK, EXIT_ERROR, EXIT_NEEDS_TEACHER = 0, 1, 2
@@ -214,13 +214,67 @@ def cmd_open_ui(project, args):
     return EXIT_OK
 
 
+def _args_pdf(p):
+    p.add_argument("--force", action="store_true", help="scans/ を作り直す")
+    p.add_argument("--dpi", type=int, default=200)
+
+
+def _args_orient(p):
+    p.add_argument("--apply", action="store_true", help="回す必要のある答案を回す")
+    p.add_argument("--flip-all", action="store_true",
+                   help="全答案を上下逆にする（基準の答案が逆さだったとき）")
+
+
+def _args_mask_server(p):
+    p.add_argument("--timeout", type=int, default=120, help="待つ時間（分）")
+    p.add_argument("--no-open", action="store_true", help="ブラウザを自動で開かない")
+
+
+def _args_facts(p):
+    p.add_argument("--templates", help="座標ファイルを控えるフォルダ（既定: 作業フォルダの templates/）")
+
+
+def _args_mode(p):
+    p.add_argument("--set", required=True, choices=list(cmd_mark.MODES))
+    p.add_argument("--format", default="standard", choices=list(cmd_mark.FORMATS))
+    p.add_argument("--skip", type=int, help="ID欄（学年・クラス・番号など）の行数")
+    p.add_argument("--teacher-approved", action="store_true",
+                   help="先生がこのモードを承認した（無いと実行しない）")
+
+
+def _args_coord(p):
+    p.add_argument("file", help="座標ファイル（Mark2 の座標 Excel）")
+    p.add_argument("--skip", type=int, help="ID欄（学年・クラス・番号など）の行数")
+    p.add_argument("--templates", help="座標ファイルを控えるフォルダ（既定: 作業フォルダの templates/）")
+
+
+def _args_answer_key(p):
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--from-xlsx", help="先生が埋めた answer_key.xlsx（書き換えずに使う）")
+    src.add_argument("--from-json", help="LLM が書き写した正答の JSON")
+    src.add_argument("--from-sheet", help="正答をマークした用紙のファイル名（読み取り済みのもの）")
+
+
+def _args_set_aside(p):
+    p.add_argument("filename", help="scans/ の中のファイル名")
+    p.add_argument("--reason", default="", help="外す理由（例: 正答用の用紙）")
+
+
 COMMANDS = {
-    "status": (cmd_status, "試験フォルダの進み具合を表示する"),
-    "pdf": (cmd_pdf, "試験フォルダの PDF を scans/ に画像として書き出す"),
-    "orient": (cmd_orient, "答案の向きを確かめる（--apply で回す）"),
-    "mask-server": (cmd_mask_server, "黒塗りの範囲を先生に決めてもらう画面を開き、承認まで待つ"),
-    "llm-view": (cmd_llm_view, "承認済みの黒塗りで LLM 用の写しを作り直す"),
-    "open-ui": (cmd_open_ui, "採点侍の画面をこの試験の状態で開く"),
+    "status": (cmd_status, "試験フォルダの進み具合を表示する", None),
+    "pdf": (cmd_pdf, "試験フォルダの PDF を scans/ に画像として書き出す", _args_pdf),
+    "orient": (cmd_orient, "答案の向きを確かめる（--apply で回す）", _args_orient),
+    "mask-server": (cmd_mask_server, "黒塗りの範囲を先生に決めてもらう画面を開き、承認まで待つ",
+                    _args_mask_server),
+    "llm-view": (cmd_llm_view, "承認済みの黒塗りで LLM 用の写しを作り直す", None),
+    "facts": (cmd_mark.cmd_facts, "モードを決めるための事実（マーカー・マーク欄）を集める", _args_facts),
+    "mode": (cmd_mark.cmd_mode, "先生が承認したモードを設定する", _args_mode),
+    "coord": (cmd_mark.cmd_coord, "座標ファイルを設定し、黒塗りした1枚目に枠を重ねる", _args_coord),
+    "recognize": (cmd_mark.cmd_recognize, "マークを読み取り、確認の要る答えを数える", None),
+    "answer-key": (cmd_mark.cmd_answer_key, "正答・配点（answer_key.xlsx）を用意してチェックする",
+                   _args_answer_key),
+    "set-aside": (cmd_mark.cmd_set_aside, "答案を集計から外す（正答用の用紙など）", _args_set_aside),
+    "open-ui": (cmd_open_ui, "採点侍の画面をこの試験の状態で開く", None),
 }
 
 
@@ -228,23 +282,16 @@ def build_parser():
     ap = argparse.ArgumentParser(prog="saiten_llm",
                                  description="LLM と協働で採点するための採点侍コマンド")
     sub = ap.add_subparsers(dest="command", required=True)
-    for name, (_fn, help_text) in COMMANDS.items():
+    for name, (_fn, help_text, add_args) in COMMANDS.items():
         p = sub.add_parser(name, help=help_text, description=help_text)
         p.add_argument("project", help="試験フォルダ")
-        if name == "pdf":
-            p.add_argument("--force", action="store_true", help="scans/ を作り直す")
-            p.add_argument("--dpi", type=int, default=200)
-        if name == "orient":
-            p.add_argument("--apply", action="store_true", help="回す必要のある答案を回す")
-            p.add_argument("--flip-all", action="store_true",
-                           help="全答案を上下逆にする（基準の答案が逆さだったとき）")
-        if name == "mask-server":
-            p.add_argument("--timeout", type=int, default=120, help="待つ時間（分）")
-            p.add_argument("--no-open", action="store_true", help="ブラウザを自動で開かない")
+        if add_args:
+            add_args(p)
     return ap
 
 
 def main(argv=None):
+    from saiten_llm.engine import ScreenOpenError
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")   # Windows の端末でも日本語を崩さない
     args = build_parser().parse_args(argv)
@@ -253,5 +300,12 @@ def main(argv=None):
     except FileNotFoundError as e:
         print(e)
         return EXIT_ERROR
-    fn, _help = COMMANDS[args.command]
-    return fn(project, args)
+    fn, _help, _add = COMMANDS[args.command]
+    try:
+        return fn(project, args)
+    except ScreenOpenError as e:
+        print(e)
+        return EXIT_NEEDS_TEACHER
+    except (RuntimeError, ValueError, FileNotFoundError, TimeoutError) as e:
+        print(f"失敗しました: {e}")
+        return EXIT_ERROR

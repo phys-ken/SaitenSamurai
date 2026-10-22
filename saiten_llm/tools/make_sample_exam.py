@@ -83,16 +83,20 @@ def _draw_text(sheet, xy, text, size):
     return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
 
-def _scanify(sheet, rng, rotation):
-    """少し傾けてずらし、元のサンプルと同じ大きさのページに置く"""
+def _scanify(sheet, rng, rotation, noise=True):
+    """少し傾けてずらし、元のサンプルと同じ大きさのページに置く。
+
+    noise=True でスキャンのざらつきを足す（PNG が1枚約3MBになる。
+    テストでは容量を食うので切る）
+    """
     h, w = sheet.shape[:2]
     angle = rng.uniform(-1.2, 1.2)
     m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
     m[0, 2] += rng.uniform(-15, 15)
     m[1, 2] += rng.uniform(-15, 15)
     page = cv2.warpAffine(sheet, m, (w, h), borderValue=(250, 250, 250))
-    noise = rng_noise(page.shape, rng)
-    page = cv2.add(page, noise)
+    if noise:
+        page = cv2.add(page, rng_noise(page.shape, rng))
     if rotation == 180:
         page = cv2.rotate(page, cv2.ROTATE_180)
     elif rotation == 90:
@@ -105,7 +109,7 @@ def rng_noise(shape, rng):
     return np.random.default_rng(seed).integers(0, 6, shape, dtype=np.uint8)
 
 
-def make_exam(out_pdf, students=12, seed=1):
+def make_exam(out_pdf, students=12, seed=1, noise=True):
     import fitz
     rng = random.Random(seed)
     coords, _ = parse_excel_coordinates(str(COORD))
@@ -143,11 +147,12 @@ def make_exam(out_pdf, students=12, seed=1):
         if desc_text:
             sheet = _draw_text(sheet, (DESC_BOX[0] + 30, DESC_BOX[1] + 40), desc_text, 16)
         rotation = 180 if i in (3, 8) else 90 if i == 6 else 0
-        page, angle = _scanify(sheet, rng, rotation)
-        ok, png = cv2.imencode(".png", page)
+        page, angle = _scanify(sheet, rng, rotation, noise=noise)
+        # スキャナーと同じく JPEG で入れる（PNG だと PDF が1ページ数MBになる）
+        ok, jpg = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 90])
         ph, pw = page.shape[:2]
         p = doc.new_page(width=pw * 72 / 200, height=ph * 72 / 200)
-        p.insert_image(p.rect, stream=png.tobytes())
+        p.insert_image(p.rect, stream=jpg.tobytes())
         truth["students"].append({
             "page": i, "name": name, "rotation": rotation, "skew": angle,
             "marks": marks, "descriptive": {"text": desc_text, "truth": desc_truth},

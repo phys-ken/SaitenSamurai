@@ -92,13 +92,14 @@ def validate_spec(spec, filenames):
     return {"regions": regions, "extra": extra}
 
 
-def pages_fingerprint(project):
-    """答案の顔ぶれ（ファイル名・大きさ・更新日時）。承認の後で答案が変わったら気づくため"""
-    h = hashlib.sha256()
+def page_stamps(project):
+    """答案ごとの目印（大きさ・更新日時）。承認の後で答案が変わったら気づくため"""
+    stamps = {}
     for p in project.scan_files():
         st = p.stat()
-        h.update(f"{p.name}\t{st.st_size}\t{st.st_mtime_ns}\n".encode("utf-8"))
-    return h.hexdigest()
+        stamps[p.name] = hashlib.sha256(
+            f"{st.st_size}\t{st.st_mtime_ns}".encode("ascii")).hexdigest()[:16]
+    return stamps
 
 
 def save_spec(project, spec, approved=False):
@@ -107,20 +108,26 @@ def save_spec(project, spec, approved=False):
     if approved:
         record["approved_at"] = record["saved_at"]
         record["approved_pages"] = len(project.scan_files())
-        record["approved_fingerprint"] = pages_fingerprint(project)
+        record["approved_stamps"] = page_stamps(project)
     project.data["mask"] = record
     project.save()
 
 
 def mask_status(project):
-    """黒塗りの状態: none（未設定）/ draft（未承認）/ approved / stale（承認後に答案が変わった）"""
+    """黒塗りの状態: none（未設定）/ draft（未承認）/ approved / stale（承認後に答案が変わった）。
+
+    承認の後で答案が増えた・書き換わった（回したなど）ときは stale。
+    答案を取り除いた（正答用の用紙を除外したなど）だけなら、見えるものは増えないので approved のまま
+    """
     spec = project.data.get("mask")
     if not spec:
         return "none"
     if not spec.get("approved_at"):
         return "draft"
-    if spec.get("approved_fingerprint") != pages_fingerprint(project):
-        return "stale"
+    approved = spec.get("approved_stamps") or {}
+    for name, stamp in page_stamps(project).items():
+        if approved.get(name) != stamp:
+            return "stale"
     return "approved"
 
 

@@ -255,6 +255,9 @@ def cmd_answer_key(project, args):
     key_path.parent.mkdir(parents=True, exist_ok=True)
     if args.from_xlsx:
         src = Path(args.from_xlsx).resolve()
+        if not src.is_file():
+            _say(f"正答の Excel が見つかりません: {src}")
+            return 1
         if src != key_path.resolve():
             backup = _backup(key_path)
             shutil.copy2(src, key_path)

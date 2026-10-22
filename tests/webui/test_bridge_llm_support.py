@@ -109,6 +109,31 @@ class TestDescriptiveOnlyDeskew:
         assert np.abs(expected - got).mean() < 8
 
 
+class TestBulkScores:
+    def test_all_or_nothing(self, marker_scans):
+        b, _ = _desc_bridge(marker_scans)
+        assert b.run_prepare_images()["ok"]
+        _wait_job_done(b)
+        assert b.add_descriptive_question("問1", 2, 1, [10, 10, 100, 100])["ok"]
+        # 1件でも範囲外があれば何も書かない
+        res = b.set_descriptive_scores_bulk("D1", {"a.jpg": 2, "b.jpg": 5})
+        assert not res["ok"]
+        assert b._desc_scores["scores"] == {}
+        res = b.set_descriptive_scores_bulk("D1", {"a.jpg": 2, "b.jpg": None})
+        assert res["ok"] and res["count"] == 2
+        from descriptive_scorer import load_descriptive_scores
+        saved = load_descriptive_scores(str(b._desc_scores_path()))
+        assert saved["scores"]["a.jpg"] == {"D1": 2}
+        assert saved["scores"].get("b.jpg", {}) == {}
+
+    def test_unknown_sheet_is_rejected(self, marker_scans):
+        b, _ = _desc_bridge(marker_scans)
+        assert b.run_prepare_images()["ok"]
+        _wait_job_done(b)
+        assert b.add_descriptive_question("問1", 2, 1, [10, 10, 100, 100])["ok"]
+        assert not b.set_descriptive_scores_bulk("D1", {"../x.jpg": 1})["ok"]
+
+
 class TestOpenFolderSession:
     def test_opens_saved_session(self, marker_scans):
         b, _ = _desc_bridge(marker_scans)

@@ -12,7 +12,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from saiten_llm import REPO_ROOT, cmd_mark
+from saiten_llm import REPO_ROOT, cmd_desc, cmd_mark
 from saiten_llm.workspace import Project, now_iso
 
 EXIT_OK, EXIT_ERROR, EXIT_NEEDS_TEACHER = 0, 1, 2
@@ -260,6 +260,34 @@ def _args_set_aside(p):
     p.add_argument("--reason", default="", help="外す理由（例: 正答用の用紙）")
 
 
+def _args_desc_set(p):
+    p.add_argument("--input", required=True,
+                   help='{"questions": [{"name": "問1", "region": [x1, y1, x2, y2]}]}'
+                        "（範囲は _llm_view/pages の画像の画素）")
+    p.add_argument("--replace", action="store_true", help="今の記述問題を消して作り直す（得点が無いときだけ）")
+
+
+def _args_crops(p):
+    p.add_argument("--question", help="問題ID（D1 など）。省略で全問")
+    p.add_argument("--per-sheet", type=int, default=15, help="1枚に並べる人数（10〜20）")
+
+
+def _args_judge(p):
+    p.add_argument("--question", required=True, help="問題ID（D1 など）")
+    p.add_argument("--input", required=True,
+                   help='{"番号": {"verdict": "正|部分|誤|保留", "reason": "..."}}')
+
+
+def _args_review(p):
+    p.add_argument("--question", help="問題ID。省略で全問")
+
+
+def _args_confirm(p):
+    p.add_argument("what", choices=["question", "regions", "answer-key", "marks"],
+                   help="何を確定したか")
+    p.add_argument("--question", help="問題ID（question のとき）")
+
+
 COMMANDS = {
     "status": (cmd_status, "試験フォルダの進み具合を表示する", None),
     "pdf": (cmd_pdf, "試験フォルダの PDF を scans/ に画像として書き出す", _args_pdf),
@@ -274,6 +302,12 @@ COMMANDS = {
     "answer-key": (cmd_mark.cmd_answer_key, "正答・配点（answer_key.xlsx）を用意してチェックする",
                    _args_answer_key),
     "set-aside": (cmd_mark.cmd_set_aside, "答案を集計から外す（正答用の用紙など）", _args_set_aside),
+    "prepare": (cmd_desc.cmd_prepare, "記述のみのモードで答案を準備する（傾き補正）", None),
+    "desc-set": (cmd_desc.cmd_desc_set, "記述問題と範囲の案を書き込む（仮の2点満点）", _args_desc_set),
+    "crops": (cmd_desc.cmd_crops, "同じ問題の切り抜きを番号付きで並べた画像を作る", _args_crops),
+    "judge": (cmd_desc.cmd_judge, "LLM の判定（正/部分/誤/保留）を書き込む", _args_judge),
+    "review": (cmd_desc.cmd_review, "判定の状況・保留・先生の修正を一覧にする", _args_review),
+    "confirm": (cmd_desc.cmd_confirm, "先生がチャットで伝えた確認を記録する", _args_confirm),
     "open-ui": (cmd_open_ui, "採点侍の画面をこの試験の状態で開く", None),
 }
 

@@ -387,6 +387,39 @@ class DescriptiveMixin:
         b64 = base64.b64encode(Path(path).read_bytes()).decode("ascii")
         return _ok(data_url=f"data:image/png;base64,{b64}")
 
+    def set_descriptive_scores_bulk(self, qid, scores):
+        """1問分の得点をまとめて設定し、保存は1回だけ行う（LLM の判定の書き込み用）。
+
+        scores: {filename: 得点 or None}。1件でも不正なら何も書かない
+        """
+        from descriptive_scorer import save_descriptive_scores
+        q = self._find_question(qid)
+        if q is None:
+            return _err(f"問題が見つかりません: {qid}")
+        listing = self.list_sheet_files()
+        known = set(listing["files"]) if listing["ok"] else set()
+        checked = {}
+        for filename, score in scores.items():
+            if str(filename) not in known:
+                return _err(f"答案が見つかりません: {filename}")
+            if score is not None:
+                try:
+                    score = int(score)
+                except (TypeError, ValueError):
+                    return _err(f"得点は整数で指定してください: {filename}")
+                if not (0 <= score <= q["max_score"]):
+                    return _err(f"得点は 0〜{q['max_score']} の範囲で指定してください: {filename}")
+            checked[str(filename)] = score
+        for filename, score in checked.items():
+            f_scores = self._desc_scores["scores"].setdefault(filename, {})
+            if score is None:
+                f_scores.pop(qid, None)
+            else:
+                f_scores[qid] = score
+        save_descriptive_scores(str(self._desc_scores_path()), self._desc_scores)
+        self._refresh_desc_summary()
+        return _ok(state=self.state, count=len(checked))
+
     def set_descriptive_score(self, filename, qid, score):
         """得点を設定（None で未採点に戻す）。設定のたびに保存（tk 同様アトミック）"""
         from descriptive_scorer import save_descriptive_scores

@@ -304,6 +304,76 @@ def detect_corner_markers(image, debug=False):
         return markers
 
 
+def find_marker_blobs(gray, x, y, w, h, min_side, max_side):
+    """指定範囲から「黒く塗りつぶされた正方形」に見える塊を探す。
+
+    detect_corner_markers は範囲内の最大の塊を無条件にマーカーとみなすため、
+    マーカーの無い用紙でも文字や罫線を拾って4点を返してしまう。
+    こちらは形（正方形に近い・中まで塗られている・大きさが妥当）を確かめる。
+
+    Returns:
+        [(cx, cy, side), ...] 画像全体の座標系。面積の大きい順
+    """
+    roi = gray[y:y + h, x:x + w]
+    if roi.size == 0:
+        return []
+    _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    num, _labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
+    found = []
+    for i in range(1, num):
+        bw = stats[i, cv2.CC_STAT_WIDTH]
+        bh = stats[i, cv2.CC_STAT_HEIGHT]
+        area = stats[i, cv2.CC_STAT_AREA]
+        if not (min_side <= bw <= max_side and min_side <= bh <= max_side):
+            continue
+        if not (0.7 <= bw / bh <= 1.4):
+            continue
+        if area < 0.8 * bw * bh:
+            continue
+        found.append((int(centroids[i][0]) + x, int(centroids[i][1]) + y,
+                      (bw + bh) / 2, area))
+    found.sort(key=lambda b: -b[3])
+    return [(cx, cy, side) for cx, cy, side, _a in found]
+
+
+def find_sheet_markers(image):
+    """四隅マーカーがある用紙なら、その中心4点を返す。無ければ None。
+
+    detect_corner_markers と同じ探索範囲（四隅の幅30%×高さ8%）を使い、
+    塊の形と4点の配置（長方形に近いこと）まで確かめる。
+    記述のみモードで「傾き補正してよい用紙か」を判断するのに使う。
+
+    Returns:
+        [(x, y)×4]（左上・右上・右下・左下）または None
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    h, w = gray.shape
+    margin_x, margin_y = int(w * 0.01), int(h * 0.01)
+    search_w, search_h = int(w * 0.3), int(w * 0.08)
+    min_side, max_side = max(4, int(w * 0.01)), int(w * 0.05)
+    regions = [
+        (margin_x, margin_y),
+        (w - margin_x - search_w, margin_y),
+        (w - margin_x - search_w, h - margin_y - search_h),
+        (margin_x, h - margin_y - search_h),
+    ]
+    markers = []
+    for rx, ry in regions:
+        blobs = find_marker_blobs(gray, rx, ry, search_w, search_h, min_side, max_side)
+        if not blobs:
+            return None
+        markers.append(blobs[0][:2])
+    (x1, y1), (x2, y2), (x3, y3), (x4, y4) = markers
+    # 上辺・下辺がほぼ水平、左辺・右辺がほぼ垂直で、幅と高さが用紙に見合うこと
+    top_w, bottom_w = x2 - x1, x3 - x4
+    left_h, right_h = y4 - y1, y3 - y2
+    if min(top_w, bottom_w) < w * 0.4 or min(left_h, right_h) < h * 0.6:
+        return None
+    if abs(top_w - bottom_w) > w * 0.05 or abs(left_h - right_h) > h * 0.05:
+        return None
+    return markers
+
+
 def apply_perspective_transform(image, markers, output_scale=1.0):
     """
     射影変換で画像を補正（Mark2アルゴリズムに準拠）

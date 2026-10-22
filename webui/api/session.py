@@ -97,6 +97,25 @@ class SessionMixin:
 
     # --- 復元 -------------------------------------------------------
 
+    def open_folder_session(self, folder):
+        """起動時にフォルダを指定して開く（app.py --folder）。
+
+        LLM と協働で採点するとき、LLM が準備したセッションをそのまま開くために使う。
+        folder は答案画像フォルダ。試験フォルダ（中に scans/ がある）でもよい。
+        """
+        from constants import RESULTS_FOLDER, RESULTS_DATA_FOLDER, SESSION_STATE_FILE
+        base = Path(folder)
+        if not (base / RESULTS_FOLDER).exists() and (base / "scans").is_dir():
+            base = base / "scans"
+        path = base / RESULTS_FOLDER / RESULTS_DATA_FOLDER / SESSION_STATE_FILE
+        if not path.exists():
+            return _err(f"このフォルダには採点の記録（session_state.json）がありません: {base}")
+        res = self.restore_session(str(path))
+        if res["ok"]:
+            self.state["opened_from_command_line"] = True
+            self.state["startup_warnings"] = res.get("warnings", [])
+        return res
+
     def restore_session(self, path=None):
         """session_state.json を選んで状態を復元する。
 

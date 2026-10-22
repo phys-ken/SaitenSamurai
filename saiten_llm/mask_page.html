@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>黒塗りの範囲</title>
+<style>
+  :root {
+    --paper: #ffffff; --ink: #1f2328; --muted: #5b636b; --rule: #d5dbe0;
+    --accent: #b8322a; --accent-weak: #f6e3e1; --ok: #2f6f4f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
+         color: var(--ink); background: #f3f4f5; }
+  header { background: var(--paper); border-bottom: 1px solid var(--rule);
+           padding: 12px 20px; display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .step { color: var(--muted); font-size: 14px; }
+  main { padding: 16px 20px 96px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .stage { position: relative; background: var(--paper); border: 1px solid var(--rule);
+           display: inline-block; max-width: 100%; }
+  .stage img { display: block; max-width: 100%; max-height: calc(100vh - 160px); user-select: none; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  aside { background: var(--paper); border: 1px solid var(--rule); padding: 14px; font-size: 14px;
+          position: sticky; top: 12px; }
+  aside h2 { font-size: 15px; margin: 0 0 8px; }
+  aside p { margin: 0 0 10px; line-height: 1.6; color: var(--muted); }
+  ul.rects { list-style: none; margin: 0 0 12px; padding: 0; }
+  ul.rects li { display: flex; justify-content: space-between; align-items: center;
+                border-bottom: 1px solid var(--rule); padding: 6px 0; }
+  button { font: inherit; padding: 8px 14px; border-radius: 4px; border: 1px solid var(--rule);
+           background: var(--paper); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.link { border: none; background: none; color: var(--accent); padding: 2px 6px; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #2b6cb0; outline-offset: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .thumb { background: var(--paper); border: 1px solid var(--rule); padding: 6px; cursor: pointer;
+           text-align: left; }
+  .thumb img { width: 100%; display: block; aspect-ratio: 595 / 842; object-fit: contain; background: #fafafa; }
+  .thumb span { display: block; font-size: 12px; color: var(--muted); margin-top: 4px;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thumb.extra span { color: var(--accent); font-weight: bold; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--paper);
+           border-top: 1px solid var(--rule); padding: 12px 20px; display: flex; gap: 16px;
+           align-items: center; flex-wrap: wrap; }
+  footer label { display: flex; gap: 8px; align-items: center; }
+  .note { color: var(--accent); }
+  .done { max-width: 560px; margin: 60px auto; background: var(--paper); border: 1px solid var(--rule);
+          padding: 28px; line-height: 1.8; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>黒塗りの範囲を決める</h1>
+  <span class="step" id="step-label"></span>
+</header>
+
+<main>
+  <section id="editor">
+    <div class="layout">
+      <div>
+        <div class="stage" id="stage">
+          <img id="page-img" alt="答案">
+          <canvas id="draw"></canvas>
+        </div>
+      </div>
+      <aside>
+        <h2 id="editor-title">全員共通の範囲</h2>
+        <p id="editor-help">答案の上をドラッグすると、その範囲が黒く塗られます。氏名欄・番号欄など、LLM に見せたくない所を囲んでください。範囲はいくつでも作れます。</p>
+        <ul class="rects" id="rect-list"></ul>
+        <p id="empty-note" class="note" hidden>まだ範囲がありません。</p>
+        <button class="primary" id="to-grid">全員分を確かめる</button>
+        <button id="back-common" hidden>全員共通の範囲に戻る</button>
+      </aside>
+    </div>
+  </section>
+
+  <section id="grid-view" hidden>
+    <p>全員分の答案に黒塗りを掛けた様子です。名前や番号が枠からはみ出していないか確かめてください。
+       はみ出している答案は、クリックすると「その答案だけ」の範囲を足せます。</p>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section id="done" hidden>
+    <div class="done">
+      <h2>承認しました</h2>
+      <p>黒塗りの範囲を記録しました。このページは閉じてかまいません。<br>
+         チャットに戻って、LLM に「黒塗りを承認した」と伝えてください。</p>
+    </div>
+  </section>
+</main>
+
+<footer id="approve-bar" hidden>
+  <label><input type="checkbox" id="confirm"> 全員分を見て、名前や番号が見えていないことを確かめました</label>
+  <button class="primary" id="approve" disabled>承認して終える</button>
+  <button id="to-editor">範囲を直す</button>
+  <span id="zero-note" class="note" hidden>黒塗りの範囲がありません。承認すると、答案をそのまま LLM に見せます。</span>
+</footer>
+
+<script>
+const TOKEN = "__TOKEN__";
+const q = (s) => document.querySelector(s);
+let pages = [];
+let spec = { regions: [], extra: {} };
+let current = 0;          // 表示中のページ番号
+let scope = "common";     // common: 全員共通 / page: その答案だけ
+let version = 0;          // 黒塗りを変えたら画像の再取得に使う
+
+async function api(path, body) {
+  const opts = body ? { method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(body) } : {};
+  const res = await fetch(`${path}${path.includes("?") ? "&" : "?"}t=${TOKEN}`, opts);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "エラーが起きました");
+  return data;
+}
+
+function editable() {
+  return scope === "common" ? spec.regions
+    : (spec.extra[pages[current].name] ||= []);
+}
+
+function imgUrl(i, width, masked) {
+  return `/img?i=${i}&w=${width}&m=${masked ? 1 : 0}&v=${version}&t=${TOKEN}`;
+}
+
+function showEditor(i, newScope) {
+  current = i; scope = newScope;
+  q("#editor").hidden = false; q("#grid-view").hidden = true; q("#approve-bar").hidden = true;
+  q("#step-label").textContent = scope === "common"
+    ? "手順 1/2　範囲を決める（1枚目の答案で決めると全員に当たります）"
+    : `手順 2/2　${pages[i].name} だけの範囲を足す`;
+  q("#editor-title").textContent = scope === "common" ? "全員共通の範囲" : "この答案だけの範囲";
+  q("#back-common").hidden = scope === "common";
+  q("#to-grid").textContent = scope === "common" ? "全員分を確かめる" : "全員分の確認に戻る";
+  const img = q("#page-img");
+  img.onload = () => draw();
+  img.src = imgUrl(i, 1200, false);
+  renderList();
+}
+
+function renderList() {
+  const list = q("#rect-list");
+  list.innerHTML = "";
+  editable().forEach((r, idx) => {
+    const li = document.createElement("li");
+    li.textContent = `範囲 ${idx + 1}`;
+    const del = document.createElement("button");
+    del.className = "link"; del.textContent = "消す";
+    del.onclick = () => { editable().splice(idx, 1); renderList(); draw(); };
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+  q("#empty-note").hidden = editable().length > 0;
+}
+
+function draw(preview) {
+  const img = q("#page-img"), cv = q("#draw");
+  cv.width = img.clientWidth; cv.height = img.clientHeight;
+  const ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const paint = (r, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(r[0] * cv.width, r[1] * cv.height,
+                 (r[2] - r[0]) * cv.width, (r[3] - r[1]) * cv.height);
+  };
+  // 全員共通の範囲は常に表示（その答案だけの編集中は灰色で区別）
+  spec.regions.forEach((r) => paint(r, scope === "common" ? "#000" : "#444"));
+  if (scope === "page") (spec.extra[pages[current].name] || []).forEach((r) => paint(r, "#000"));
+  if (preview) {
+    ctx.strokeStyle = "#b8322a"; ctx.lineWidth = 2;
+    ctx.strokeRect(preview[0] * cv.width, preview[1] * cv.height,
+                   (preview[2] - preview[0]) * cv.width, (preview[3] - preview[1]) * cv.height);
+  }
+}
+
+let dragStart = null;
+function pos(e) {
+  const rect = q("#draw").getBoundingClientRect();
+  return [Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
+          Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))];
+}
+q("#draw").addEventListener("pointerdown", (e) => { dragStart = pos(e); q("#draw").setPointerCapture(e.pointerId); });
+q("#draw").addEventListener("pointermove", (e) => {
+  if (!dragStart) return;
+  const p = pos(e);
+  draw([Math.min(dragStart[0], p[0]), Math.min(dragStart[1], p[1]),
+        Math.max(dragStart[0], p[0]), Math.max(dragStart[1], p[1])]);
+});
+q("#draw").addEventListener("pointerup", (e) => {
+  if (!dragStart) return;
+  const p = pos(e);
+  const r = [Math.min(dragStart[0], p[0]), Math.min(dragStart[1], p[1]),
+             Math.max(dragStart[0], p[0]), Math.max(dragStart[1], p[1])];
+  dragStart = null;
+  if (r[2] - r[0] > 0.005 && r[3] - r[1] > 0.005) editable().push(r);
+  renderList(); draw();
+});
+window.addEventListener("resize", () => draw());
+
+async function showGrid() {
+  // 空になった「その答案だけ」の範囲は送らない
+  for (const k of Object.keys(spec.extra)) if (!spec.extra[k].length) delete spec.extra[k];
+  await api("/api/save", spec);
+  version++;
+  q("#editor").hidden = true; q("#grid-view").hidden = false; q("#approve-bar").hidden = false;
+  q("#step-label").textContent = `手順 2/2　全員分（${pages.length}枚）を確かめる`;
+  const total = spec.regions.length + Object.values(spec.extra).reduce((a, b) => a + b.length, 0);
+  q("#zero-note").hidden = total > 0;
+  const grid = q("#grid");
+  grid.innerHTML = "";
+  pages.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.className = "thumb" + (spec.extra[p.name] ? " extra" : "");
+    const img = document.createElement("img");
+    img.loading = "lazy"; img.alt = p.name; img.src = imgUrl(i, 520, true);
+    const label = document.createElement("span");
+    label.textContent = (spec.extra[p.name] ? "追加あり　" : "") + p.name;
+    b.append(img, label);
+    b.onclick = () => showEditor(i, "page");
+    grid.appendChild(b);
+  });
+}
+
+q("#to-grid").onclick = () => showGrid().catch((e) => alertBar(e));
+q("#to-editor").onclick = () => showEditor(0, "common");
+q("#back-common").onclick = () => showEditor(0, "common");
+q("#confirm").onchange = () => { q("#approve").disabled = !q("#confirm").checked; };
+q("#approve").onclick = async () => {
+  try {
+    await api("/api/approve", spec);
+    q("#editor").hidden = true; q("#grid-view").hidden = true; q("#approve-bar").hidden = true;
+    q("#done").hidden = false; q("#step-label").textContent = "完了";
+  } catch (e) { alertBar(e); }
+};
+
+function alertBar(e) {
+  q("#step-label").textContent = `うまくいきませんでした: ${e.message}`;
+}
+
+(async () => {
+  try {
+    const st = await api("/api/state");
+    pages = st.pages;
+    spec = { regions: st.spec.regions || [], extra: st.spec.extra || {} };
+    showEditor(0, "common");
+  } catch (e) { alertBar(e); }
+})();
+</script>
+</body>
+</html>

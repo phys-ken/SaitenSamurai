@@ -24,7 +24,7 @@ from name_trimmer import select_region_on_image, get_image_files
 from constants import (
     get_app_temp_dir, atomic_json_save, load_json_safe,
     MARKER_X_FRAC_LEFT, MARKER_X_FRAC_RIGHT, MARKER_Y_FRAC_BOTTOM,
-    MARK_FORMAT_STANDARD,
+    MARK_FORMAT_STANDARD, MARK2_WIDTH, MARK2_HEIGHT,
 )
 from scoring_engine import number_to_circled
 
@@ -193,7 +193,14 @@ def trim_descriptive_regions(
         scale = 1.0
 
         try:
-            if use_highres:
+            # 高解像度の切り出しは、範囲が 595x842（傾き補正後）の座標で
+            # 決められているときだけ使える。記述のみモードで補正せずに
+            # コピーした画像の範囲を補正後の画像に当てると、全く違う所を切り出す
+            highres_ok = use_highres
+            if highres_ok:
+                with Image.open(img_path) as _im:
+                    highres_ok = _im.size == (MARK2_WIDTH, MARK2_HEIGHT)
+            if highres_ok:
                 orig_path = Path(original_image_folder) / filename
                 if orig_path.exists():
                     with open(str(orig_path), 'rb') as f:

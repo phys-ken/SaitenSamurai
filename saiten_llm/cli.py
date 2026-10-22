@@ -94,12 +94,20 @@ def cmd_orient(project, args):
         _say("答案の画像がありません。先に pdf を実行してください。")
         return EXIT_ERROR
 
+    # 用紙の縦横は project.json に残し、次からは指定しなくても同じ前提で調べる
+    # （"orientation" は pdf の作り直しで消えるので、別の項目にする）
+    if args.landscape or args.portrait:
+        project.data["paper"] = "landscape" if args.landscape else "portrait"
+    landscape = project.data.get("paper") == "landscape"
+    _say(f"用紙: {'横長（B4横など）' if landscape else '縦長'}"
+         + ("" if landscape else "（横長の用紙なら --landscape を付けてください）"))
+
     if args.flip_all:
         for p in files:
             apply_rotation(p, 180)
         _say(f"全 {len(files)} 枚を上下逆にしました。")
 
-    report = check_folder(files)
+    report = check_folder(files, landscape=landscape)
     pages = report["pages"]
     to_rotate = {n: r["rotation"] for n, r in pages.items()
                  if r.get("rotation") and "error" not in r}
@@ -153,6 +161,7 @@ def cmd_orient(project, args):
     rotated = {n: r for n, r in rotated.items() if r}
     project.data["orientation"] = {
         "checked_at": now_iso(), "applied": applied, "reference": report["reference"],
+        "paper": "landscape" if landscape else "portrait",
         "rotated": rotated, "pending": {} if applied else to_rotate,
         "needs_review": review, "blank": blank, "errors": errors,
         "with_markers": aligned,
@@ -240,6 +249,11 @@ def _args_orient(p):
     p.add_argument("--apply", action="store_true", help="回す必要のある答案を回す")
     p.add_argument("--flip-all", action="store_true",
                    help="全答案を上下逆にする（基準の答案が逆さだったとき）")
+    paper = p.add_mutually_exclusive_group()
+    paper.add_argument("--landscape", action="store_true",
+                       help="横長の用紙（B4横など）。project.json に残り、次からも効く")
+    paper.add_argument("--portrait", action="store_true",
+                       help="縦長の用紙に戻す（既定）")
 
 
 def _args_mask_server(p):

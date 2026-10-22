@@ -2,6 +2,7 @@
 
 判定の順番（どれも画像を LLM に見せずに済む方法）:
 1. 縦横比: 横長のページは 90°/270° のどちらかに回っている
+   （横長の用紙（B4横など）と指定されたときは逆で、縦長のページが回っている）
 2. Mark2 のマーカー配置: 上辺に3つ（中央寄りに1つ多い）、下辺に2つ。
    これが逆なら 180° 回っている
 3. 1枚目との似かた: マーカーが無い用紙は、基準の答案と縮小画像を比べ、
@@ -46,8 +47,13 @@ def marker_counts(gray):
     return len(top), len(bottom)
 
 
-def thumbnail(gray, size=(48, 68)):
-    """向きを比べるための小さな画像（明るさを揃えて平均0・分散1に）"""
+def thumbnail(gray, size=None):
+    """向きを比べるための小さな画像（明るさを揃えて平均0・分散1に）。
+
+    大きさは縦長なら 48x68、横長なら 68x48（比べる画像どうしは同じ向きに回してある）
+    """
+    if size is None:
+        size = (68, 48) if gray.shape[1] > gray.shape[0] else (48, 68)
     small = cv2.resize(gray, size, interpolation=cv2.INTER_AREA).astype(np.float32)
     small -= small.mean()
     std = small.std()
@@ -64,20 +70,26 @@ def ink_ratio(gray):
     return float(((gray < 128) & (binary > 0)).mean())
 
 
-def judge(image, reference=None):
+def candidate_rotations(gray, landscape=False):
+    """縦横比から考えられる回し方。用紙と縦横が合っていれば 0°/180°、違えば 90°/270°"""
+    h, w = gray.shape[:2]
+    return (0, 180) if (w > h) == landscape else (90, 270)
+
+
+def judge(image, reference=None, landscape=False):
     """1枚の向きを判定する。
 
     Args:
         image: BGR 画像（ファイルのまま）
         reference: 基準の答案の thumbnail（無ければ似かたは使わない）
+        landscape: 横長の用紙か（B4横など。既定は縦長）
 
     Returns:
         dict(rotation=時計回りに回す角度, method=marker|similarity|none,
              margin=似かたの差, blank=白紙か, needs_review=要確認か)
     """
     gray = to_gray(image)
-    h, w = gray.shape
-    candidates = (90, 270) if w > h else (0, 180)
+    candidates = candidate_rotations(gray, landscape)
     result = {"rotation": candidates[0], "method": "none", "margin": None,
               "blank": ink_ratio(gray) < BLANK_INK_RATIO, "needs_review": True}
     if result["blank"]:
@@ -102,10 +114,11 @@ def judge(image, reference=None):
     return result
 
 
-def check_folder(files):
+def check_folder(files, landscape=False):
     """全ページの向きを判定する（ファイルは書き換えない）。
 
     基準は「マーカーで向きが確定した最初のページ」、無ければ白紙でない最初のページ。
+    landscape=True（横長の用紙）なら、基準も横長に置いて比べる。
 
     Returns:
         {"reference": ファイル名, "pages": {ファイル名: judge の結果}}
@@ -120,7 +133,7 @@ def check_folder(files):
             pages[path.name] = {"error": "画像を読めません"}
             continue
         images[path.name] = img
-        res = judge(img)
+        res = judge(img, landscape=landscape)
         pages[path.name] = res
         if reference is None and res["method"] == "marker":
             reference_name = path.name
@@ -131,7 +144,7 @@ def check_folder(files):
             if name in images and not res.get("blank"):
                 reference_name = name
                 gray = to_gray(images[name])
-                rot = 90 if gray.shape[1] > gray.shape[0] else 0
+                rot = candidate_rotations(gray, landscape)[0]
                 reference = thumbnail(rotate(gray, rot))
                 res.update(rotation=rot, method="reference", needs_review=False)
                 break
@@ -139,7 +152,7 @@ def check_folder(files):
     if reference is not None:
         for name, res in pages.items():
             if name in images and res.get("method") == "none" and not res["blank"]:
-                pages[name] = judge(images[name], reference)
+                pages[name] = judge(images[name], reference, landscape)
     return {"reference": reference_name, "pages": pages}
 
 

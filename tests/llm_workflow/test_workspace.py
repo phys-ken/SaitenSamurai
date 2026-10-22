@@ -110,7 +110,10 @@ def test_audit_reports_findings(tmp_path, capsys):
     ])
     assert main(["audit", str(ws), "--transcripts", str(base)]) == 2
     out = capsys.readouterr().out
-    assert "ツール呼び出し 3 回" in out and "scans/p.png" in out
+    # Windows ではパスの区切りが \ になるので、区切りに頼らずに確かめる
+    finding = [line for line in out.splitlines() if "Read " in line]
+    assert "ツール呼び出し 3 回" in out and len(finding) == 1
+    assert "scans" in finding[0] and "p.png" in finding[0]
 
 
 def test_audit_clean_and_missing(tmp_path, capsys):

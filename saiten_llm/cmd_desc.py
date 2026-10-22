@@ -16,6 +16,7 @@ import cv2
 
 from saiten_llm import judgments as jmod
 from saiten_llm.engine import call, open_bridge, run_job
+from saiten_llm.imageio import read_image, write_image
 from saiten_llm.workspace import now_iso
 
 
@@ -104,8 +105,7 @@ def cmd_desc_set(project, args):
     questions = _questions(bridge)
     first = sorted((project.llm_view / "pages").glob("*.jpg"))[0]
     out = project.llm_view / "desc_regions.jpg"
-    cv2.imwrite(str(out), _draw_regions(cv2.imread(str(first)), questions, factor),
-                [cv2.IMWRITE_JPEG_QUALITY, 88])
+    write_image(out, _draw_regions(read_image(first), questions, factor))
     project.data["descriptive"] = {"proposed_at": now_iso(), "questions": added,
                                    "teacher_approved_at": None}
     project.save()

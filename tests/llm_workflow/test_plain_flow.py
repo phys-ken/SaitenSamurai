@@ -11,6 +11,7 @@ import pytest
 from saiten_llm import mask as maskmod
 from saiten_llm.cli import main
 from saiten_llm.engine import open_bridge
+from saiten_llm.imageio import read_image
 from saiten_llm.tools.make_sample_exam import make_plain_exam
 from saiten_llm.workspace import Project
 
@@ -63,7 +64,7 @@ def test_plain_exam_end_to_end(plain, tmp_path):
 
     # 全員の氏名欄が写しで真っ黒（傾き・ずれがあっても塗り漏れない）
     for page in sorted((project.llm_view / "pages").glob("*.jpg")):
-        img = cv2.imread(str(page), cv2.IMREAD_GRAYSCALE)
+        img = read_image(page, cv2.IMREAD_GRAYSCALE)
         inner = img[y0 + 2:y1 - 2, x0 + 2:x1 - 2]
         assert inner.max() < 40, page.name
 
@@ -140,7 +141,7 @@ def test_crops_follow_the_answer_boxes(plain, tmp_path):
     bridge, _ = open_bridge(Project(root), write=False)
     region = bridge.state["descriptive"]["questions"][0]["region"]
     for page in sorted((project.llm_view / "pages").glob("*.jpg")):
-        c = cv2.cvtColor(crop(cv2.imread(str(page)), region, 1.0), cv2.COLOR_BGR2GRAY)
+        c = cv2.cvtColor(crop(read_image(page), region, 1.0), cv2.COLOR_BGR2GRAY)
         # 枠の上の横線が、傾いていても全幅にわたって切り抜きの中に入っている
         top = (c[:45, 20:-20] < 110).any(axis=0).mean()
         bottom = (c[-45:, 20:-20] < 110).any(axis=0).mean()

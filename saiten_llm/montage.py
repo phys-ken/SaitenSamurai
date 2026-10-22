@@ -9,6 +9,8 @@ import json
 import cv2
 import numpy as np
 
+from saiten_llm.imageio import read_image, write_image
+
 TILE_MAX_W = 900          # 1枚の切り抜きの最大の幅
 SHEET_MAX_W = 1800        # 並べた画像の最大の幅
 LABEL_W = 56              # 番号を書く欄の幅
@@ -83,7 +85,7 @@ def build(question, filenames, view_dir, out_dir, factor, per_sheet):
     missing = []
     for number, name in enumerate(filenames, 1):
         stem = name.rsplit(".", 1)[0]
-        view = cv2.imread(str(view_dir / f"{stem}.jpg"))
+        view = read_image(view_dir / f"{stem}.jpg")
         if view is None:
             missing.append(name)
             continue
@@ -97,7 +99,7 @@ def build(question, filenames, view_dir, out_dir, factor, per_sheet):
     paths = []
     for i, tiles in enumerate(sheets, 1):
         path = out_dir / f"sheet_{i:02d}_{tiles[0][0]:03d}-{tiles[-1][0]:03d}.jpg"
-        cv2.imwrite(str(path), compose(tiles), [cv2.IMWRITE_JPEG_QUALITY, 88])
+        write_image(path, compose(tiles))
         paths.append(path)
     (out_dir / "index.json").write_text(
         json.dumps({"question": question["id"], "name": question["name"],

@@ -93,8 +93,8 @@ def cmd_mode(project, args):
 # --- coord --------------------------------------------------------------
 
 def cmd_coord(project, args):
-    import cv2
     from omr_engine import parse_excel_coordinates
+    from saiten_llm.imageio import read_image, write_image
     from saiten_llm.marksheet import draw_coord_overlay, summarize_coords
     src = Path(args.file).resolve()
     if not src.exists():
@@ -134,9 +134,9 @@ def cmd_coord(project, args):
 
     view = sorted((project.llm_view / "pages").glob("*.jpg"))
     if view:
-        overlay = draw_coord_overlay(cv2.imread(str(view[0])), coords)
+        overlay = draw_coord_overlay(read_image(view[0]), coords)
         out = project.llm_view / "coord_check.jpg"
-        cv2.imwrite(str(out), overlay, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        write_image(out, overlay)
         _say(f"座標の枠を黒塗りした1枚目に重ねました: {out}",
              "  緑の枠が各マーク欄に、赤い枠が各設問の行に重なっているかを見てください。"
              f"赤い番号は座標ファイルの行番号で、ID欄も数えるため解答番号より {skip} 大きくなります"

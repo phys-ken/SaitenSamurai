@@ -67,9 +67,10 @@ def test_llm_view_masks_copies_but_never_scans(oriented_project):
     assert maskmod.build_llm_view(project) == len(names)
     assert _hashes(project) == before            # 元画像には一切書き込まない
 
-    import cv2
+    from saiten_llm.imageio import read_image
     for i, name in enumerate(names):
-        view = cv2.imread(str(project.llm_view / "pages" / (name.rsplit(".", 1)[0] + ".jpg")))
+        view = read_image(project.llm_view / "pages" / (name.rsplit(".", 1)[0] + ".jpg"))
+        assert view is not None, name
         h, w = view.shape[:2]
         x1, y1, x2, y2 = NAME_REGION
         inner = view[int(y1 * h) + 3:int(y2 * h) - 3, int(x1 * w) + 3:int(x2 * w) - 3]

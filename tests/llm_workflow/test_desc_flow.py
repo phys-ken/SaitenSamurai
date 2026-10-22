@@ -1,12 +1,12 @@
 """記述問題の範囲・並べた画像・判定・確定（S4）"""
 import json
 
-import cv2
 import pytest
 
 from saiten_llm import judgments as jmod
 from saiten_llm.cli import main
 from saiten_llm.engine import open_bridge
+from saiten_llm.imageio import read_image
 from saiten_llm.workspace import Project
 
 
@@ -63,7 +63,7 @@ def test_montage_numbers_and_masked_source(desc_project):
     assert sorted(index) == list(range(1, 7))
     sheets = sorted((project.llm_view / "crops" / "D1").glob("sheet_*.jpg"))
     assert [p.name for p in sheets] == ["sheet_01_001-004.jpg", "sheet_02_005-006.jpg"]
-    img = cv2.imread(str(sheets[0]))
+    img = read_image(sheets[0])
     assert img is not None and img.shape[1] > img.shape[0]   # 横長の解答欄を並べている
 
 

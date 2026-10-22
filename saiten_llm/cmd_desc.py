@@ -213,10 +213,11 @@ def question_report(bridge, data, q):
             continue
         if item["verdict"] == "保留" and score is None:
             report["holds"].append((f, item["reason"]))
-        if jmod.VERDICT_SCORE[item["verdict"]] != score:
+        if item["verdict"] == "部分" and score is None:
+            report["partials"].append(f)      # 換算の後、先生の点の入力待ち
+        expected = jmod.expected_score(item["verdict"], q["max_score"])
+        if expected is not None and expected != score:
             report["changed"].append((f, item["verdict"], score))
-        if score == 1 and q["max_score"] == jmod.PROVISIONAL_MAX:
-            report["partials"].append(f)
     return report
 
 
@@ -237,6 +238,8 @@ def cmd_review(project, args):
              + (f" / {counts}" if counts else ""))
         for f, reason in r["holds"]:
             _say(f"  保留: {f} — {reason}")
+        for f in r["partials"]:
+            _say(f"  部分点の入力待ち: {f}")
         for f, verdict, score in r["changed"]:
             now = "未採点" if score is None else (label.get(score, score) if provisional else f"{score}点")
             _say(f"  先生の修正: {f}  LLM {verdict} → {now}")

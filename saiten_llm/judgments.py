@@ -43,6 +43,17 @@ def scores_hash(scores_by_file):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def expected_score(verdict, max_score):
+    """LLM の判定から見込まれる得点。見込みが無い（先生が個別に決める）ときは None。
+
+    仮の2点満点の間: 正=2 / 部分=1 / 誤=0 / 保留=None
+    換算の後:        正=満点 / 誤=0 / 部分・保留=None
+    """
+    if max_score == PROVISIONAL_MAX:
+        return VERDICT_SCORE[verdict]
+    return {"正": max_score, "誤": 0}.get(verdict)
+
+
 def file_hash(file_path):
     return hashlib.sha256(file_path.read_bytes()).hexdigest()
 

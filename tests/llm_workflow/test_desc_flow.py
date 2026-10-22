@@ -105,7 +105,8 @@ def test_confirm_blocked_until_holds_are_scored(desc_project, sample_pdf, tmp_pa
 
     assert main(["confirm", str(desc_project), "question", "--question", "D1"]) == 0
     confirmed = jmod.load(project)["questions"]["D1"]["confirmed"]
-    assert confirmed["teacher_changes"] == 2 and confirmed["hash"]
+    # 保留に点を入れたのは修正ではない。LLM の誤を部分にしたのが1件
+    assert confirmed["teacher_changes"] == 1 and confirmed["hash"]
 
     # 確定した問題は LLM が書き換えない
     assert main(["judge", str(desc_project), "--question", "D1", "--input", verdicts]) == 1

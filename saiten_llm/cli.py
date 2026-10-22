@@ -12,7 +12,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from saiten_llm import REPO_ROOT, cmd_desc, cmd_mark
+from saiten_llm import REPO_ROOT, cmd_desc, cmd_mark, cmd_points
 from saiten_llm.workspace import Project, now_iso
 
 EXIT_OK, EXIT_ERROR, EXIT_NEEDS_TEACHER = 0, 1, 2
@@ -288,6 +288,17 @@ def _args_confirm(p):
     p.add_argument("--question", help="問題ID（question のとき）")
 
 
+def _args_stats(p):
+    p.add_argument("--total", type=int, default=100, help="満点（既定 100）")
+
+
+def _args_set_points(p):
+    p.add_argument("--input", required=True,
+                   help='{"marks": {"1": 2, "2": 3}, "descriptive": {"D1": 10}}')
+    p.add_argument("--teacher-approved", action="store_true",
+                   help="先生がこの配点を承認した（無いと実行しない）")
+
+
 COMMANDS = {
     "status": (cmd_status, "試験フォルダの進み具合を表示する", None),
     "pdf": (cmd_pdf, "試験フォルダの PDF を scans/ に画像として書き出す", _args_pdf),
@@ -308,6 +319,9 @@ COMMANDS = {
     "judge": (cmd_desc.cmd_judge, "LLM の判定（正/部分/誤/保留）を書き込む", _args_judge),
     "review": (cmd_desc.cmd_review, "判定の状況・保留・先生の修正を一覧にする", _args_review),
     "confirm": (cmd_desc.cmd_confirm, "先生がチャットで伝えた確認を記録する", _args_confirm),
+    "stats": (cmd_points.cmd_stats, "正答率・識別力と配点案を出す（配点は先生が決める）", _args_stats),
+    "set-points": (cmd_points.cmd_set_points, "先生が承認した配点を書き込み、点数に換算する",
+                   _args_set_points),
     "open-ui": (cmd_open_ui, "採点侍の画面をこの試験の状態で開く", None),
 }
 

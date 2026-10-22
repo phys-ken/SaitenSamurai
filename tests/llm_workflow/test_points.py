@@ -102,6 +102,18 @@ def test_stats_writes_plans(judged_project, capsys):
     assert all(sum(p["points"]) == 100 for p in data["plans"])
 
 
+def test_keep_teacher_mark_points(judged_project, tmp_path):
+    """先生が answer_key.xlsx に入れた配点をそのまま使う（"marks": "keep"）"""
+    root = str(judged_project)
+    _confirm_all(root)
+    before = Project(root).data["answer_key"]["hash"]
+    pts = _write(tmp_path, "keep.json", {"marks": "keep", "descriptive": {"D1": 10}})
+    assert main(["set-points", root, "--input", pts, "--teacher-approved"]) == 0
+    data = Project(root).data
+    assert data["answer_key"]["points_set_at"] and data["answer_key"]["hash"] == before
+    assert data["points"]["marks"] == "keep"
+
+
 def test_set_points_converts_and_waits_for_partials(judged_project, sample_pdf, tmp_path):
     root = str(judged_project)
     _confirm_all(root)

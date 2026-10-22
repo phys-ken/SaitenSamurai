@@ -12,7 +12,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from saiten_llm import REPO_ROOT, cmd_desc, cmd_mark, cmd_points
+from saiten_llm import REPO_ROOT, cmd_desc, cmd_finalize, cmd_mark, cmd_points
 from saiten_llm.workspace import Project, now_iso
 
 EXIT_OK, EXIT_ERROR, EXIT_NEEDS_TEACHER = 0, 1, 2
@@ -294,7 +294,8 @@ def _args_stats(p):
 
 def _args_set_points(p):
     p.add_argument("--input", required=True,
-                   help='{"marks": {"1": 2, "2": 3}, "descriptive": {"D1": 10}}')
+                   help='{"marks": {"1": 2, "2": 3}, "descriptive": {"D1": 10}}'
+                        '（マークの配点を answer_key.xlsx のまま使うなら "marks": "keep"）')
     p.add_argument("--teacher-approved", action="store_true",
                    help="先生がこの配点を承認した（無いと実行しない）")
 
@@ -322,6 +323,7 @@ COMMANDS = {
     "stats": (cmd_points.cmd_stats, "正答率・識別力と配点案を出す（配点は先生が決める）", _args_stats),
     "set-points": (cmd_points.cmd_set_points, "先生が承認した配点を書き込み、点数に換算する",
                    _args_set_points),
+    "finalize": (cmd_finalize.cmd_finalize, "確認がそろっていれば個票（採点済み答案）と集計を作る", None),
     "open-ui": (cmd_open_ui, "採点侍の画面をこの試験の状態で開く", None),
 }
 

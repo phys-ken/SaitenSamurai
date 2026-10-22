@@ -155,7 +155,9 @@ def cmd_set_points(project, args):
             _say(f"  ・{m}")
         return 2
     spec = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    marks = {str(k): int(v) for k, v in (spec.get("marks") or {}).items()}
+    # "marks": "keep" は、先生が answer_key.xlsx に入れた配点をそのまま使う
+    keep_marks = spec.get("marks") == "keep"
+    marks = {} if keep_marks else {str(k): int(v) for k, v in (spec.get("marks") or {}).items()}
     desc = {str(k): int(v) for k, v in (spec.get("descriptive") or {}).items()}
     if any(v <= 0 for v in list(marks.values()) + list(desc.values())):
         _say("配点は1以上の整数にしてください。")
@@ -178,6 +180,10 @@ def cmd_set_points(project, args):
         project.data["answer_key"]["hash"] = jmod.file_hash(key_path)
         project.data["answer_key"]["points_set_at"] = now_iso()
         _say(f"マークの配点を書き込みました: {ks['stats_line']}")
+    elif keep_marks and bridge.state["app_mode"] != "descriptive_only":
+        project.data["answer_key"]["points_set_at"] = now_iso()
+        _say(f"マークの配点は answer_key.xlsx のまま使います: "
+             f"{(bridge.state.get('key_summary') or {}).get('stats_line')}")
 
     data = jmod.load(project)
     for qid, new_max in desc.items():
@@ -205,7 +211,8 @@ def cmd_set_points(project, args):
              + (f" 部分 {len(partials)} 人は未採点に戻しました。先生が採点侍で「未採点」に"
                 "絞り込んで点を入れ、その後 confirm question で確定してください。" if partials else ""))
     jmod.save(project, data)
-    project.data["points"] = {"set_at": now_iso(), "marks": marks, "descriptive": desc}
+    project.data["points"] = {"set_at": now_iso(), "marks": "keep" if keep_marks else marks,
+                              "descriptive": desc}
     project.save()
     call(bridge, "save_session")
     return 0

@@ -2,9 +2,11 @@
 
   stats       全員の正誤から統計と配点案を出す（先生が選ぶ・直す材料）
   set-points  先生が承認した配点を書き込み、仮の2点満点を本当の点数に換算する
-              （正→満点 / 誤→0 / 部分→未採点に戻し、先生が個別に点を入れる）
+              （正→満点 / 誤→0 / 部分→先生が決めた部分点。決めていなければ
+               未採点に戻し、先生が個別に点を入れる）
 """
 import json
+import math
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -92,7 +94,8 @@ def cmd_stats(project, args):
         return 1
     stats = allocate.item_stats(matrix)
     plans = allocate.plans(matrix, stats, args.total)
-    _say(f"生徒 {len(students)} 人・{len(items)} 項目（記述の部分点は半分として計算）",
+    _say(f"生徒 {len(students)} 人・{len(items)} 項目"
+         "（記述は 得点÷満点 で計算。配点を決める前の部分は 1/2 として計算）",
          "", "項目        正答率  識別力  上下差")
     for item, s in zip(items, stats):
         r = "  —  " if s["r"] is None else f"{s['r']:+.2f}"
@@ -143,6 +146,41 @@ def _write_mark_points(key_path, points):
         raise ValueError(f"answer_key.xlsx に無い問題番号があります: {', '.join(sorted(missing))}")
 
 
+def partial_points(desc, partial, ratio):
+    """部分の最終点を問題ごとに決める。
+
+    Args:
+        desc: {問題ID: 満点}
+        partial: {問題ID: 部分の点}（問題ごとの指定。ratio より優先）
+        ratio: 全問共通の割合（満点 × 割合を四捨五入）。None なら使わない
+
+    Returns:
+        {問題ID: 部分の点}（指定の無い問題は含めない＝部分は未採点に戻す）
+
+    Raises:
+        ValueError: 部分の点が 1 以上・満点未満の整数にならないとき
+    """
+    unknown = set(partial) - set(desc)
+    if unknown:
+        raise ValueError("partial に書いた問題が descriptive にありません: "
+                         + ", ".join(sorted(unknown)))
+    out = {}
+    for qid, new_max in desc.items():
+        if qid in partial:
+            value = partial[qid]
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{qid} の部分の点は整数にしてください: {value!r}")
+        elif ratio is not None:
+            value = math.floor(new_max * ratio + 0.5)
+        else:
+            continue
+        if not 1 <= value < new_max:
+            raise ValueError(f"{qid} の部分の点が {value} 点になります。"
+                             f"1 点以上・満点（{new_max} 点）未満にしてください。")
+        out[qid] = value
+    return out
+
+
 def cmd_set_points(project, args):
     if not args.teacher_approved:
         _say("配点は先生が決めます。先生の承認を得てから --teacher-approved を付けて実行してください。")
@@ -154,7 +192,8 @@ def cmd_set_points(project, args):
         for m in missing:
             _say(f"  ・{m}")
         return 2
-    spec = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    # Windows の PowerShell は BOM 付きで書くことがあるので utf-8-sig で読む
+    spec = json.loads(Path(args.input).read_text(encoding="utf-8-sig"))
     # "marks": "keep" は、先生が answer_key.xlsx に入れた配点をそのまま使う
     keep_marks = spec.get("marks") == "keep"
     marks = {} if keep_marks else {str(k): int(v) for k, v in (spec.get("marks") or {}).items()}
@@ -166,6 +205,16 @@ def cmd_set_points(project, args):
     unknown = set(desc) - set(questions)
     if unknown:
         _say(f"記述問題が見つかりません: {', '.join(sorted(unknown))}")
+        return 1
+    ratio = getattr(args, "partial_ratio", None)
+    if ratio is not None and not 0 < ratio < 1:
+        _say("--partial-ratio は 0 より大きく 1 より小さい値にしてください（例: 0.5）。")
+        return 1
+    try:
+        partial = partial_points(desc, {str(k): v for k, v in (spec.get("partial") or {}).items()},
+                                 ratio)
+    except ValueError as e:
+        _say(str(e))
         return 1
 
     if marks:
@@ -186,33 +235,54 @@ def cmd_set_points(project, args):
              f"{(bridge.state.get('key_summary') or {}).get('stats_line')}")
 
     data = jmod.load(project)
+    files = bridge.list_sheet_files()["files"]
     for qid, new_max in desc.items():
         q = questions[qid]
         if q["max_score"] != jmod.PROVISIONAL_MAX:
             _say(f"{qid} はすでに {q['max_score']} 点満点に換算済みです（やり直さない）。")
             continue
         before = {f: (s or {}).get(qid) for f, s in bridge._desc_scores["scores"].items()}
+        record = data["questions"][qid]
+        # 確定を引き継げるのは、確定の後で得点が変わっていないときだけ
+        confirmed = record.get("confirmed") or {}
+        still_confirmed = (confirmed.get("max_score") == jmod.PROVISIONAL_MAX and confirmed.get("hash")
+                           == jmod.scores_hash({f: before.get(f) for f in files}))
+        part = partial.get(qid)
         call(bridge, "update_descriptive_question", qid, q["name"], new_max, q.get("aspect", 1))
-        converted = {f: (new_max if v == 2 else 0 if v == 0 else None)
+        converted = {f: (new_max if v == 2 else 0 if v == 0 else part if v == 1 else None)
                      for f, v in before.items() if v is not None}
         partials = sorted(f for f, v in before.items() if v == 1)
+        unscored = sorted(f for f, v in converted.items() if v is None)
         call(bridge, "set_descriptive_scores_bulk", qid, converted)
-        record = data["questions"][qid]
-        record["provisional_confirmed"] = record.get("confirmed")
-        record["converted"] = {"at": now_iso(), "max_score": new_max, "partials": partials}
-        if partials:
+        # 換算をやり直しても（2点満点のまま換算したときなど）、最初の確定は残す
+        record.setdefault("provisional_confirmed", record.get("confirmed"))
+        record["converted"] = {"at": now_iso(), "max_score": new_max, "partials": partials,
+                               "partial_score": part}
+        if unscored or not still_confirmed:
             record["confirmed"] = None
         else:
-            scores = {f: (bridge._desc_scores["scores"].get(f) or {}).get(qid)
-                      for f in bridge.list_sheet_files()["files"]}
+            scores = {f: (bridge._desc_scores["scores"].get(f) or {}).get(qid) for f in files}
             record["confirmed"] = {"at": now_iso(), "hash": jmod.scores_hash(scores),
-                                   "max_score": new_max, "by": "確定済みの正誤を換算"}
-        _say(f"{qid}（{q['name']}）を {new_max} 点満点に換算しました（正→{new_max} / 誤→0）。"
-             + (f" 部分 {len(partials)} 人は未採点に戻しました。先生が採点侍で「未採点」に"
-                "絞り込んで点を入れ、その後 confirm question で確定してください。" if partials else ""))
+                                   "max_score": new_max,
+                                   "by": "確定済みの正誤・部分を換算" if partials else "確定済みの正誤を換算"}
+        rule = f"正→{new_max} / " + (f"部分→{part} / " if part is not None else "") + "誤→0"
+        _say(f"{qid}（{q['name']}）を {new_max} 点満点に換算しました（{rule}）。")
+        if partials and part is None:
+            _say(f"  部分 {len(partials)} 人は未採点に戻しました。先生が採点侍で「未採点」に"
+                 "絞り込んで点を入れ、その後 confirm question で確定してください。")
+        elif unscored:
+            _say(f"  2点満点の 0/1/2 以外の得点だった {len(unscored)} 人は未採点に戻しました。"
+                 "先生に点を入れてもらい、confirm question で確定してください。")
+        elif not still_confirmed:
+            _say("  ⚠ 先生の確定の後で得点が変わっていたので、確定は引き継いでいません。"
+                 "先生に確かめてもらい、confirm question で確定し直してください。")
+        else:
+            _say("  先生の確定は換算した点数のまま引き継ぎました。")
     jmod.save(project, data)
     project.data["points"] = {"set_at": now_iso(), "marks": "keep" if keep_marks else marks,
                               "descriptive": desc}
+    if partial:
+        project.data["points"]["partial"] = partial
     project.save()
     call(bridge, "save_session")
     return 0

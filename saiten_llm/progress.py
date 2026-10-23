@@ -13,6 +13,18 @@ def _box(done):
     return "[x]" if done else "[ ]"
 
 
+def _question_names(project):
+    """記述問題の名前（採点侍の descriptive_config.json から読むだけ）。
+
+    judgments.json には判定を書き込んだ問題の名前しか無いので、判定前の問題名はこちらから取る
+    """
+    from constants import RESULTS_DATA_FOLDER, RESULTS_FOLDER
+    from descriptive_scorer import DESCRIPTIVE_CONFIG_FILE, load_descriptive_config
+    path = project.scans / RESULTS_FOLDER / RESULTS_DATA_FOLDER / DESCRIPTIVE_CONFIG_FILE
+    config = load_descriptive_config(str(path)) if path.exists() else None
+    return {q.get("id"): q.get("name", "") for q in (config or {}).get("questions", [])}
+
+
 def checklist(project):
     d = project.data
     lines = []
@@ -38,13 +50,15 @@ def checklist(project):
         desc = d.get("descriptive") or {}
         lines.append(f"- {_box(desc.get('teacher_approved_at'))} 記述問題の範囲を先生が承認")
         data = jmod.load(project) if jmod.path(project).exists() else {"questions": {}}
+        names = _question_names(project) if desc.get("questions") else {}
         for qid in desc.get("questions", []):
             q = data["questions"].get(qid) or {}
             items = q.get("items") or {}
             holds = sum(1 for i in items.values() if i["status"] == "hold")
             state = ("先生が確定" if q.get("confirmed") else
                      f"LLM 判定 {len(items)} 人・保留 {holds}" if items else "未判定")
-            lines.append(f"  - {_box(q.get('confirmed'))} {qid}（{q.get('name', '')}）: {state}")
+            name = names.get(qid) or q.get("name", "")
+            lines.append(f"  - {_box(q.get('confirmed'))} {qid}（{name}）: {state}")
     points = d.get("points")
     lines.append(f"- {_box(points)} 配点を先生が決定")
     lines.append(f"- {_box(d.get('finalized'))} 個票・集計を作成")

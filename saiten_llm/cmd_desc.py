@@ -74,7 +74,7 @@ def _draw_regions(image, questions, factor):
 
 
 def cmd_desc_set(project, args):
-    spec = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    spec = json.loads(Path(args.input).read_text(encoding="utf-8-sig"))   # BOM 付きでも読む
     items = spec.get("questions", spec) if isinstance(spec, dict) else spec
     if not isinstance(items, list) or not items:
         _say('JSON は {"questions": [{"name": "問1", "region": [x1, y1, x2, y2]}]} の形にしてください'
@@ -166,7 +166,8 @@ def cmd_judge(project, args):
         _say("並べた画像がありません。先に crops を実行してください。")
         return 1
     index = {str(k): v for k, v in json.loads(index_path.read_text(encoding="utf-8"))["numbers"].items()}
-    verdicts = jmod.parse_verdicts(json.loads(Path(args.input).read_text(encoding="utf-8")), index)
+    verdicts = jmod.parse_verdicts(json.loads(Path(args.input).read_text(encoding="utf-8-sig")),
+                                   index)   # BOM 付きでも読む
 
     # 先生が画面で直した得点は上書きしない（LLM の前回の判定と今の得点が違うもの）
     current = {f: s.get(q["id"]) for f, s in bridge._desc_scores["scores"].items()}

@@ -326,7 +326,11 @@ def _args_stats(p):
 def _args_set_points(p):
     p.add_argument("--input", required=True,
                    help='{"marks": {"1": 2, "2": 3}, "descriptive": {"D1": 10}}'
-                        '（マークの配点を answer_key.xlsx のまま使うなら "marks": "keep"）')
+                        '（マークの配点を answer_key.xlsx のまま使うなら "marks": "keep"。'
+                        '記述の部分の点は "partial": {"D1": 1}）')
+    p.add_argument("--partial-ratio", type=float, default=None,
+                   help="記述の部分の点を、全問共通で 満点×割合（四捨五入）にする。"
+                        "partial に書いた問題はそちらを使う")
     p.add_argument("--teacher-approved", action="store_true",
                    help="先生がこの配点を承認した（無いと実行しない）")
 
@@ -398,8 +402,10 @@ def build_parser():
 
 def main(argv=None):
     from saiten_llm.engine import ScreenOpenError
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")   # Windows の端末でも日本語を崩さない
+    # Windows の端末でも日本語を崩さない（エラーの表示も同じく）
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     args = build_parser().parse_args(argv)
     if args.command in WORKSPACE_COMMANDS:
         return WORKSPACE_COMMANDS[args.command][0](args)

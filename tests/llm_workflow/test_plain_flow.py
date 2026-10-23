@@ -45,8 +45,8 @@ def _frac(box, size):
     return [box[0] / w, box[1] / h, box[2] / w, box[3] / h]
 
 
-def test_plain_exam_end_to_end(plain, tmp_path):
-    root, truth = plain
+def _confirmed_plain(root, truth, tmp_path):
+    """PDF から、記述3問を判定して先生が確定するところまで。Returns: 記述問題の一覧"""
     r = str(root)
     assert main(["pdf", r]) == 0
     assert main(["orient", r, "--apply"]) == 0
@@ -101,6 +101,14 @@ def test_plain_exam_end_to_end(plain, tmp_path):
                 assert bridge.set_descriptive_score(f, q["id"], 2)["ok"]
     for q in qs:
         assert main(["confirm", r, "question", "--question", q["id"]]) == 0
+    return qs
+
+
+def test_plain_exam_end_to_end(plain, tmp_path):
+    root, truth = plain
+    r = str(root)
+    qs = _confirmed_plain(root, truth, tmp_path)
+    by_page = {f"理科_p{s['page']:03d}.png": s["answers"] for s in truth["students"]}
 
     assert main(["stats", r, "--total", "30"]) == 0
     points = {"descriptive": {q["id"]: 10 for q in qs}}
@@ -119,6 +127,35 @@ def test_plain_exam_end_to_end(plain, tmp_path):
     from constants import RESULTS_FOLDER, SCORED_FOLDER
     out = Project(root).scans / RESULTS_FOLDER / SCORED_FOLDER
     assert len(list(out.glob("*"))) >= 8
+
+
+def test_partial_given_for_some_questions(plain, tmp_path):
+    """部分のある問題だけ partial を書く（部分の無い問題は書かなくてよい）。
+    全問の確定が保たれ、確定し直さずに finalize まで進める"""
+    from saiten_llm import judgments as jmod
+    from saiten_llm.cmd_finalize import gate
+    root, truth = plain
+    r = str(root)
+    qs = _confirmed_plain(root, truth, tmp_path)
+    by_page = {f"理科_p{s['page']:03d}.png": s["answers"] for s in truth["students"]}
+    q1, q2, q3 = qs                                   # 部分があるのは 問1 だけ
+    spec = {"descriptive": {q1["id"]: 10, q2["id"]: 4, q3["id"]: 6}, "partial": {q1["id"]: 4}}
+    assert main(["set-points", r, "--input", _write(tmp_path, "p.json", spec),
+                 "--teacher-approved"]) == 0
+    project = Project(root)
+    bridge, _ = open_bridge(project, write=False)
+    scores = bridge._desc_scores["scores"]
+    partial_files = [f for f, a in by_page.items() if a["問1"]["truth"] == "部分"]
+    assert partial_files                              # 検査が空振りしていない
+    for f in partial_files:
+        assert scores[f][q1["id"]] == 4
+    data = jmod.load(project)
+    for q, new_max in ((q1, 10), (q2, 4), (q3, 6)):
+        confirmed = data["questions"][q["id"]]["confirmed"]
+        assert confirmed and confirmed["max_score"] == new_max, q["id"]
+    assert data["questions"][q1["id"]]["confirmed"]["by"] == "確定済みの正誤・部分を換算"
+    assert gate(project, bridge) == []
+    assert main(["finalize", r]) == 0
 
 
 def test_crops_follow_the_answer_boxes(plain, tmp_path):

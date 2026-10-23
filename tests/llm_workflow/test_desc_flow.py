@@ -84,6 +84,21 @@ def test_judge_writes_provisional_scores(desc_project, sample_pdf, tmp_path):
     assert holds == ["小テスト_p003.png"]
 
 
+def test_judge_reads_json_with_bom(desc_project, sample_pdf, tmp_path):
+    """Windows の PowerShell が書く BOM 付きの JSON でも読める"""
+    project = Project(desc_project)
+    path = tmp_path / "bom.json"
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps(_truth_verdicts(sample_pdf, _index(project)),
+                                                  ensure_ascii=False).encode("utf-8"))
+    assert main(["judge", str(desc_project), "--question", "D1", "--input", str(path)]) == 0
+
+
+def test_progress_shows_question_name_before_judging(desc_project):
+    from saiten_llm.progress import checklist
+    lines = checklist(Project(desc_project))
+    assert "  - [ ] D1（問46）: 未判定" in lines, lines
+
+
 def test_bad_verdicts_are_rejected(desc_project, tmp_path):
     for bad in ({"1": "まる"}, {"99": "正"}, {"1": {"verdict": "保留"}}):
         path = _write(tmp_path, "bad.json", bad)

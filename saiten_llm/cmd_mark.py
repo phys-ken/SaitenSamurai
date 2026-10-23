@@ -210,7 +210,7 @@ def _backup(path):
 
 
 def _rows_from_json(path):
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    data = json.loads(Path(path).read_text(encoding="utf-8-sig"))   # BOM 付きでも読む
     rows = data.get("rows", data) if isinstance(data, dict) else data
     if not isinstance(rows, list) or not rows:
         raise ValueError("JSON は {\"rows\": [{\"問題番号\": 1, \"正答\": \"3\"}, ...]} の形にしてください")

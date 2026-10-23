@@ -147,3 +147,127 @@ def test_set_points_converts_and_waits_for_partials(judged_project, sample_pdf, 
     assert main(["set-points", root, "--input", _points_file(tmp_path), "--teacher-approved"]) == 0
     bridge, _ = open_bridge(project, write=False)
     assert bridge._desc_scores["scores"]["小テスト_p004.png"]["D1"] == 6
+
+
+# --- 部分の点の指定 ------------------------------------------------------
+
+PARTIAL_FILE = "小テスト_p004.png"     # 合成答案で「部分」の生徒
+
+
+def test_partial_points_rules():
+    from saiten_llm.cmd_points import partial_points
+    assert partial_points({"D1": 10, "D2": 2}, {"D1": 3}, None) == {"D1": 3}     # D2 は指定なし
+    assert partial_points({"D1": 10, "D2": 2}, {}, 0.5) == {"D1": 5, "D2": 1}
+    assert partial_points({"D1": 10, "D2": 3}, {"D1": 7}, 0.5) == {"D1": 7, "D2": 2}   # 1.5 → 2
+    assert partial_points({"D1": 10}, {}, 0.25) == {"D1": 3}                        # 2.5 → 3（偶数丸めにしない）
+    for desc, partial, ratio in (({"D1": 2}, {"D1": 2}, None),       # 満点と同じ
+                                 ({"D1": 2}, {"D1": 0}, None),       # 0 点
+                                 ({"D1": 10}, {"D1": 2.5}, None),    # 整数でない
+                                 ({"D1": 10}, {"D9": 1}, None),      # descriptive に無い
+                                 ({"D1": 10}, {}, 0.01),             # 0 点に丸まる
+                                 ({"D1": 2}, {}, 0.9)):              # 満点に丸まる
+        with pytest.raises(ValueError):
+            partial_points(desc, partial, ratio)
+
+
+def _gate_desc_problems(root):
+    from saiten_llm.cmd_finalize import gate
+    project = Project(root)
+    bridge, _ = open_bridge(project, write=False)
+    return [p for p in gate(project, bridge) if p.startswith("記述")]
+
+
+def _desc_points(tmp_path, desc_max, partial=None, bom=False):
+    spec = {"marks": "keep", "descriptive": {"D1": desc_max}}
+    if partial is not None:
+        spec["partial"] = {"D1": partial}
+    p = tmp_path / "points.json"
+    text = json.dumps(spec, ensure_ascii=False)
+    p.write_bytes((b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8"))
+    return str(p)
+
+
+def test_set_points_with_partial_keeps_confirmation(judged_project, tmp_path):
+    root = str(judged_project)
+    _confirm_all(root)
+    # Windows の PowerShell が書く BOM 付きの JSON でも読める
+    assert main(["set-points", root, "--input", _desc_points(tmp_path, 10, 4, bom=True),
+                 "--teacher-approved"]) == 0
+    project = Project(root)
+    bridge, _ = open_bridge(project, write=False)
+    scores = {f: s.get("D1") for f, s in bridge._desc_scores["scores"].items()}
+    assert scores[PARTIAL_FILE] == 4
+    assert sorted(set(scores.values())) == [0, 4, 10]
+    record = jmod.load(project)["questions"]["D1"]
+    assert record["converted"]["partials"] == [PARTIAL_FILE]
+    assert record["converted"]["partial_score"] == 4
+    assert record["confirmed"]["max_score"] == 10
+    assert record["confirmed"]["by"] == "確定済みの正誤・部分を換算"
+    assert record["provisional_confirmed"]["max_score"] == 2
+    assert project.data["points"]["partial"] == {"D1": 4}
+    assert _gate_desc_problems(root) == []
+    # 部分の点は stats の正答率にもそのまま入る（4/10）
+    from saiten_llm.cmd_points import build_matrix
+    items, students, matrix = build_matrix(bridge)
+    col = [it["id"] for it in items].index("D1")
+    assert matrix[students.index(PARTIAL_FILE)][col] == pytest.approx(0.4)
+
+
+def test_set_points_keeping_two_points(judged_project, tmp_path):
+    """満点 2 点のまま（正 2・部分 1・誤 0）: 点数は変わらず、確定だけが保たれる"""
+    root = str(judged_project)
+    _confirm_all(root)
+    project = Project(root)
+    bridge, _ = open_bridge(project, write=False)
+    before = {f: s.get("D1") for f, s in bridge._desc_scores["scores"].items()}
+    first_confirm = jmod.load(project)["questions"]["D1"]["confirmed"]
+    assert before[PARTIAL_FILE] == 1
+    for _ in range(2):                    # 2回実行しても同じ
+        assert main(["set-points", root, "--input", _desc_points(tmp_path, 2, 1),
+                     "--teacher-approved"]) == 0
+        bridge, _ = open_bridge(project, write=False)
+        assert {f: s.get("D1") for f, s in bridge._desc_scores["scores"].items()} == before
+        record = jmod.load(project)["questions"]["D1"]
+        assert record["confirmed"]["hash"] == first_confirm["hash"]
+        assert record["provisional_confirmed"] == first_confirm      # 最初の確定は上書きしない
+        assert _gate_desc_problems(root) == []
+
+
+def test_set_points_partial_ratio(judged_project, tmp_path):
+    root = str(judged_project)
+    _confirm_all(root)
+    # 0 点に丸まる割合は断り、何も書き換えない
+    assert main(["set-points", root, "--input", _desc_points(tmp_path, 10), "--partial-ratio", "0.01",
+                 "--teacher-approved"]) == 1
+    bridge, _ = open_bridge(Project(root), write=False)
+    assert bridge.state["descriptive"]["questions"][0]["max_score"] == 2
+    assert main(["set-points", root, "--input", _desc_points(tmp_path, 10), "--partial-ratio", "0.5",
+                 "--teacher-approved"]) == 0
+    bridge, _ = open_bridge(Project(root), write=False)
+    assert bridge._desc_scores["scores"][PARTIAL_FILE]["D1"] == 5
+    assert _gate_desc_problems(root) == []
+
+
+def test_set_points_does_not_carry_stale_confirmation(judged_project, tmp_path):
+    """確定の後で画面の得点が変わっていたら、確定は引き継がない"""
+    root = str(judged_project)
+    _confirm_all(root)
+    bridge, _ = open_bridge(Project(root))
+    assert bridge.set_descriptive_score("小テスト_p001.png", "D1", 0)["ok"]   # 確定の後の変更
+    assert main(["set-points", root, "--input", _desc_points(tmp_path, 10, 5),
+                 "--teacher-approved"]) == 0
+    assert jmod.load(Project(root))["questions"]["D1"]["confirmed"] is None
+    assert any("先生の確定がありません" in p for p in _gate_desc_problems(root))
+    assert main(["confirm", root, "question", "--question", "D1"]) == 0
+    assert _gate_desc_problems(root) == []
+
+
+def test_set_points_without_partial_still_waits(judged_project, tmp_path):
+    """partial を書かなければ、これまでどおり部分は未採点に戻り、finalize の前で止まる"""
+    root = str(judged_project)
+    _confirm_all(root)
+    assert main(["set-points", root, "--input", _desc_points(tmp_path, 10),
+                 "--teacher-approved"]) == 0
+    problems = _gate_desc_problems(root)
+    assert len(problems) == 1 and "未採点が 1 人分" in problems[0]
+    assert main(["finalize", root]) == 2

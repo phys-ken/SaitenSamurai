@@ -75,6 +75,33 @@ def _parse_region(text, size):
     return region
 
 
+RED, GREEN = (0, 0, 230), (0, 160, 0)
+OVERLAY_FILE = "total_region.jpg"         # 1枚目の全体に枠を重ねた画像
+CROP_FILE = "total_region_crop.jpg"       # 枠の周りを拡大し、目盛りを重ねた画像
+
+
+def _first_page(project, bridge, size):
+    """黒塗り済みの1枚目を、採点侍の答案と同じ大きさ（原寸の画素）にしたもの"""
+    import cv2
+    first = _files(bridge)[0]
+    view = render.view_page(project, first)
+    if (view.shape[1], view.shape[0]) != tuple(size):
+        view = cv2.resize(view, tuple(size), interpolation=cv2.INTER_AREA)
+    return first, view
+
+
+def _write_overlays(project, page, region, detected, crop_rect):
+    """全体に枠を重ねた画像と、範囲を拡大して目盛りを重ねた画像を書く"""
+    overlay = render.save_jpeg(project.llm_view / OVERLAY_FILE,
+                               render.draw_box_overlay(page, detected, region))
+    boxes = [(detected, GREEN)] if detected else []
+    if region:
+        boxes.append((region, RED))
+    image, _ticks = render.grid_crop(page, crop_rect, boxes=boxes)
+    crop = render.save_jpeg(project.llm_view / CROP_FILE, image)
+    return overlay, crop
+
+
 def cmd_total_region(project, args):
     writing = bool(args.set or args.clear or args.apply)
     bridge, _ = open_bridge(project, write=writing)
@@ -94,37 +121,58 @@ def cmd_total_region(project, args):
             return 1
         call(bridge, "set_total_display_region", region)
         call(bridge, "save_session")
+        first, page = _first_page(project, bridge, size)
+        overlay, crop = _write_overlays(project, page, region, None, render.around(region, size))
         _say(f"合計点の枠を設定しました: {_region_text(region)}（答案 {size[0]}x{size[1]}）",
-             "見た目は render-preview で確かめてください。")
+             f"枠（赤）を重ねた画像: {crop}（拡大・目盛り付き）／ {overlay}（1枚目の全体。{first}）",
+             "枠が欄の中（見出しの下）に乗っているか画像で確かめ、render-preview で合計点が読めるか確かめてください。")
         return 0
 
     _say(f"答案の大きさ: {size[0]}x{size[1]}（枠はこの画素で書きます）",
          f"いまの合計点の枠: {_region_text(current) if current else '未設定（既定の位置に描きます）'}")
+
+    if args.crop:
+        try:
+            rect = (render.default_crop_rect(size) if args.crop == "auto"
+                    else _parse_region(args.crop, size))
+        except ValueError as e:
+            _say(str(e))
+            return 1
+        first, page = _first_page(project, bridge, size)
+        image, ticks = render.grid_crop(page, rect, boxes=[(current, RED)] if current else [])
+        out = render.save_jpeg(project.llm_view / CROP_FILE, image)
+        _say(f"切り出して目盛りを重ねた画像: {out}（{first}・範囲 {_region_text(rect)}）",
+             "目盛りの数は原寸の画素です（50 画素ごと。太い線は 100 の倍数）。表示の倍率を掛ける必要はありません。"
+             + ("赤の枠は、いまの合計点の枠です。" if current else ""),
+             "欄を読んだら --set x1,y1,x2,y2 で設定します（「得点」などの見出しを避けて、欄の下半分にする）。")
+        return 0
+
     if not args.detect:
         return 0
 
+    # 検出はヒント。見つからなくても失敗にしない（枠は目で見て決める）
     factor = view_factor(project, bridge)
     first = _files(bridge)[0]
     view = render.view_page(project, first)
     found = render.detect_total_box(view)
     if found is None:
-        _say(f"「得点」欄を見つけられませんでした（{first}）。",
-             "先生に total-region-server で欄を囲んでもらうか、--set で枠を書いてください。")
-        return 2
+        _say(f"（ヒント）「得点」欄は見つかりませんでした（{first}）。目で見て決めてください。",
+             "total-region <試験> --crop で、右上の隅を目盛り付きで拡大した画像が出ます。")
+        return 0
     box = [int(round(v / factor)) for v in found]
     half = list(render.lower_half(box))
-    out = project.llm_view / "total_region.jpg"
-    render.save_jpeg(out, render.draw_box_overlay(
-        view, found, [int(round(v * factor)) for v in half]))
-    _say(f"見つけた「得点」欄: {_region_text(box)}",
-         f"合計点を書く枠（欄の下半分。見出しに重ならないように）: {_region_text(half)}",
-         f"重ねた画像（緑=欄・赤=合計点の枠）: {out}")
+    _first, page = _first_page(project, bridge, size)
+    overlay, crop = _write_overlays(project, page, half, box, render.around(box, size))
+    _say(f"（ヒント）「得点」欄らしい四角: {_region_text(box)}",
+         f"その下半分（見出しに重ならないように）: {_region_text(half)}",
+         f"重ねた画像（緑=見つけた四角・赤=下半分）: {crop}（拡大・目盛り付き）／ {overlay}",
+         "検出は取り違えることがあります。必ず画像で、本当に「得点」欄か確かめてください。")
     if args.apply:
         call(bridge, "set_total_display_region", half)
         call(bridge, "save_session")
         _say("下半分の枠を、合計点の枠に設定しました。見た目は render-preview で確かめてください。")
     else:
-        _say(f"設定するときは: total-region <試験> --set {_region_text(half)}（または --detect --apply）")
+        _say(f"合っていれば: total-region <試験> --set {_region_text(half)}")
     return 0
 
 

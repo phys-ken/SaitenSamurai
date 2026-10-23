@@ -203,6 +203,107 @@ def test_total_region_command(b4, capsys):
     assert open_bridge(Project(root), write=False)[0].get_total_display_region()["region"] is None
 
 
+# --- 目で見て枠を決めるための画像（--crop・--set の重ね描き） -------------------
+
+def _red_centroids(image):
+    """赤い点の中心（原寸での目印の位置を、拡大した画像の中で探す）。
+
+    目盛りの線が目印の上を通って赤を分けるので、少し太らせてから1つにまとめる
+    """
+    b, g, r = (image[..., i].astype(int) for i in range(3))
+    mask = ((r - g > 120) & (r - b > 120)).astype(np.uint8)
+    mask = cv2.dilate(mask, np.ones((7, 7), np.uint8))
+    n, _labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
+    return [tuple(centroids[i]) for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] > 20]
+
+
+@pytest.mark.parametrize("size,rect", [((2866, 2024), (1719, 0, 2866, 404)),
+                                       ((2024, 2866), (809, 0, 2024, 515)),
+                                       ((2866, 2024), (2400, 60, 2800, 230))])   # 4倍に拡大
+def test_grid_crop_labels_are_original_pixels(size, rect):
+    """目盛りの数は原寸の画素: 原寸の (x, y) に置いた目印が、目盛り x・y の線の交点に来る"""
+    w, h = size
+    img = np.full((h, w, 3), 255, np.uint8)
+    # 切り出しの端から 20 画素以上内側の、目盛りの線の交点に目印を置く
+    marks = [(x, y) for x in range(-(-(rect[0] + 20) // 100) * 100, rect[2] - 20, 200)
+             for y in range(-(-(rect[1] + 20) // 100) * 100, rect[3] - 20, 100)]
+    assert len(marks) >= 2                                  # 検査が空振りしていない
+    for x, y in marks:
+        cv2.rectangle(img, (x - 3, y - 3), (x + 3, y + 3), (0, 0, 255), -1)
+    out, ticks = render.grid_crop(img, rect)
+    tx, ty = dict(ticks["x"]), dict(ticks["y"])
+    assert all(v % 50 == 0 for v in tx) and all(v % 50 == 0 for v in ty)
+    found = _red_centroids(out)
+    assert len(found) == len(marks)
+    scale = (ticks["x"][1][1] - ticks["x"][0][1]) / 50
+    for x, y in marks:
+        X, Y = tx[x], ty[y]
+        assert any(abs(cx - X) <= scale + 1 and abs(cy - Y) <= scale + 1 for cx, cy in found), (x, y)
+        # 目盛りの線が本当にその位置に引かれている（白い所で線の色になる）
+        assert tuple(out[Y + 20 if Y + 20 < out.shape[0] else Y - 20, X]) == pytest.approx(
+            render.GRID_COLOR, abs=40)
+
+
+def test_grid_crop_rejects_outside():
+    img = np.full((100, 100, 3), 255, np.uint8)
+    with pytest.raises(ValueError):
+        render.grid_crop(img, (200, 200, 300, 300))
+
+
+def test_crop_command(b4):
+    root, truth = b4
+    r = str(root)
+    out = Project(root).llm_view / "total_region_crop.jpg"
+    assert main(["total-region", r, "--crop"]) == 0                       # 右上の隅
+    assert read_image(out) is not None
+    out.unlink()
+    x1, y1, x2, y2 = truth["score_box"]
+    assert main(["total-region", r, "--crop", f"{x1 - 100},{y1 - 50},{x2},{y2 + 50}"]) == 0
+    assert read_image(out) is not None
+    assert main(["total-region", r, "--crop", "0,0,99999,10"]) == 1       # 答案の外
+
+
+def test_set_writes_overlay_on_the_box(b4):
+    """--set のあと、設定した枠（赤）を重ねた画像が書かれ、枠が欄の位置に乗っている"""
+    root, truth = b4
+    x1, y1, x2, y2 = truth["score_box"]
+    region = [x1 + 5, (y1 + y2) // 2, x2 - 5, y2 - 5]
+    assert main(["total-region", str(root), "--set", ",".join(map(str, region))]) == 0
+    view = Project(root).llm_view
+    assert read_image(view / "total_region.jpg") is not None
+    crop = read_image(view / "total_region_crop.jpg")
+    # 同じ範囲で目盛りの位置を求め、赤い線がその枠の上にあることを確かめる
+    from saiten_llm.cmd_render import _boxed_size
+    size = _boxed_size(Project(root), open_bridge(Project(root), write=False)[0])
+    _img, ticks = render.grid_crop(np.full((size[1], size[0], 3), 255, np.uint8),
+                                   render.around(region, size))
+    # 倍率は最初と最後の目盛りから求める（隣どうしだと丸めの誤差が大きい）
+    (v0, p0), (v1, p1) = ticks["x"][0], ticks["x"][-1]
+    scale = (p1 - p0) / (v1 - v0)
+    ox = lambda v: p0 + (v - v0) * scale                       # noqa: E731
+    (w0, q0) = ticks["y"][0]
+    oy = lambda v: q0 + (v - w0) * scale                       # noqa: E731
+    b, g, r = (crop[..., i].astype(int) for i in range(3))
+    red = (r - g > 120) & (r - b > 120)
+    # 赤い縦線・横線の中心（JPEG で赤が横ににじむので、端でなく線の中心で比べる）
+    cols, rows = red.sum(axis=0), red.sum(axis=1)
+    mid_x, mid_y = int(ox((region[0] + region[2]) / 2)), int(oy((region[1] + region[3]) / 2))
+    left, right = int(np.argmax(cols[:mid_x])), mid_x + int(np.argmax(cols[mid_x:]))
+    top, bottom = int(np.argmax(rows[:mid_y])), mid_y + int(np.argmax(rows[mid_y:]))
+    assert cols[left] > 20 and rows[top] > 20                 # 検査が空振りしていない
+    assert abs(left - ox(region[0])) <= 3 and abs(right - ox(region[2])) <= 3
+    assert abs(top - oy(region[1])) <= 3 and abs(bottom - oy(region[3])) <= 3
+
+
+def test_detect_not_found_is_only_a_hint(b4, monkeypatch, capsys):
+    root, _truth = b4
+    monkeypatch.setattr(render, "detect_total_box", lambda image: None)
+    assert main(["total-region", str(root), "--detect", "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "目で見て決めてください" in out and "--crop" in out
+    assert open_bridge(Project(root), write=False)[0].get_total_display_region()["region"] is None
+
+
 def test_render_settings_command(b4, capsys):
     root, _truth = b4
     r = str(root)

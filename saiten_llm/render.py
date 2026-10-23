@@ -130,6 +130,74 @@ def draw_box_overlay(image, box, region):
     return out
 
 
+def default_crop_rect(size):
+    """--crop の既定の範囲: 右上の隅（「得点」欄がよくある所）。縦長は左へ広め"""
+    w, h = size
+    landscape = w > h
+    return (int(w * (0.60 if landscape else 0.40)), 0, w, int(h * (0.20 if landscape else 0.18)))
+
+
+def around(rect, size, pad=150):
+    """枠の周りを pad 画素ずつ広げた範囲（答案の外には出さない）"""
+    w, h = size
+    x1, y1, x2, y2 = rect
+    return (max(0, x1 - pad), max(0, y1 - pad), min(w, x2 + pad), min(h, y2 + pad))
+
+
+GRID_COLOR = (230, 150, 40)        # 目盛りの線（BGR・青）
+RULER = (72, 34)                   # 目盛りの数字を書く余白（左, 上）
+
+
+def grid_crop(image, rect, step=50, target_width=1600, boxes=()):
+    """範囲を切り出して拡大し、原寸の画素値の目盛りと格子を重ねる。
+
+    エージェントが、表示の倍率を計算せずに、画像に書かれた数をそのまま読めるようにする。
+
+    Args:
+        image: 採点侍の答案と同じ大きさの画像（原寸の画素）
+        rect: 切り出す範囲 (x1, y1, x2, y2)（原寸の画素）
+        step: 格子の間隔（原寸の画素）
+        boxes: 重ねる枠 [((x1, y1, x2, y2), BGR色), ...]（原寸の画素）
+
+    Returns:
+        (画像, ticks) — ticks は {"x": [(原寸の値, 画像上の位置), ...], "y": [...]}
+    """
+    h, w = image.shape[:2]
+    x1, y1 = max(0, int(rect[0])), max(0, int(rect[1]))
+    x2, y2 = min(w, int(rect[2])), min(h, int(rect[3]))
+    if x2 - x1 < 10 or y2 - y1 < 10:
+        raise ValueError(f"切り出す範囲が答案（{w}x{h}）の外か、小さすぎます: {rect}")
+    scale = max(1.0, min(4.0, target_width / (x2 - x1)))
+    sub = cv2.resize(image[y1:y2, x1:x2], (round((x2 - x1) * scale), round((y2 - y1) * scale)),
+                     interpolation=cv2.INTER_LINEAR)
+    left, top = RULER
+    canvas = cv2.copyMakeBorder(sub, top, 0, left, 0, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+
+    def ox(v):
+        return left + round((v - x1) * scale)
+
+    def oy(v):
+        return top + round((v - y1) * scale)
+
+    ticks = {"x": [], "y": []}
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    for v in range(-(-x1 // step) * step, x2 + 1, step):
+        X = ox(v)
+        cv2.line(canvas, (X, top), (X, canvas.shape[0] - 1), GRID_COLOR, 2 if v % 100 == 0 else 1)
+        (tw, _), _ = cv2.getTextSize(str(v), font, 0.45, 1)
+        cv2.putText(canvas, str(v), (X - tw // 2, top - 10), font, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
+        ticks["x"].append((v, X))
+    for v in range(-(-y1 // step) * step, y2 + 1, step):
+        Y = oy(v)
+        cv2.line(canvas, (left, Y), (canvas.shape[1] - 1, Y), GRID_COLOR, 2 if v % 100 == 0 else 1)
+        cv2.putText(canvas, str(v), (4, Y + 5), font, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
+        ticks["y"].append((v, Y))
+    for (bx1, by1, bx2, by2), color in boxes:
+        cv2.rectangle(canvas, (ox(bx1), oy(by1)), (ox(bx2), oy(by2)), color, 3)
+    # 拡大の倍率は書かない（倍率を掛けて読み違えないように。目盛りの数がそのまま原寸）
+    return canvas, ticks
+
+
 # --- プレビュー -----------------------------------------------------------
 
 def pick_pages(totals, count):

@@ -342,8 +342,13 @@ def _args_render_settings(p):
 
 def _args_total_region(p):
     g = p.add_mutually_exclusive_group()
-    g.add_argument("--detect", action="store_true", help="黒塗り済みの1枚目で「得点」欄を探す")
-    g.add_argument("--set", metavar="x1,y1,x2,y2", help="合計点を書く枠（採点侍の答案の画素）")
+    g.add_argument("--crop", nargs="?", const="auto", metavar="x1,y1,x2,y2",
+                   help="黒塗り済みの1枚目を切り出して拡大し、原寸の画素の目盛りを重ねる"
+                        "（範囲を省くと右上の隅）")
+    g.add_argument("--detect", action="store_true",
+                   help="黒塗り済みの1枚目で「得点」欄らしい四角を探す（ヒント。見つからなくても 0）")
+    g.add_argument("--set", metavar="x1,y1,x2,y2",
+                   help="合計点を書く枠（採点侍の答案の画素）。枠を重ねた画像も書く")
     g.add_argument("--clear", action="store_true", help="枠を外す（既定の位置に戻す）")
     p.add_argument("--apply", action="store_true", help="--detect で見つけた欄の下半分を枠に設定する")
 

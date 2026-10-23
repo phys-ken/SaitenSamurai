@@ -173,7 +173,29 @@ set-points ../projects/<試験> --input <JSON> --teacher-approved
 - `stats` は 得点÷満点 で計算します。配点を決める前の部分は 1/2 として数えるので、部分の点を満点の半分以外にするときは、
   set-points の後にもう一度 `stats` を実行すると、その点数での正答率・識別力が出ます（配点案は参考）。
 
-### 3-8. 個票と集計
+### 3-8. 個票の見た目（finalize の前に必ず）
+個票（返却答案）の実物は元画像から作るので、エージェントは開けません。
+見た目は、黒塗り済みの写しの上に同じ関数で描いた**プレビュー**で確かめ、先生にも見てもらってから finalize します。
+（いまは記述のみモードだけ。マーク式の個票は、採点侍の画面の「位置プレビュー」で先生に確かめてもらいます）
+```
+render-settings ../projects/<試験>                     # いまの設定（* が既定から変えたもの）
+render-settings ../projects/<試験> --set descriptive_show_aspect=false total_show_aspects=false
+total-region    ../projects/<試験> --detect            # 「得点」欄を探す（重ねた画像: _llm_view/total_region.jpg）
+total-region    ../projects/<試験> --detect --apply    # 見つけた欄の下半分を、合計点の枠にする
+render-preview  ../projects/<試験>                     # _llm_view/preview/ に、合計点の低い・中・高の3枚
+```
+- **観点を使わない試験**（小テストなど）では、観点を消します（`descriptive_show_aspect=false`・`total_show_aspects=false`）。
+  定期試験など観点を使う試験は既定（表示）のまま。迷ったら先生に聞きます。
+- 解答欄に得点の数字を出すかは `descriptive_show_score`（既定は出す）。先生の希望に合わせます。
+- **合計点の枠**: 枠を決めないと、合計点は答案の左下（既定の位置）に小さく描かれ、問題文に重なることがあります。
+  - `--detect` は、黒塗り済みの1枚目の右上で「得点」欄を探します（縦の線で2つに分かれた欄も1つとして扱います）。
+    合計点は枠の上端から描かれるので、欄の見出し（「得点」）に重ならないよう、欄の**下半分**を枠にします。
+  - 見つからない・ずれているときは、`total-region-server ../projects/<試験>`（バックグラウンドで実行）で、
+    先生に画面で欄を囲んで承認してもらいます（黒塗りと同じ操作）。数で決めるなら `--set x1,y1,x2,y2`（採点侍の答案の画素）。
+- `render-preview` の画像を開いて、○×△の大きさ・合計点が枠に収まっているかを確かめ、先生に見せて了解をもらってから 3-9 へ。
+  プレビューに入らないのは、採点侍の画面で書いた手書きのコメントだけです。
+
+### 3-9. 個票と集計
 ```
 finalize ../projects/<試験>
 ```
@@ -181,7 +203,7 @@ finalize ../projects/<試験>
 - できたら、出力先（`scans/_saiten_grading_results/02_Graded_Detail` と `03_Final_Report`）を先生に伝えます。
   中身は元画像から作られた返却用なので、エージェントは開きません。
 
-### 3-9. ふりかえり
+### 3-10. ふりかえり
 ```
 accuracy ../projects/<試験>     # LLM の判定と先生の確定の一致（精度.json にも残る）
 audit ..                       # 元の答案に触れようとした形跡がないか

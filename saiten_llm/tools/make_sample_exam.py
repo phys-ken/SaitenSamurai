@@ -243,6 +243,86 @@ def make_plain_exam(out_pdf, students=8, seed=1, rotate_pages=(3,)):
     return out_pdf, truth_path
 
 
+B4_LANDSCAPE = (2866, 2024)     # B4横を 250dpi 程度で読んだ大きさ
+B4_PORTRAIT = (2024, 2866)
+
+
+def _b4_layout(portrait):
+    """B4 の解答用紙の配置（画素）: 氏名欄・「得点」欄・解答欄。
+
+    「得点」欄は右上の隅で、氏名欄の右隣に接している（黒塗りが欄の隣に来る形）。
+    縦長の用紙は「得点」欄が縦の線で2つに分かれている（実物にあった形）
+    """
+    if portrait:
+        w, _h = B4_PORTRAIT
+        score = (1561, 192, 1914, 326)
+        name = (900, 192, 1561, 326)
+        boxes = [(110, 460 + i * 560, w - 110, 900 + i * 560) for i in range(4)]
+    else:
+        w, _h = B4_LANDSCAPE
+        score = (2507, 93, 2768, 192)
+        name = (1900, 93, 2507, 192)
+        boxes = []
+        for col, x in enumerate((100, 1480)):
+            for row in range(3):
+                y = 300 + row * 560
+                boxes.append((x, y, x + 1280, y + 430))
+        # 右の列の1問目は上に余白を取る（「得点」欄と取り違えやすい形）
+        boxes[3] = (1480, 380, 2760, 730)
+    return {"score_box": score, "name_box": name, "boxes": boxes}
+
+
+def make_b4_exam(out_pdf, students=6, seed=1, portrait=False):
+    """マーカーの無い B4 の記述テスト（右上に「得点」欄）を作る。
+
+    返却答案の見た目（○×の大きさ・合計点の位置）を確かめるためのもの。
+    """
+    import fitz
+    rng = random.Random(seed)
+    w, h = B4_PORTRAIT if portrait else B4_LANDSCAPE
+    layout = _b4_layout(portrait)
+    blank = np.full((h, w, 3), 255, np.uint8)
+    blank = _text_px(blank, (110, 90), "物理 小テスト（合成データ）", 56)
+    nx0, ny0, nx1, ny1 = layout["name_box"]
+    cv2.rectangle(blank, (nx0, ny0), (nx1, ny1), (40, 40, 40), 3)
+    blank = _text_px(blank, (nx0 + 12, ny0 + 8), "氏名", 30)
+    sx0, sy0, sx1, sy1 = layout["score_box"]
+    if portrait:
+        mid = (sx0 + sx1) // 2 - 10
+        cv2.rectangle(blank, (sx0, sy0), (mid, sy1), (40, 40, 40), 3)
+        cv2.rectangle(blank, (mid + 1, sy0), (sx1, sy1), (40, 40, 40), 3)
+    else:
+        cv2.rectangle(blank, (sx0, sy0), (sx1, sy1), (40, 40, 40), 3)
+    blank = _text_px(blank, (sx0 + 12, sy0 + 6), "得点", 30)
+    questions = []
+    for i, (x0, y0, x1, y1) in enumerate(layout["boxes"], 1):
+        cv2.rectangle(blank, (x0, y0), (x1, y1), (40, 40, 40), 3)
+        blank = _text_px(blank, (x0 + 10, y0 + 8), f"問{i}", 30)
+        questions.append({"name": f"問{i}", "box": [x0, y0, x1, y1]})
+    truth = {"kind": "b4", "size": [w, h], "portrait": portrait, **layout,
+             "questions": questions, "students": []}
+    doc = fitz.open()
+    for s in range(1, students + 1):
+        sheet = _text_px(blank.copy(), (nx0 + 120, ny0 + 30), f"合成 生徒{s:02d}", 48)
+        answers = {}
+        for q in questions:
+            verdict = rng.choice(["正", "正", "部分", "誤"])
+            x0, y0 = q["box"][:2]
+            sheet = _text_px(sheet, (x0 + 80, y0 + 90), f"答え {verdict}", 72)
+            answers[q["name"]] = verdict
+        ok, jpg = cv2.imencode(".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        page = doc.new_page(width=w * 72 / 200, height=h * 72 / 200)
+        page.insert_image(page.rect, stream=jpg.tobytes())
+        truth["students"].append({"page": s, "name": f"合成 生徒{s:02d}", "answers": answers})
+    out_pdf = Path(out_pdf)
+    out_pdf.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(out_pdf))
+    doc.close()
+    truth_path = out_pdf.with_name(out_pdf.stem + "_truth.json")
+    truth_path.write_text(json.dumps(truth, ensure_ascii=False, indent=1), encoding="utf-8")
+    return out_pdf, truth_path
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="合成答案PDFを作る（実在の生徒は含まない）")
     ap.add_argument("out_pdf")

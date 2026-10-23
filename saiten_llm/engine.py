@@ -6,6 +6,7 @@ session_state.json に保存されるので、LLM が準備した状態を
 """
 import json
 import time
+from pathlib import Path
 
 from saiten_llm.workspace import Project
 
@@ -69,6 +70,13 @@ def open_bridge(project: Project, write=True):
         res = bridge.restore_session(str(path))
         if not res["ok"]:
             raise RuntimeError(res["error"])
+        # 試験フォルダを丸ごと写したときなど、設定が元のフォルダを指したままだと、
+        # 元のフォルダの採点を書き換えてしまう
+        if Path(bridge.state["image_folder"]).resolve() != project.scans.resolve():
+            raise RuntimeError(
+                f"採点侍の設定（{path.name}）が別のフォルダを指しています: "
+                f"{bridge.state['image_folder']}。試験フォルダを写した・移したときは、"
+                "開発担当に相談してください（このまま進めると元のフォルダを書き換えます）")
         for w in res.get("warnings", []):
             print(f"⚠ {w}")
     else:

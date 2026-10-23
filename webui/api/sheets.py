@@ -169,8 +169,10 @@ class SheetsMixin:
         data_folder = self._results_data_folder()
         config_path = data_folder / TOTAL_DISPLAY_CONFIG_FILE
         if region is None:
-            if config_path.exists():
-                config_path.unlink()
+            # 控え（.bak）も消す。残すと、読み込みのときに控えから前の位置が戻ってしまう
+            for p in (config_path, config_path.with_suffix(config_path.suffix + ".bak")):
+                if p.exists():
+                    p.unlink()
             self.state["total_display_region"] = None
             return _ok(region=None, state=self.state)
         try:

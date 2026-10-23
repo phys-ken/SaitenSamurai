@@ -477,6 +477,34 @@ def generate_return_sheets(
 #   記述のみモード: 採点済み答案生成
 # ============================================================
 
+def render_descriptive_only_image(image, config, scores_for_img, rendering_settings=None):
+    """記述のみモードの返却答案1枚分を描く（記述の得点と合計点）。
+
+    返却答案の生成と、見た目の確かめ（saiten_llm の render-preview）の両方が
+    これを呼ぶので、確かめた見た目と実物がずれない。
+    """
+    # 記述のみモードでは座標は画像の実ピクセル基準で保存されている
+    # ため output_scale = 1.0 とし、二重スケーリングを防ぐ。
+    # 文字の大きさの上限は解答欄の大きさから決める（fit_to_region）。
+    output_scale = 1.0
+    image = draw_descriptive_on_image(
+        image, config, scores_for_img,
+        output_scale=output_scale,
+        rendering_settings=rendering_settings,
+        fit_to_region=True,
+    )
+    # 合計点描画（マーク = 0、記述得点のみ）
+    return draw_combined_total(
+        image,
+        mark_scoring_result={'total_score': 0, 'aspect_scores': {}, 'aspect_max_scores': {}},
+        config=config,
+        descriptive_scores_for_image=scores_for_img,
+        coordinates=None,
+        output_scale=output_scale,
+        rendering_settings=rendering_settings,
+    )
+
+
 def generate_descriptive_only_sheets(
     boxed_folder: str,
     config: dict,
@@ -529,13 +557,6 @@ def generate_descriptive_only_sheets(
     log(f"✓ 出力先: {out_path}")
     log("")
 
-    # マーク採点結果ダミー（mark_scoring_result の互換用）
-    empty_mark_result = {
-        'total_score': 0,
-        'aspect_scores': {},
-        'aspect_max_scores': {},
-    }
-
     success_count = 0
     error_count = 0
 
@@ -553,28 +574,8 @@ def generate_descriptive_only_sheets(
                 error_count += 1
                 continue
 
-            # 記述のみモードでは座標は画像の実ピクセル基準で保存されている
-            # ため output_scale = 1.0 とし、二重スケーリングを防ぐ。
-            output_scale = 1.0
-
-            # 記述採点の描画
-            scores_for_img = descriptive_scores.get(fname, {})
-            image = draw_descriptive_on_image(
-                image, config, scores_for_img,
-                output_scale=output_scale,
-                rendering_settings=rendering_settings,
-            )
-
-            # 合計点描画（マーク = 0、記述得点のみ）
-            image = draw_combined_total(
-                image,
-                mark_scoring_result=empty_mark_result,
-                config=config,
-                descriptive_scores_for_image=scores_for_img,
-                coordinates=None,
-                output_scale=output_scale,
-                rendering_settings=rendering_settings,
-            )
+            image = render_descriptive_only_image(
+                image, config, descriptive_scores.get(fname, {}), rendering_settings)
 
             # 保存（Unicode パス対応: cv2.imencode + tofile）
             out_file = out_path / fname

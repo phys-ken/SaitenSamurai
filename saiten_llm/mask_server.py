@@ -45,19 +45,19 @@ class _AlignedCache:
         return image
 
 
-class MaskServer:
-    def __init__(self, project, timeout_minutes=120):
-        self.project = project
-        self.files = project.scan_files()
-        if not self.files:
-            raise FileNotFoundError("答案の画像がありません。先に pdf コマンドで画像にしてください")
-        self.names = [p.name for p in self.files]
+class LocalPageServer:
+    """先生のブラウザにだけ画面を出す一時サーバーの共通部分。
+
+    派生クラスが page_html・handle_get・handle_post を決める。
+    handle_get は (状態コード, 本文, Content-Type) か None（見つからない）を返す。
+    handle_post は JSON にする dict か None を返す
+    """
+    page_html = PAGE_HTML
+
+    def __init__(self, timeout_minutes=120):
         self.token = secrets.token_urlsafe(24)
-        self.cache = _AlignedCache(self.files)
         self.approved = threading.Event()
         self.deadline = time.monotonic() + timeout_minutes * 60
-        saved = project.data.get("mask") or {}
-        self.spec = {"regions": saved.get("regions", []), "extra": saved.get("extra", {})}
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler_class())
         self.httpd.daemon_threads = True
 
@@ -69,25 +69,11 @@ class MaskServer:
     def url(self):
         return f"http://127.0.0.1:{self.port}/?t={self.token}"
 
-    # --- 処理 -------------------------------------------------------
+    def handle_get(self, path, query) -> "tuple | None":
+        return None
 
-    def state(self):
-        return {"ok": True, "pages": [{"name": n} for n in self.names],
-                "spec": self.spec}
-
-    def image(self, index, width, masked):
-        img = self.cache.get(index)
-        if masked:
-            img = maskmod.apply_mask(img, maskmod.rects_for(self.spec, self.names[index]))
-        return maskmod.encode_jpeg(img, max_width=width)
-
-    def save(self, body, approve=False):
-        spec = maskmod.validate_spec(body, set(self.names))
-        self.spec = spec
-        maskmod.save_spec(self.project, spec, approved=approve)
-        if approve:
-            self.approved.set()
-        return {"ok": True}
+    def handle_post(self, path, body) -> "dict | None":
+        return None
 
     # --- HTTP -------------------------------------------------------
 
@@ -126,18 +112,15 @@ class MaskServer:
                     return self._json({"ok": False, "error": "このリンクは使えません"}, 403)
                 try:
                     if url.path == "/":
-                        html = PAGE_HTML.read_text(encoding="utf-8").replace(
+                        html = server.page_html.read_text(encoding="utf-8").replace(
                             "__TOKEN__", server.token)
                         return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
-                    if url.path == "/api/state":
-                        return self._json(server.state())
-                    if url.path == "/img":
-                        index = int(query["i"][0])
-                        if not 0 <= index < len(server.names):
-                            return self._json({"ok": False, "error": "答案がありません"}, 404)
-                        width = max(100, min(2000, int(query.get("w", ["1200"])[0])))
-                        masked = query.get("m", ["0"])[0] == "1"
-                        return self._send(200, server.image(index, width, masked), "image/jpeg")
+                    res = server.handle_get(url.path, query)
+                    if res is not None:
+                        status, body, ctype = res
+                        if ctype == "json":
+                            return self._json(body, status)
+                        return self._send(status, body, ctype)
                 except (KeyError, ValueError) as e:
                     return self._json({"ok": False, "error": str(e)}, 400)
                 return self._json({"ok": False, "error": "見つかりません"}, 404)
@@ -152,10 +135,9 @@ class MaskServer:
                     return self._json({"ok": False, "error": "送られた内容が大きすぎます"}, 413)
                 try:
                     body = json.loads(self.rfile.read(length) or b"{}")
-                    if url.path == "/api/save":
-                        return self._json(server.save(body))
-                    if url.path == "/api/approve":
-                        return self._json(server.save(body, approve=True))
+                    res = server.handle_post(url.path, body)
+                    if res is not None:
+                        return self._json(res)
                 except ValueError as e:
                     return self._json({"ok": False, "error": str(e)}, 400)
                 return self._json({"ok": False, "error": "見つかりません"}, 404)
@@ -177,3 +159,55 @@ class MaskServer:
             self.httpd.shutdown()
             self.httpd.server_close()
         return self.approved.is_set()
+
+
+class MaskServer(LocalPageServer):
+    def __init__(self, project, timeout_minutes=120):
+        self.project = project
+        self.files = project.scan_files()
+        if not self.files:
+            raise FileNotFoundError("答案の画像がありません。先に pdf コマンドで画像にしてください")
+        self.names = [p.name for p in self.files]
+        self.cache = _AlignedCache(self.files)
+        saved = project.data.get("mask") or {}
+        self.spec = {"regions": saved.get("regions", []), "extra": saved.get("extra", {})}
+        super().__init__(timeout_minutes)
+
+    # --- 処理 -------------------------------------------------------
+
+    def state(self):
+        return {"ok": True, "pages": [{"name": n} for n in self.names],
+                "spec": self.spec}
+
+    def image(self, index, width, masked):
+        img = self.cache.get(index)
+        if masked:
+            img = maskmod.apply_mask(img, maskmod.rects_for(self.spec, self.names[index]))
+        return maskmod.encode_jpeg(img, max_width=width)
+
+    def save(self, body, approve=False):
+        spec = maskmod.validate_spec(body, set(self.names))
+        self.spec = spec
+        maskmod.save_spec(self.project, spec, approved=approve)
+        if approve:
+            self.approved.set()
+        return {"ok": True}
+
+    def handle_get(self, path, query):
+        if path == "/api/state":
+            return 200, self.state(), "json"
+        if path == "/img":
+            index = int(query["i"][0])
+            if not 0 <= index < len(self.names):
+                return 404, {"ok": False, "error": "答案がありません"}, "json"
+            width = max(100, min(2000, int(query.get("w", ["1200"])[0])))
+            masked = query.get("m", ["0"])[0] == "1"
+            return 200, self.image(index, width, masked), "image/jpeg"
+        return None
+
+    def handle_post(self, path, body):
+        if path == "/api/save":
+            return self.save(body)
+        if path == "/api/approve":
+            return self.save(body, approve=True)
+        return None

@@ -12,7 +12,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from saiten_llm import (REPO_ROOT, cmd_desc, cmd_finalize, cmd_mark, cmd_points,
+from saiten_llm import (REPO_ROOT, cmd_desc, cmd_finalize, cmd_mark, cmd_points, cmd_render,
                         workspace_cmds)
 from saiten_llm.workspace import Project, now_iso
 
@@ -335,6 +335,29 @@ def _args_set_points(p):
                    help="先生がこの配点を承認した（無いと実行しない）")
 
 
+def _args_render_settings(p):
+    p.add_argument("--set", nargs="+", metavar="キー=値",
+                   help="変える設定（例: descriptive_show_aspect=false total_show_aspects=false）")
+
+
+def _args_total_region(p):
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--detect", action="store_true", help="黒塗り済みの1枚目で「得点」欄を探す")
+    g.add_argument("--set", metavar="x1,y1,x2,y2", help="合計点を書く枠（採点侍の答案の画素）")
+    g.add_argument("--clear", action="store_true", help="枠を外す（既定の位置に戻す）")
+    p.add_argument("--apply", action="store_true", help="--detect で見つけた欄の下半分を枠に設定する")
+
+
+def _args_total_region_server(p):
+    p.add_argument("--timeout", type=int, default=60, help="待つ時間（分）")
+    p.add_argument("--no-open", action="store_true", help="ブラウザを自動で開かない")
+
+
+def _args_render_preview(p):
+    p.add_argument("--pages", type=int, default=3,
+                   help="描く枚数（合計点の低い〜高い答案から均等に選ぶ。既定 3）")
+
+
 COMMANDS = {
     "status": (cmd_status, "試験フォルダの進み具合を表示する", _args_status),
     "pdf": (cmd_pdf, "試験フォルダの PDF を scans/ に画像として書き出す", _args_pdf),
@@ -359,6 +382,15 @@ COMMANDS = {
     "stats": (cmd_points.cmd_stats, "正答率・識別力と配点案を出す（配点は先生が決める）", _args_stats),
     "set-points": (cmd_points.cmd_set_points, "先生が承認した配点を書き込み、点数に換算する",
                    _args_set_points),
+    "render-settings": (cmd_render.cmd_render_settings,
+                        "個票の描画の設定（観点・得点を出すか など）を見る・変える", _args_render_settings),
+    "total-region": (cmd_render.cmd_total_region, "合計点を書く枠（「得点」欄）を探す・設定する",
+                     _args_total_region),
+    "total-region-server": (cmd_render.cmd_total_region_server,
+                            "合計点を書く枠を先生に決めてもらう画面を開き、承認まで待つ",
+                            _args_total_region_server),
+    "render-preview": (cmd_render.cmd_render_preview,
+                       "黒塗り済みの写しの上に、いまの設定で個票を描いてみる", _args_render_preview),
     "finalize": (cmd_finalize.cmd_finalize, "確認がそろっていれば個票（採点済み答案）と集計を作る", None),
     "open-ui": (cmd_open_ui, "採点侍の画面をこの試験の状態で開く", None),
 }

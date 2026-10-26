@@ -568,6 +568,12 @@ async function init() {
     wireInfo();
     // モード選択が出ている間はメインパネルを隠す
     document.getElementById('main-cols').hidden = true;
+    // 起動時にフォルダを指定された（app.py --folder）ときは、モード選択を飛ばす
+    if (res.state.opened_from_command_line) {
+      showMain(res.state);
+      log(`📂 ${res.state.image_folder} を開きました`);
+      for (const w of res.state.startup_warnings ?? []) log(`⚠ ${w}`);
+    }
   } catch (e) {
     status.textContent = `接続エラー: ${e.message}`;
     status.dataset.state = 'error';

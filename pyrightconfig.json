@@ -1,5 +1,5 @@
 {
-    "extraPaths": ["main_src"],
+    "extraPaths": ["main_src", "webui"],
     "typeCheckingMode": "basic",
     "reportOptionalMemberAccess": "warning",
     "reportOptionalSubscript": "warning",

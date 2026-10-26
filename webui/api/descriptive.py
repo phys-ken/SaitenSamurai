@@ -93,32 +93,75 @@ class DescriptiveMixin:
     # --- 画像準備（記述のみモード） ---------------------------------
 
     def run_prepare_images(self):
-        """記述のみモード: 画像を 00_Processing へコピーする
-        （tk 版 _run_prepare_images_thread と同じ「補正なしコピー」）"""
+        """記述のみモード: 画像を 00_Processing へ用意する。
+
+        四隅マーカーのある用紙は、マーク採点と同じく傾きを補正する
+        （595x842 の座標系）。マーカーの無い用紙は補正せずにコピーする
+        （tk 版 _run_prepare_images_thread と同じ）。
+        """
         if not self.state["image_folder"]:
             return _err("答案画像フォルダを選択してください")
         return self._start_job("prepare_images", self._prepare_images_worker)
 
+    @staticmethod
+    def _prepared_kind(boxed):
+        """前回の準備のやり方: corrected（傾き補正）/ copied（そのまま）/ None（初回）。
+
+        記述の範囲は 00_Processing の座標で保存されるため、
+        途中でやり方を変えると範囲がずれる。前回と同じやり方を続ける
+        """
+        from constants import MARK2_WIDTH, MARK2_HEIGHT
+        from PIL import Image
+        for p in sorted(boxed.iterdir()) if boxed.exists() else []:
+            if p.suffix.lower() in ('.jpg', '.jpeg', '.png'):
+                with Image.open(p) as im:
+                    return ("corrected" if im.size == (MARK2_WIDTH, MARK2_HEIGHT)
+                            else "copied")
+        return None
+
     def _prepare_images_worker(self):
+        import cv2
         from constants import RESULTS_FOLDER, BOXED_FOLDER, RESULTS_DATA_FOLDER
+        from omr_engine import (apply_perspective_transform, find_sheet_markers,
+                                imread_unicode)
         src = Path(self.state["image_folder"])
         results = src / RESULTS_FOLDER
         boxed = results / BOXED_FOLDER
+        kind = self._prepared_kind(boxed)
         boxed.mkdir(parents=True, exist_ok=True)
         (results / RESULTS_DATA_FOLDER).mkdir(parents=True, exist_ok=True)
         self._write_results_readme()
         files = sorted(p for p in src.iterdir()
                        if p.suffix.lower() in ('.jpg', '.jpeg', '.png'))
+        no_marker = []
         for i, p in enumerate(files, 1):
             dst = boxed / p.name
             if not dst.exists() or dst.stat().st_mtime < p.stat().st_mtime:
-                shutil.copy2(str(p), str(dst))
+                img = imread_unicode(str(p)) if kind != "copied" else None
+                markers = find_sheet_markers(img) if img is not None else None
+                if kind is None:
+                    # 初回は1枚目で決める: マーカーがあれば全員を補正する
+                    kind = "corrected" if markers is not None else "copied"
+                if kind == "copied":
+                    shutil.copy2(str(p), str(dst))
+                elif markers is None:
+                    no_marker.append(p.name)   # 座標がずれるのでコピーもしない
+                else:
+                    corrected, _ = apply_perspective_transform(img, markers)
+                    ok, buf = cv2.imencode('.jpg', corrected)
+                    if ok:
+                        dst.write_bytes(buf.tobytes())
             self._progress_cb("prepare_images")(i, len(files))
         self._load_descriptive_state()
         self._refresh_desc_summary(recount_prepared=True)   # 枚数が変わった（A2）
-        return dict(kind="prepare_images", ok=True,
-                    message=f"画像準備が完了しました（{len(files)}枚）。"
-                            "次は「記述問題の設定」で採点領域を設定してください")
+        how = "傾きを補正して" if kind == "corrected" else ""
+        message = (f"画像準備が完了しました（{how}{len(files) - len(no_marker)}枚）。"
+                   "次は「記述問題の設定」で採点領域を設定してください")
+        if no_marker:
+            message += (f"\n⚠ 四隅のマーカーが見つからず準備できなかった答案が"
+                        f" {len(no_marker)} 枚あります: " + ", ".join(no_marker[:10]))
+        return dict(kind="prepare_images", ok=True, message=message,
+                    no_marker=no_marker)
 
     # --- 記述問題設定 ----------------------------------------------
 
@@ -343,6 +386,39 @@ class DescriptiveMixin:
             return _err(f"切り出し画像がありません: {qid}/{filename}")
         b64 = base64.b64encode(Path(path).read_bytes()).decode("ascii")
         return _ok(data_url=f"data:image/png;base64,{b64}")
+
+    def set_descriptive_scores_bulk(self, qid, scores):
+        """1問分の得点をまとめて設定し、保存は1回だけ行う（外部のツールからの一括書き込み用）。
+
+        scores: {filename: 得点 or None}。1件でも不正なら何も書かない
+        """
+        from descriptive_scorer import save_descriptive_scores
+        q = self._find_question(qid)
+        if q is None:
+            return _err(f"問題が見つかりません: {qid}")
+        listing = self.list_sheet_files()
+        known = set(listing["files"]) if listing["ok"] else set()
+        checked = {}
+        for filename, score in scores.items():
+            if str(filename) not in known:
+                return _err(f"答案が見つかりません: {filename}")
+            if score is not None:
+                try:
+                    score = int(score)
+                except (TypeError, ValueError):
+                    return _err(f"得点は整数で指定してください: {filename}")
+                if not (0 <= score <= q["max_score"]):
+                    return _err(f"得点は 0〜{q['max_score']} の範囲で指定してください: {filename}")
+            checked[str(filename)] = score
+        for filename, score in checked.items():
+            f_scores = self._desc_scores["scores"].setdefault(filename, {})
+            if score is None:
+                f_scores.pop(qid, None)
+            else:
+                f_scores[qid] = score
+        save_descriptive_scores(str(self._desc_scores_path()), self._desc_scores)
+        self._refresh_desc_summary()
+        return _ok(state=self.state, count=len(checked))
 
     def set_descriptive_score(self, filename, qid, score):
         """得点を設定（None で未採点に戻す）。設定のたびに保存（tk 同様アトミック）"""

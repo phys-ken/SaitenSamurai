@@ -75,6 +75,7 @@ def draw_descriptive_on_image(
     scores_for_image: dict,
     output_scale: float = 1.0,
     rendering_settings: dict = None,
+    fit_to_region: bool = False,
 ) -> np.ndarray:
     """
     1枚の補正済み画像に記述問題の得点を描画する。
@@ -96,6 +97,9 @@ def draw_descriptive_on_image(
         scores_for_image: {question_id: score, ...}
         output_scale: 出力スケール (1.0 = 595x842)
         rendering_settings: 描画設定辞書（Noneならデフォルト）
+        fit_to_region: True なら文字の大きさの上限を解答欄の大きさから決める
+            （記述のみモード用。座標が実画素なので output_scale は 1.0 のまま。
+            False は従来どおり上限 60 × output_scale）
 
     Returns:
         描画済み画像 (OpenCV BGR)
@@ -174,7 +178,11 @@ def draw_descriptive_on_image(
         full_text = " ".join(parts)
 
         # フォントサイズの自動調整（有効エリアに収まる最大サイズを探索）
-        max_font = max(int(60 * s), 20)
+        if fit_to_region:
+            # 探し始めの上限を欄の短辺の 6 割にする（大きい欄ほど大きく描く）
+            max_font = max(int(min(region_w, region_h) * 0.6), 20)
+        else:
+            max_font = max(int(60 * s), 20)
         min_font = max(int(8 * s), 8)
         best_font_size = min_font
 
@@ -197,6 +205,11 @@ def draw_descriptive_on_image(
         # 有効エリアの中央に配置
         text_x = usable_x + (usable_w - total_w) // 2
         text_y = usable_y + (usable_h - total_h) // 2
+        if fit_to_region:
+            # 文字の外接枠は描く位置から少しずれる（上の余白など）。大きな文字では
+            # このずれが大きく、欄の下にはみ出すので、ずれの分を戻して中央に置く
+            text_x -= full_bbox[0]
+            text_y -= full_bbox[1]
 
         # 個別パーツを順番に描画（○△×は赤、得点と観点は黒）
         # 表示フラグに基づいて、表示されるパーツのみ描画

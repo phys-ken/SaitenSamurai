@@ -90,6 +90,9 @@ def main():
     parser.add_argument("--debug", action="store_true", help="開発者ツールを有効化")
     parser.add_argument("--smoke", action="store_true",
                         help="パッケージ検証: 主要モジュールと同梱ファイルを確認して終了")
+    parser.add_argument("--folder", metavar="答案画像フォルダ",
+                        help="このフォルダの前回の状態（session_state.json）を開いて起動する。"
+                             "外部のツール（コマンド）で準備した試験を画面で確かめるときに使う")
     args = parser.parse_args()
 
     if args.smoke:
@@ -117,7 +120,21 @@ def main():
             traceback.print_exc()
             sys.exit(1)
 
-    create_app()
+    _window, bridge = create_app()
+    if args.folder:
+        res = bridge.open_folder_session(args.folder)
+        if not res["ok"]:
+            print(res["error"], file=sys.stderr)
+            sys.exit(2)
+        # 開いている間は画面の番。外部のツールはこの印を見て書き込みを控える
+        from api import uilock
+        folder = bridge.state["image_folder"]
+        uilock.acquire(folder)
+        try:
+            webview.start(debug=args.debug)
+        finally:
+            uilock.release(folder)
+        return
     webview.start(debug=args.debug)
 
 
